@@ -6,7 +6,7 @@
 
 <br>
 
-<a href="https://get-ghostly.com/download">
+<a href="https://github.com/jason-bartz/ghostly/releases/latest">
   <img src="https://img.shields.io/badge/-Download%20for%20macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" height="46">
 </a>
 &nbsp;&nbsp;
@@ -64,7 +64,7 @@ Works from any app, any window. Configure any key combination in Settings.
 
 ## Getting Started
 
-1. [Download the latest release](https://get-ghostly.com/download) and open the `.dmg`
+1. [Download the latest release](https://github.com/jason-bartz/ghostly/releases/latest) and open the `.dmg`
 2. Drag Ghostly to your Applications folder
 3. Launch Ghostly — it will appear in your menu bar
 4. Grant microphone and accessibility permissions when prompted

@@ -311,7 +311,7 @@ Look for issues labeled `good first issue` or `help wanted` if you're new to the
 
 - **Discord**: Join our [Discord community](https://discord.com/invite/WVBeWsNXK4)
 - **Discussions**: Ask questions in [GitHub Discussions](https://github.com/cjpais/Handy/discussions)
-- **Email**: Reach out at [contact@handy.computer](mailto:contact@handy.computer)
+- **Email**: Reach out at [support@try-ghostly.com](mailto:support@try-ghostly.com)
 
 ## 📜 License
 
