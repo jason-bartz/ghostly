@@ -731,6 +731,7 @@ pub fn paste_with_options(
     Ok(())
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -42,6 +42,67 @@ pub fn detect_prefix(transcript: &str) -> bool {
     EDIT_PREFIX_RE.is_match(trimmed)
 }
 
+/// Scans `transcription` for any configured correction phrase (e.g. "scratch
+/// that"). If one is found, everything up to and including the **last**
+/// occurrence is discarded; only the remainder is returned. This lets the user
+/// correct themselves mid-speech within a single recording.
+///
+/// Matching is case-insensitive and requires word boundaries on both sides so
+/// "scratched that" or "unscratch" won't accidentally trigger.
+///
+/// Returns the original string unchanged if no phrase matched.
+pub fn apply_correction_phrases(transcription: &str, phrases: &[String]) -> String {
+    if phrases.is_empty() || transcription.is_empty() {
+        return transcription.to_string();
+    }
+
+    let lower = transcription.to_lowercase();
+    let mut last_cut: Option<usize> = None;
+
+    for phrase in phrases {
+        let phrase_lower = phrase.trim().to_lowercase();
+        if phrase_lower.is_empty() {
+            continue;
+        }
+        let mut search_from = 0;
+        while search_from < lower.len() {
+            match lower[search_from..].find(&phrase_lower) {
+                None => break,
+                Some(rel_pos) => {
+                    let abs_pos = search_from + rel_pos;
+                    let end = abs_pos + phrase_lower.len();
+                    // Word-boundary guard: the char immediately before and after
+                    // must not be alphabetic (prevents partial-word matches).
+                    let before_ok = abs_pos == 0
+                        || lower[..abs_pos]
+                            .chars()
+                            .next_back()
+                            .map_or(true, |c| !c.is_alphabetic());
+                    let after_ok = lower[end..]
+                        .chars()
+                        .next()
+                        .map_or(true, |c| !c.is_alphabetic());
+                    if before_ok && after_ok {
+                        last_cut = Some(last_cut.map_or(end, |prev| prev.max(end)));
+                    }
+                    search_from = abs_pos + 1;
+                }
+            }
+        }
+    }
+
+    match last_cut {
+        Some(end) => {
+            // Strip leading whitespace/punctuation from the remainder.
+            let remainder = transcription[end..].trim_start_matches(|c: char| {
+                c.is_whitespace() || matches!(c, ',' | '.' | '!' | '?' | ';' | ':')
+            });
+            remainder.trim_end().to_string()
+        }
+        None => transcription.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

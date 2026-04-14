@@ -1067,7 +1067,7 @@ builtin_profiles_enabled?: boolean; voice_editing_enabled?: boolean; session_buf
 /**
  * Opt-in experimental: regex prefix detection in addition to the shortcut.
  */
-voice_edit_prefix_detection?: boolean; rest_api_enabled?: boolean; rest_api_port?: number }
+voice_edit_prefix_detection?: boolean; rest_api_enabled?: boolean; rest_api_port?: number; correction_phrases_enabled?: boolean; correction_phrases?: string[] }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }

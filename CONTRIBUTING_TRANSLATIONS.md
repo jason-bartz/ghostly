@@ -1,6 +1,6 @@
-# Contributing Translations to Handy
+# Contributing Translations to Ghostly
 
-Thank you for helping translate Handy! This guide explains how to add or improve translations.
+Thank you for helping translate Ghostly! This guide explains how to add or improve translations.
 
 ## Quick Start
 
@@ -34,15 +34,6 @@ Create a new folder using the [ISO 639-1 language code](https://en.wikipedia.org
 ```bash
 mkdir src/i18n/locales/[language-code]
 ```
-
-Examples:
-
-- `de` for German
-- `es` for Spanish
-- `ja` for Japanese
-- `zh` for Chinese
-- `ko` for Korean
-- `pt` for Portuguese
 
 ### Step 2: Copy the English File
 
@@ -98,9 +89,7 @@ export const LANGUAGE_METADATA: Record<
 
 1. Commit your changes
 2. Push to your fork
-3. Open a pull request with:
-   - Language name in the title (e.g., "Add German translation")
-   - Any notes about the translation
+3. Open a pull request with the language name in the title (e.g., "Add German translation")
 
 ## Improving Existing Translations
 
@@ -120,7 +109,7 @@ Found a typo or better translation?
 
 ### Don't:
 
-- Translate brand names (Handy, Whisper.cpp, OpenAI)
+- Translate brand names (Ghostly, Handy, Whisper.cpp, OpenAI)
 - Change or remove `{{variables}}`
 - Modify JSON keys
 - Add extra spaces or formatting
@@ -142,12 +131,11 @@ Some strings contain variables like `{{error}}` or `{{model}}`. Keep these exact
 
 ### Handling Plurals
 
-Some languages have complex plural rules. For now, use a general form that works for all cases. We may add proper plural support in the future.
+Some languages have complex plural rules. For now, use a general form that works for all cases.
 
 ## Questions?
 
 - Open an issue on GitHub
-- Join the discussion in existing translation PRs
 
 ## Currently Supported Languages
 
@@ -161,14 +149,6 @@ Some languages have complex plural rules. For now, use a general form that works
 | Spanish    | `es` | Complete          |
 | Vietnamese | `vi` | Complete          |
 
-## Requested Languages
-
-We'd love help with:
-
-- Korean (`ko`)
-- Portuguese (`pt`)
-- And more!
-
 ---
 
-Thank you for making Handy accessible to more people around the world!
+Thank you for making Ghostly accessible to more people around the world!

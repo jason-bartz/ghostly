@@ -658,6 +658,19 @@
       },
       "clearSession": "Clear session",
       "sessionCleared": "Session cleared."
+    },
+    "correctionPhrases": {
+      "title": "Correction Phrases",
+      "enable": {
+        "title": "Enable correction phrases",
+        "description": "Say a phrase mid-speech (e.g. 'scratch that') to discard everything before it in the same recording. Only what you say after the phrase gets pasted."
+      },
+      "phrasesTitle": "Phrases",
+      "phrasesDescription": "Say any of these mid-recording to cut everything before it. Matched case-insensitively with word boundaries.",
+      "placeholder": "e.g. scratch that",
+      "add": "Add",
+      "duplicate": "\"{{phrase}}\" is already in your list.",
+      "remove": "Remove \"{{phrase}}\""
     }
   },
   "footer": {

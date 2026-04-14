@@ -465,6 +465,14 @@ pub struct AppSettings {
     pub rest_api_enabled: bool,
     #[serde(default = "default_rest_api_port")]
     pub rest_api_port: u16,
+
+    // --- Correction phrases (Feature D) ---
+    /// When true, speaking a correction phrase deletes the last transcription.
+    #[serde(default)]
+    pub correction_phrases_enabled: bool,
+    /// Phrases that trigger deletion of the last pasted transcription.
+    #[serde(default = "default_correction_phrases")]
+    pub correction_phrases: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
@@ -707,7 +715,7 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
         LLMPrompt {
             id: "default_improve_transcriptions".to_string(),
             name: "Improve Transcriptions".to_string(),
-            prompt: "Clean this transcript:\n1. Fix spelling, capitalization, and punctuation errors\n2. Convert number words to digits (twenty-five → 25, ten percent → 10%, five dollars → $5)\n3. Replace spoken punctuation with symbols (period → ., comma → ,, question mark → ?)\n4. Remove filler words (um, uh, like as filler)\n5. Keep the language in the original version (if it was french, keep it in french for example)\n\nPreserve exact meaning and word order. Do not paraphrase or reorder content.\n\nReturn only the cleaned transcript.\n\nTranscript:\n${output}".to_string(),
+            prompt: "Clean this transcript:\n1. Fix spelling, capitalization, and punctuation errors\n2. Convert number words to digits (twenty-five → 25, ten percent → 10%, five dollars → $5)\n3. Replace spoken punctuation with symbols (period → ., comma → ,, question mark → ?)\n4. Remove filler words (um, uh, like as filler)\n5. Keep the language in the original version (if it was french, keep it in french for example)\n6. Format lists: if the text contains explicit enumeration (first/second/third, one/two/three, number one/two, bullet point one/two) or a clear sequence of items, format them as a proper bulleted or numbered list using markdown (- item or 1. item)\n\nPreserve exact meaning and word order. Do not paraphrase or reorder content.\n\nReturn only the cleaned transcript.\n\nTranscript:\n${output}".to_string(),
             shortcut: None,
         },
         LLMPrompt {
@@ -737,21 +745,34 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
     ]
 }
 
-/// Ensure all built-in prompts exist in user settings.
-/// Called at settings load time so users always have access to built-in prompts
-/// even after upgrading from an older version of the app.
+/// Ensure all built-in prompts exist in user settings and their text is
+/// up-to-date. Called at settings load time so users always have access to
+/// built-in prompts and receive prompt-text updates automatically.
+/// User-set shortcuts on built-in prompts are preserved.
 fn ensure_builtin_prompts(settings: &mut AppSettings) -> bool {
     let builtins = default_post_process_prompts();
     let mut changed = false;
     for builtin in builtins {
-        if !settings
+        match settings
             .post_process_prompts
-            .iter()
-            .any(|p| p.id == builtin.id)
+            .iter_mut()
+            .find(|p| p.id == builtin.id)
         {
-            debug!("Injecting missing built-in prompt '{}'", builtin.id);
-            settings.post_process_prompts.push(builtin);
-            changed = true;
+            None => {
+                debug!("Injecting missing built-in prompt '{}'", builtin.id);
+                settings.post_process_prompts.push(builtin);
+                changed = true;
+            }
+            Some(existing) => {
+                // Sync name and prompt text so built-in updates reach existing
+                // users automatically. The shortcut (user-set) is left alone.
+                if existing.name != builtin.name || existing.prompt != builtin.prompt {
+                    debug!("Updating built-in prompt '{}'", builtin.id);
+                    existing.name = builtin.name;
+                    existing.prompt = builtin.prompt;
+                    changed = true;
+                }
+            }
         }
     }
     changed
@@ -767,6 +788,10 @@ fn default_true() -> bool {
 
 fn default_rest_api_port() -> u16 {
     7543
+}
+
+fn default_correction_phrases() -> Vec<String> {
+    vec!["scratch that".to_string()]
 }
 
 fn default_typing_tool() -> TypingTool {

@@ -754,7 +754,7 @@ impl ShortcutAction for TranscribeAction {
                 } else {
                     // Save WAV concurrently with transcription
                     let sample_count = samples.len();
-                    let file_name = format!("handy-{}.wav", chrono::Utc::now().timestamp());
+                    let file_name = format!("ghostly-{}.wav", chrono::Utc::now().timestamp());
                     let wav_path = hm.recordings_dir().join(&file_name);
                     let wav_path_for_verify = wav_path.clone();
                     let samples_for_wav = samples.clone();
@@ -825,6 +825,48 @@ impl ShortcutAction for TranscribeAction {
                             }
                             if let Some(name) = &overrides.profile_name {
                                 debug!("Active profile: '{}'", name);
+                            }
+
+                            // Correction phrase filtering (intra-recording): if the user
+                            // said "scratch that" (or any configured phrase) mid-speech,
+                            // discard everything up to and including the last occurrence
+                            // so only what follows gets pasted.
+                            let transcription =
+                                if settings_snapshot.correction_phrases_enabled {
+                                    let corrected = edit_intent::apply_correction_phrases(
+                                        &transcription,
+                                        &settings_snapshot.correction_phrases,
+                                    );
+                                    if corrected != transcription {
+                                        // Update the overlay so the user sees what will
+                                        // actually be pasted after the correction.
+                                        emit_transcription_preview(&ah, &corrected);
+                                    }
+                                    corrected
+                                } else {
+                                    transcription
+                                };
+
+                            // If the correction phrase consumed the entire utterance,
+                            // nothing to paste — save history and return.
+                            if transcription.is_empty() {
+                                if wav_saved {
+                                    if let Err(err) = hm.save_entry(
+                                        file_name,
+                                        String::new(),
+                                        false,
+                                        None,
+                                        None,
+                                    ) {
+                                        error!(
+                                            "Failed to save correction-consumed history: {}",
+                                            err
+                                        );
+                                    }
+                                }
+                                utils::hide_recording_overlay(&ah);
+                                change_tray_icon(&ah, TrayIconState::Idle);
+                                return;
                             }
 
                             // Voice-edit branch: if enabled, prefix matches, and the session buffer

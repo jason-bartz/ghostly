@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve Handy
+about: Create a report to help us improve Ghostly
 title: "[BUG] "
 labels: ["bug"]
 assignees: ""
@@ -8,7 +8,7 @@ assignees: ""
 
 ## Before You Submit
 
-**Please search [existing issues](https://github.com/cjpais/Handy/issues) to avoid duplicates.** Your bug may already be reported! Right now it's just me maintaining this project so many issues can be overwhelming! Help me out by checking first.
+**Please search existing issues to avoid duplicates.**
 
 ## Bug Description
 
@@ -34,4 +34,18 @@ A clear and concise description of what the bug is.
 
 ## Logs
 
-<!-- Please attach relevant logs to help us diagnose the issue. You can find the log directory by going to Settings > About in the app. -->
+<!-- Please attach relevant logs to help diagnose the issue. You can find the log directory by going to Settings > About in the app. -->
+
+## Steps to Reproduce
+
+1.
+2.
+3.
+
+## Expected Behavior
+
+## Actual Behavior
+
+## Screenshots
+
+<!-- If applicable, add screenshots to help explain your problem -->
