@@ -2,7 +2,7 @@
 
 <img src="src/assets/ghostly_wordmark.svg" alt="Ghostly" width="320"><br><br>
 
-**Voice-first typing for your Mac. Press a key, speak, done.**
+Voice-first typing for macOS.
 
 <br>
 
@@ -16,99 +16,68 @@
 
 <br><br>
 
-<sub>macOS 10.15 Catalina and later &nbsp;·&nbsp; Apple Silicon &amp; Intel &nbsp;·&nbsp; Runs entirely on your device</sub>
+<sub>macOS 10.15 or later · Apple Silicon & Intel · Transcription runs on-device</sub>
 
 </div>
 
 ---
 
-Ghostly is a speech-to-text app that lives in your menu bar. Press a shortcut, speak, and your words appear directly in whatever app you're using — no cloud, no subscription, no audio leaving your machine.
+Ghostly lives in your menu bar. Press a shortcut, talk, and your words land in the active app. Whisper does the transcription locally; audio never leaves the Mac.
 
-## Features
+## Install
 
-### Per-App Profiles
+Grab the latest `.dmg` from [releases](https://github.com/jason-bartz/ghostly/releases/latest), drag Ghostly to Applications, and launch it. It'll ask for microphone and accessibility access. Pick a shortcut in Settings. On first run it downloads a transcription model (500 MB–1.6 GB depending on which one you pick). After that, dictation works offline.
 
-Ghostly automatically switches context when you switch apps. Set a different vocabulary, prompt, or transcription style for Slack, your code editor, your email client — Ghostly detects the frontmost app at transcription time and applies the right profile.
+## How it works in practice
 
-### Voice Editing Loop
+Hold the shortcut, talk, release. The transcript pastes into whatever field the cursor is in. Silences get skipped automatically.
 
-Made a mistake? Just say what to fix. After transcribing, you can speak an edit command to revise what was just pasted. No re-recording the whole thing — just describe the change and Ghostly handles it.
+Whisper ships as the default. Parakeet (Nvidia) and Moonshine are available if you want faster inference or English-only streaming instead.
 
-### Completely Offline
+## Optional AI cleanup
 
-Your audio never leaves your computer. Transcription runs on-device using your choice of Whisper models, with GPU acceleration on Apple Silicon and supported Intel/AMD/NVIDIA hardware.
+Connect an API key for OpenAI, Anthropic, Groq, OpenRouter, Cerebras, Z.AI, or any OpenAI-compatible endpoint, and Ghostly runs the transcript through a model before pasting. It fixes punctuation, formats lists, converts spoken numbers to digits ("twenty-five percent" becomes 25%), and strips fillers.
 
-### Multiple Model Options
+On Apple Silicon you can also pick Apple Intelligence, which runs on-device with no key or network.
 
-| Model  | Size   | Notes                           |
-| ------ | ------ | ------------------------------- |
-| Small  | 487 MB | Fast, good for quick dictation  |
-| Medium | 492 MB | Balanced accuracy and speed     |
-| Turbo  | 1.6 GB | High accuracy, reasonable speed |
-| Large  | 1.1 GB | Maximum accuracy                |
+Tokens stream into the overlay while the model works. Hit cancel to abort mid-stream.
 
-### Push-to-Talk or Toggle
+Without a key configured, nothing breaks — you just get the raw Whisper output.
 
-Hold to record and release to transcribe, or tap once to start and again to stop.
+## Things you can say
 
-### Always-on Shortcut
+"Scratch that" mid-sentence drops everything you said before it, so you can self-correct without re-recording. The phrase is configurable.
 
-Works from any app, any window. Configure any key combination in Settings.
+Use the edit shortcut to revise your last paste. Press it, say "make it shorter" or "change Monday to Tuesday", and the previous output gets rewritten in place.
 
-## How It Works
+Voice commands map spoken phrases to keystrokes — say "approve" to send Enter, "reject" to send Escape. Useful when paired with AI coding agents in Cursor or Claude Code.
 
-1. Press your keyboard shortcut to start recording
-2. Speak — silence is automatically filtered out
-3. Release (or press again) to stop
-4. Your transcribed text is pasted directly into the active field — no copy-paste, no window switching
+The screenshot shortcut grabs the screen, records your question, and pastes a vision model's answer.
 
-## Getting Started
+## Per-app profiles
 
-1. [Download the latest release](https://github.com/jason-bartz/ghostly/releases/latest) and open the `.dmg`
-2. Drag Ghostly to your Applications folder
-3. Launch Ghostly — it will appear in your menu bar
-4. Grant microphone and accessibility permissions when prompted
-5. Set your preferred keyboard shortcut in Settings
-6. Start speaking
+Ghostly notices which app has focus when you transcribe and can switch prompts and vocabulary accordingly. A terse prompt for Slack, a formal one for email, a code-aware one for your editor.
 
-On first launch, Ghostly will download a transcription model. This is a one-time step that requires an internet connection. After that, everything runs offline.
-
-## System Requirements
-
-- macOS 10.15 Catalina or later
-- Apple Silicon (M1 and up) — recommended for best performance
-- Intel Mac — fully supported
-- Microphone access
-- Accessibility access (required to paste into other apps)
-
-## CLI Flags
-
-Ghostly supports command-line flags for scripting, window managers, and autostart configurations.
-
-**Control a running instance:**
+## CLI
 
 ```bash
-ghostly --toggle-transcription     # Toggle recording on/off
-ghostly --toggle-post-process      # Toggle with voice editing
-ghostly --cancel                   # Cancel the current operation
+ghostly --toggle-transcription   # toggle recording
+ghostly --cancel                 # cancel current operation
+ghostly --start-hidden           # launch to tray only
+ghostly --no-tray                # quit when window closes
+ghostly --debug                  # verbose logging
 ```
 
-**Startup options:**
-
-```bash
-ghostly --start-hidden             # Launch to tray without opening the window
-ghostly --no-tray                  # Closing the window quits the app
-ghostly --debug                    # Verbose logging
-```
-
-When installed as an app bundle, invoke the binary directly:
+Invoke via the bundle if you installed to Applications:
 
 ```bash
 /Applications/Ghostly.app/Contents/MacOS/ghostly --toggle-transcription
 ```
 
-## License & Attribution
+## Requirements
 
-Ghostly is built on [Handy](https://github.com/cjpais/Handy) by CJ Pais, used under the MIT License.
+macOS 10.15 Catalina or later. Apple Silicon recommended; Intel works. Needs microphone and accessibility permissions.
 
-See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for full attribution.
+## Credits
+
+Built on [Handy](https://github.com/cjpais/Handy) by CJ Pais, MIT-licensed. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
