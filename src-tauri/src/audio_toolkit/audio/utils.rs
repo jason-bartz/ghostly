@@ -70,11 +70,7 @@ pub fn read_audio_file_samples<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>>
         .codec_params
         .sample_rate
         .ok_or_else(|| anyhow!("Unknown sample rate"))? as usize;
-    let in_channels = track
-        .codec_params
-        .channels
-        .map(|c| c.count())
-        .unwrap_or(1);
+    let in_channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(1);
 
     let mut decoder = symphonia::default::get_codecs()
         .make(&track.codec_params, &DecoderOptions::default())
@@ -106,9 +102,7 @@ pub fn read_audio_file_samples<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>>
         match decoded {
             AudioBufferRef::F32(buf) => {
                 for frame in 0..frames {
-                    let sample: f32 = (0..in_channels)
-                        .map(|ch| buf.chan(ch)[frame])
-                        .sum::<f32>()
+                    let sample: f32 = (0..in_channels).map(|ch| buf.chan(ch)[frame]).sum::<f32>()
                         / in_channels as f32;
                     raw_samples.push(sample);
                 }
@@ -154,9 +148,7 @@ pub fn read_audio_file_samples<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>>
                 let mut tmp = decoded.make_equivalent::<f32>();
                 decoded.convert(&mut tmp);
                 for frame in 0..frames {
-                    let sample: f32 = (0..in_channels)
-                        .map(|ch| tmp.chan(ch)[frame])
-                        .sum::<f32>()
+                    let sample: f32 = (0..in_channels).map(|ch| tmp.chan(ch)[frame]).sum::<f32>()
                         / in_channels as f32;
                     raw_samples.push(sample);
                 }

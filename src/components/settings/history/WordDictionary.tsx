@@ -109,7 +109,10 @@ export const WordDictionary: React.FC = () => {
           type="text"
           value={draftWrong}
           onChange={(e) => setDraftWrong(e.target.value)}
-          placeholder={t("settings.history.dictionary.wrong", "Mistranscribed word")}
+          placeholder={t(
+            "settings.history.dictionary.wrong",
+            "Mistranscribed word",
+          )}
           variant="compact"
           className="flex-1"
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}

@@ -22,9 +22,7 @@ pub fn cancel_current_operation(app: &AppHandle) {
 
     // Signal any in-flight LLM stream to stop. The stream loop checks this
     // flag between chunks and returns a cancellation error.
-    if let Some(stream_cancel) =
-        app.try_state::<Arc<crate::stream_cancel::StreamCancellation>>()
-    {
+    if let Some(stream_cancel) = app.try_state::<Arc<crate::stream_cancel::StreamCancellation>>() {
         stream_cancel.cancel();
     }
 

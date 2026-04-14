@@ -5,6 +5,8 @@
     "copyLastTranscript": "Son transkripti kopyala",
     "unloadModel": "Modeli boşalt",
     "model": "Model",
+    "microphone": "Microphone",
+    "defaultMicrophone": "Default",
     "quit": "Çıkış",
     "cancel": "İptal"
   },
@@ -13,11 +15,25 @@
     "models": "Modeller",
     "advanced": "Gelişmiş",
     "postProcessing": "Son İşlem",
+    "profiles": "Profiles",
     "history": "Geçmiş",
+    "dictionary": "Dictionary",
+    "restApi": "Automation",
     "debug": "Hata Ayıklama",
     "about": "Hakkında"
   },
   "onboarding": {
+    "title": "Welcome to Ghostly",
+    "tagline": "Private, on-device voice transcription — works in any app.",
+    "features": {
+      "onDevice": "100% on-device — your voice never leaves this computer",
+      "fast": "Instant results — transcription in under a second",
+      "everywhere": "Works anywhere — paste into any app, any text field"
+    },
+    "modelSection": "Choose your model",
+    "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
+    "showMoreModels": "Show more models",
+    "hideMoreModels": "Show fewer models",
     "subtitle": "Başlamak için bir transkripsiyon modeli seçin",
     "recommended": "Önerilen",
     "download": "İndir",
@@ -113,6 +129,7 @@
       "granted": "Verildi",
       "waiting": "Bekleniyor...",
       "allGranted": "Her şey hazır!",
+      "skipForNow": "Continue anyway",
       "errors": {
         "checkFailed": "İzinler kontrol edilemedi. Lütfen tekrar deneyin.",
         "requestFailed": "İzin isteği başarısız oldu. Lütfen tekrar deneyin."
@@ -122,6 +139,7 @@
   "modelSelector": {
     "custom": "Özel",
     "active": "Aktif",
+    "switching": "Değiştiriliyor...",
     "noModelsAvailable": "Kullanılabilir model yok",
     "verifying": "{{modelName}} doğrulanıyor...",
     "verifyingGeneric": "Doğrulanıyor...",
@@ -137,41 +155,22 @@
     "modelUnloaded": "Model Boşaltıldı",
     "noModelDownloadRequired": "Model Yok – İndirme Gerekli",
     "deleteModel": "{{modelName}} Sil",
-    "switching": "Değiştiriliyor...",
     "downloadSpeed": "{{speed}} MB/s",
+    "cancel": "İptal",
+    "cancelDownload": "İndirmeyi iptal et",
     "capabilities": {
       "languageSelection": "Birden fazla giriş dilini destekler",
-      "multiLanguage": "Çok dilli",
-      "translation": "İngilizce'ye çevirebilir",
-      "translate": "İngilizce'ye çevir",
       "singleLanguage": "Yalnızca bu dili destekler",
-      "languageOnly": "Yalnızca {{language}}"
-    },
-    "cancel": "İptal",
-    "cancelDownload": "İndirmeyi iptal et"
+      "multiLanguage": "Çok dilli",
+      "languageOnly": "Yalnızca {{language}}",
+      "translation": "İngilizce'ye çevirebilir",
+      "translate": "İngilizce'ye çevir"
+    }
   },
   "settings": {
     "modelSettings": {
       "title": "{{model}} Ayarları",
       "noSettingsNeeded": "Bu model yapılandırma gerektirmeden otomatik olarak çalışır."
-    },
-    "models": {
-      "title": "Transkripsiyon Modelleri",
-      "description": "Bir transkripsiyon modeli seçin veya ek modeller indirin. Farklı modeller değişen doğruluk ve hız seviyeleri sunar.",
-      "downloaded": "İndirildi",
-      "available": "İndirilebilir",
-      "deleteConfirm": "{{modelName}} modelini silmek istediğinizden emin misiniz? Kullanmak için tekrar indirmeniz gerekecek.",
-      "deleteActiveConfirm": "{{modelName}} aktif modelinizdir. Silmek, yeni bir model seçene kadar transkripsiyonları durduracaktır. Emin misiniz?",
-      "deleteTitle": "Modeli Sil",
-      "filters": {
-        "all": "Tümü",
-        "multiLanguage": "Çok dilli",
-        "translation": "Çeviri",
-        "allLanguages": "Tüm Diller"
-      },
-      "noModelsMatch": "Bu filtreyle eşleşen model yok.",
-      "yourModels": "İndirilen modeller",
-      "availableModels": "İndirilebilir"
     },
     "general": {
       "title": "Genel",
@@ -191,9 +190,9 @@
             "name": "İptal Kısayolu",
             "description": "Mevcut kaydı iptal etmek için klavye kısayolu."
           },
-          "transcribe_with_post_process": {
-            "name": "Son İşlem Kısayolu",
-            "description": "İsteğe bağlı: Transkripsiyonunuza her zaman AI son işleme uygulayan özel bir kısayol tuşu."
+          "transcribe_with_screenshot": {
+            "name": "Screenshot + Dictate",
+            "description": "Captures the screen on press, records your question, and pastes the vision LLM's answer. Requires a vision-capable provider (OpenAI, OpenRouter, Z.AI, or Groq)."
           }
         },
         "errors": {
@@ -215,6 +214,24 @@
         "description": "Kaydetmek için basılı tutun, durdurmak için bırakın"
       }
     },
+    "models": {
+      "title": "Transkripsiyon Modelleri",
+      "description": "Bir transkripsiyon modeli seçin veya ek modeller indirin. Farklı modeller değişen doğruluk ve hız seviyeleri sunar.",
+      "yourModels": "İndirilen modeller",
+      "availableModels": "İndirilebilir",
+      "downloaded": "İndirildi",
+      "available": "İndirilebilir",
+      "deleteConfirm": "{{modelName}} modelini silmek istediğinizden emin misiniz? Kullanmak için tekrar indirmeniz gerekecek.",
+      "deleteActiveConfirm": "{{modelName}} aktif modelinizdir. Silmek, yeni bir model seçene kadar transkripsiyonları durduracaktır. Emin misiniz?",
+      "deleteTitle": "Modeli Sil",
+      "filters": {
+        "all": "Tümü",
+        "multiLanguage": "Çok dilli",
+        "translation": "Çeviri",
+        "allLanguages": "Tüm Diller"
+      },
+      "noModelsMatch": "Bu filtreyle eşleşen model yok."
+    },
     "sound": {
       "title": "Ses",
       "microphone": {
@@ -226,6 +243,10 @@
       "audioFeedback": {
         "label": "Sesli Geri Bildirim",
         "description": "Kayıt başladığında ve bittiğinde ses çalar"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "The sound played when recording starts and stops."
       },
       "outputDevice": {
         "title": "Çıkış Cihazı",
@@ -245,7 +266,8 @@
         "output": "Çıktı",
         "transcription": "Transkripsiyon",
         "history": "Geçmiş",
-        "experimental": "Deneysel"
+        "experimental": "Deneysel",
+        "developer": "Developer"
       },
       "experimentalToggle": {
         "label": "Deneysel Özellikler",
@@ -355,13 +377,51 @@
         "placeholder": "Kelime ekle",
         "add": "Ekle",
         "remove": "{{word}} Kaldır",
-        "duplicate": "\"{{word}}\" zaten mevcut"
+        "duplicate": "\"{{word}}\" zaten mevcut",
+        "presetAdded": "Added {{count}} word(s)",
+        "presetAlreadyAdded": "All words from this preset are already added",
+        "presets": {
+          "title": "Vocabulary presets",
+          "description": "One-click add curated technical terms. Great for coding and AI-assistant workflows.",
+          "web": "Web (React / TS / Tailwind)",
+          "rust": "Rust",
+          "python": "Python",
+          "ai": "AI tools"
+        }
+      },
+      "fillerWords": {
+        "title": "Filler Word Removal",
+        "description": "Strip fillers (um, uh, like) from transcripts automatically. Uses smart language defaults out of the box.",
+        "modes": {
+          "defaults": "Language defaults",
+          "custom": "Custom list",
+          "disabled": "Disabled"
+        },
+        "addTitle": "Custom filler words",
+        "addDescription": "Words to strip from every transcription. One word per entry.",
+        "placeholder": "Add a word",
+        "add": "Add",
+        "remove": "Remove {{word}}",
+        "duplicate": "\"{{word}}\" already exists"
       }
     },
     "postProcessing": {
       "title": "Son İşlem",
+      "enable": {
+        "label": "Enable AI Refinement",
+        "description": "Use AI to clean up, format, or rephrase your transcriptions after they're captured. Requires an AI provider API key or Apple Intelligence."
+      },
       "hotkey": {
         "title": "Kısayol Tuşu"
+      },
+      "advanced": {
+        "title": "Advanced"
+      },
+      "connection": {
+        "connected": "Connected via {{provider}} — refinement is on",
+        "appleIntelligence": "Apple Intelligence ready — runs on-device",
+        "needsKey": "Add your API key below to enable refinement",
+        "needsModel": "Select a model below to enable refinement"
       },
       "api": {
         "title": "API (OpenAI Uyumlu)",
@@ -394,6 +454,14 @@
           "placeholderWithOptions": "Model ara veya seç",
           "placeholderNoOptions": "Model adı yazın",
           "refreshModels": "Modelleri Yenile"
+        },
+        "testConnection": {
+          "title": "Test connection",
+          "description": "Sends a tiny request to verify your provider, model, and API key work together.",
+          "button": "Test",
+          "testing": "Testing…",
+          "success": "Connection works — AI refinement is ready.",
+          "failed": "Connection failed"
         }
       },
       "prompts": {
@@ -420,7 +488,17 @@
     },
     "history": {
       "title": "Geçmiş",
+      "storageGroup": "Storage & Retention",
       "openFolder": "Kayıtlar Klasörünü Aç",
+      "export": {
+        "jsonButton": "Export as JSON",
+        "jsonLabel": "Export JSON",
+        "jsonFilter": "JSON File",
+        "docxButton": "Export as Word Document",
+        "docxLabel": "Export Word",
+        "docxFilter": "Word Document",
+        "success": "History exported successfully"
+      },
       "loading": "Geçmiş yükleniyor...",
       "empty": "Henüz transkripsiyon yok. Geçmişinizi oluşturmak için kayda başlayın!",
       "copyToClipboard": "Transkripsiyonu panoya kopyala",
@@ -511,6 +589,7 @@
     },
     "about": {
       "title": "Hakkında",
+      "updateGroup": "Updates",
       "version": {
         "title": "Sürüm",
         "description": "Ghostly'nin mevcut sürümü"
@@ -535,8 +614,127 @@
           "title": "Whisper.cpp",
           "description": "OpenAI'nin Whisper otomatik konuşma tanıma modelinin yüksek performanslı çıkarımı",
           "details": "Ghostly, hızlı ve yerel konuşmadan metne dönüştürme için Whisper.cpp kullanır. Georgi Gerganov ve katkıda bulunanların harika çalışmaları için teşekkür ederiz."
+        },
+        "handy": {
+          "title": "Handy",
+          "description": "Ghostly is based on Handy by CJ Pais.",
+          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
         }
       }
+    },
+    "profiles": {
+      "title": "Per-App Profiles",
+      "enable": {
+        "title": "Enable Per-App Profiles",
+        "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
+      },
+      "empty": "No profiles yet.",
+      "add": "Add profile",
+      "detectCurrent": "Detect current app",
+      "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
+      "detectFailed": "Couldn't detect the frontmost app.",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Slack, VS Code, Gmail",
+        "enabled": "Enabled",
+        "rules": "Match rules",
+        "rulesHint": "Any rule matching will activate this profile. Most specific rule first.",
+        "rulesEmpty": "No rules yet. Add one or detect the current app.",
+        "addRule": "Add rule",
+        "prompt": "Prompt",
+        "promptInherit": "Inherit global prompt",
+        "postProcess": "Post-processing",
+        "postProcessInherit": "Inherit",
+        "postProcessOn": "Always on",
+        "postProcessOff": "Always off",
+        "provider": "Provider",
+        "providerInherit": "Inherit global provider",
+        "customVocab": "Profile vocabulary",
+        "customVocabPlaceholder": "Add word",
+        "customVocabHint": "Merged with the global custom words list for this profile.",
+        "trailingSpace": "Append trailing space",
+        "trailingSpaceInherit": "Inherit",
+        "trailingSpaceOn": "Always append",
+        "trailingSpaceOff": "Never append"
+      },
+      "rule": {
+        "kind": "Rule type",
+        "value": "Value",
+        "bundleId": "macOS bundle id",
+        "bundleIdPlaceholder": "com.tinyspeck.slackmacgap",
+        "processName": "Process name",
+        "processNamePlaceholder": "Code.exe",
+        "windowClass": "Window class (Linux X11)",
+        "exePathContains": "Exe path contains",
+        "windowTitleContains": "Window title contains"
+      }
+    },
+    "voiceCommands": {
+      "title": "Voice Commands",
+      "enable": {
+        "title": "Enable voice commands",
+        "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
+      },
+      "list": {
+        "title": "Commands",
+        "description": "Toggle or remove commands. Commands run when the voice-command shortcut is used."
+      },
+      "empty": "No voice commands configured.",
+      "remove": "Remove",
+      "missingFields": "Name, phrases, and keystroke are required.",
+      "add": {
+        "title": "Add a command",
+        "description": "Keystroke format: \"enter\", \"escape\", \"tab\", \"shift+tab\", \"cmd+s\", or a single character.",
+        "namePlaceholder": "Name (e.g. Approve)",
+        "phrasesPlaceholder": "Phrases, comma-separated (e.g. approve, yes, accept)",
+        "keystrokePlaceholder": "Keystroke (e.g. enter)",
+        "button": "Add command"
+      }
+    },
+    "voiceEditing": {
+      "title": "Voice Editing",
+      "enable": {
+        "title": "Enable voice editing",
+        "description": "Keep a short buffer of recent transcriptions so you can revise your last paste by speaking an edit instruction."
+      },
+      "experimental": "Experimental — may misfire in rich-text editors and fields where the cursor moved.",
+      "prefixDetection": {
+        "title": "Prefix detection",
+        "description": "Treat short utterances starting with phrases like 'fix that' or 'make it shorter' as edit commands. Risk of false positives — leave off unless you want it."
+      },
+      "replaceStrategy": {
+        "title": "Replace strategy",
+        "description": "How voice edits replace the previously pasted text.",
+        "selectAndPaste": "Select prior text, then paste",
+        "repasteOnly": "Paste new version only",
+        "off": "Disabled"
+      },
+      "bufferSize": {
+        "title": "Session buffer size",
+        "description": "Number of recent transcriptions kept for voice-edit context."
+      },
+      "idleTimeout": {
+        "title": "Session idle timeout",
+        "description": "Seconds before the session buffer expires and voice edits no longer chain off the last paste."
+      },
+      "clearSession": "Clear session",
+      "sessionCleared": "Session cleared."
+    },
+    "correctionPhrases": {
+      "title": "Correction Phrases",
+      "enable": {
+        "title": "Enable correction phrases",
+        "description": "Say a phrase mid-speech (e.g. 'scratch that') to discard everything before it in the same recording. Only what you say after the phrase gets pasted."
+      },
+      "phrasesTitle": "Phrases",
+      "phrasesDescription": "Say any of these mid-recording to cut everything before it. Matched case-insensitively with word boundaries.",
+      "placeholder": "e.g. scratch that",
+      "add": "Add",
+      "duplicate": "\"{{phrase}}\" is already in your list.",
+      "remove": "Remove \"{{phrase}}\""
     }
   },
   "footer": {
@@ -599,7 +797,8 @@
     "modelLoadFailed": "Model yüklenemedi: {{model}}",
     "modelLoadFailedUnknown": "bilinmeyen model",
     "pasteFailedTitle": "Metin yapıştırılamadı",
-    "pasteFailed": "Metin etkin uygulamaya yapıştırılamadı."
+    "pasteFailed": "Metin etkin uygulamaya yapıştırılamadı.",
+    "postProcessFailedTitle": "AI Refinement Failed"
   },
   "appLanguage": {
     "title": "Uygulama Dili",

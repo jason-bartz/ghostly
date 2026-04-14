@@ -3,9 +3,9 @@ use crate::managers::{
     history::{HistoryEntry, HistoryManager, PaginatedHistory, WordCorrection},
     transcription::TranscriptionManager,
 };
+use chrono::Utc;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use chrono::Utc;
 
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -25,7 +25,8 @@ fn generate_docx(entries: &[HistoryEntry]) -> Result<Vec<u8>, String> {
     let opts = SimpleFileOptions::default();
 
     // [Content_Types].xml
-    zip.start_file("[Content_Types].xml", opts).map_err(|e| e.to_string())?;
+    zip.start_file("[Content_Types].xml", opts)
+        .map_err(|e| e.to_string())?;
     zip.write_all(
         br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -36,8 +37,10 @@ fn generate_docx(entries: &[HistoryEntry]) -> Result<Vec<u8>, String> {
     ).map_err(|e| e.to_string())?;
 
     // _rels/.rels
-    zip.add_directory("_rels/", opts).map_err(|e| e.to_string())?;
-    zip.start_file("_rels/.rels", opts).map_err(|e| e.to_string())?;
+    zip.add_directory("_rels/", opts)
+        .map_err(|e| e.to_string())?;
+    zip.start_file("_rels/.rels", opts)
+        .map_err(|e| e.to_string())?;
     zip.write_all(
         br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -46,22 +49,28 @@ fn generate_docx(entries: &[HistoryEntry]) -> Result<Vec<u8>, String> {
     ).map_err(|e| e.to_string())?;
 
     // word/_rels/document.xml.rels
-    zip.add_directory("word/", opts).map_err(|e| e.to_string())?;
-    zip.add_directory("word/_rels/", opts).map_err(|e| e.to_string())?;
-    zip.start_file("word/_rels/document.xml.rels", opts).map_err(|e| e.to_string())?;
+    zip.add_directory("word/", opts)
+        .map_err(|e| e.to_string())?;
+    zip.add_directory("word/_rels/", opts)
+        .map_err(|e| e.to_string())?;
+    zip.start_file("word/_rels/document.xml.rels", opts)
+        .map_err(|e| e.to_string())?;
     zip.write_all(
         br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 </Relationships>"#,
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // word/settings.xml
-    zip.start_file("word/settings.xml", opts).map_err(|e| e.to_string())?;
+    zip.start_file("word/settings.xml", opts)
+        .map_err(|e| e.to_string())?;
     zip.write_all(
         br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 </w:settings>"#,
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // word/document.xml - build body content from history entries
     let mut body = String::new();
@@ -154,7 +163,8 @@ fn generate_docx(entries: &[HistoryEntry]) -> Result<Vec<u8>, String> {
 </w:document>"#,
     );
 
-    zip.start_file("word/document.xml", opts).map_err(|e| e.to_string())?;
+    zip.start_file("word/document.xml", opts)
+        .map_err(|e| e.to_string())?;
     zip.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
 
     let cursor = zip.finish().map_err(|e| e.to_string())?;
@@ -405,8 +415,8 @@ pub async fn transcribe_audio_file(
     let path = std::path::Path::new(&file_path);
 
     // Decode audio file to 16kHz mono f32
-    let samples = read_audio_file_samples(path)
-        .map_err(|e| format!("Failed to decode audio file: {}", e))?;
+    let samples =
+        read_audio_file_samples(path).map_err(|e| format!("Failed to decode audio file: {}", e))?;
 
     if samples.is_empty() {
         return Err("Audio file contains no audio data".to_string());
@@ -430,8 +440,7 @@ pub async fn transcribe_audio_file(
     let timestamp = chrono::Utc::now().timestamp();
     let wav_name = format!("file_{}.wav", timestamp);
     let wav_path = history_manager.recordings_dir().join(&wav_name);
-    save_wav_file(&wav_path, &samples)
-        .map_err(|e| format!("Failed to save WAV: {}", e))?;
+    save_wav_file(&wav_path, &samples).map_err(|e| format!("Failed to save WAV: {}", e))?;
 
     let processed = process_transcription_output(&app, &transcription, false).await;
 

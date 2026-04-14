@@ -631,7 +631,11 @@ impl HistoryManager {
         Ok(entry)
     }
 
-    pub async fn update_user_title(&self, id: i64, user_title: Option<String>) -> Result<HistoryEntry> {
+    pub async fn update_user_title(
+        &self,
+        id: i64,
+        user_title: Option<String>,
+    ) -> Result<HistoryEntry> {
         let conn = self.get_connection()?;
         let trimmed = user_title
             .map(|s| s.trim().to_string())
@@ -807,10 +811,7 @@ impl HistoryManager {
 
     pub fn delete_word_correction(&self, id: i64) -> Result<()> {
         let conn = self.get_connection()?;
-        conn.execute(
-            "DELETE FROM word_corrections WHERE id = ?1",
-            params![id],
-        )?;
+        conn.execute("DELETE FROM word_corrections WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -828,7 +829,9 @@ impl HistoryManager {
             // Match at word boundaries: preceded/followed by non-alphanumeric or start/end
             let pattern = format!(r"(?i)(?<![a-zA-Z0-9]){}(?![a-zA-Z0-9])", escaped);
             if let Ok(re) = Regex::new(&pattern) {
-                result = re.replace_all(&result, correction.correct.as_str()).to_string();
+                result = re
+                    .replace_all(&result, correction.correct.as_str())
+                    .to_string();
             }
         }
         result

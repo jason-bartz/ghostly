@@ -9,18 +9,18 @@ use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::profiles::{self, ResolvedOverrides};
+use crate::screenshot;
 use crate::session::{self, SessionBuffer, SessionEntry};
 use crate::settings::{
     get_settings, AppSettings, VoiceEditReplaceStrategy, APPLE_INTELLIGENCE_PROVIDER_ID,
 };
 use crate::shortcut;
 use crate::tray::{change_tray_icon, TrayIconState};
-use crate::screenshot;
-use crate::voice_commands;
 use crate::utils::{
     self, emit_transcription_preview, show_processing_overlay, show_recording_overlay,
     show_transcribing_overlay,
 };
+use crate::voice_commands;
 use crate::TranscriptionCoordinator;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
 use log::{debug, error, warn};
@@ -874,8 +874,7 @@ impl ShortcutAction for TranscribeAction {
 
         // Clear any stale cancellation state from a previous operation so the
         // paste path at the end doesn't mistakenly skip output.
-        if let Some(sc) = app.try_state::<Arc<crate::stream_cancel::StreamCancellation>>()
-        {
+        if let Some(sc) = app.try_state::<Arc<crate::stream_cancel::StreamCancellation>>() {
             sc.reset();
         }
 
@@ -1017,9 +1016,9 @@ impl ShortcutAction for TranscribeAction {
         play_feedback_sound(app, SoundType::Stop);
 
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
-        // `post_process` on the action is now a "force on" signal. The actual
-        // runtime decision is made once `settings_snapshot` is available (see
-        // below) and ORs this with has_working_llm() + post_process_enabled.
+                                                 // `post_process` on the action is now a "force on" signal. The actual
+                                                 // runtime decision is made once `settings_snapshot` is available (see
+                                                 // below) and ORs this with has_working_llm() + post_process_enabled.
         let force_post_process = self.post_process;
         let force_voice_edit = self.force_voice_edit;
         let capture_screenshot = self.capture_screenshot;
@@ -1134,33 +1133,28 @@ impl ShortcutAction for TranscribeAction {
                             // said "scratch that" (or any configured phrase) mid-speech,
                             // discard everything up to and including the last occurrence
                             // so only what follows gets pasted.
-                            let transcription =
-                                if settings_snapshot.correction_phrases_enabled {
-                                    let corrected = edit_intent::apply_correction_phrases(
-                                        &transcription,
-                                        &settings_snapshot.correction_phrases,
-                                    );
-                                    if corrected != transcription {
-                                        // Update the overlay so the user sees what will
-                                        // actually be pasted after the correction.
-                                        emit_transcription_preview(&ah, &corrected);
-                                    }
-                                    corrected
-                                } else {
-                                    transcription
-                                };
+                            let transcription = if settings_snapshot.correction_phrases_enabled {
+                                let corrected = edit_intent::apply_correction_phrases(
+                                    &transcription,
+                                    &settings_snapshot.correction_phrases,
+                                );
+                                if corrected != transcription {
+                                    // Update the overlay so the user sees what will
+                                    // actually be pasted after the correction.
+                                    emit_transcription_preview(&ah, &corrected);
+                                }
+                                corrected
+                            } else {
+                                transcription
+                            };
 
                             // If the correction phrase consumed the entire utterance,
                             // nothing to paste — save history and return.
                             if transcription.is_empty() {
                                 if wav_saved {
-                                    if let Err(err) = hm.save_entry(
-                                        file_name,
-                                        String::new(),
-                                        false,
-                                        None,
-                                        None,
-                                    ) {
+                                    if let Err(err) =
+                                        hm.save_entry(file_name, String::new(), false, None, None)
+                                    {
                                         error!(
                                             "Failed to save correction-consumed history: {}",
                                             err
@@ -1194,24 +1188,15 @@ impl ShortcutAction for TranscribeAction {
                                             if let Err(e) = voice_commands::execute_keystroke(
                                                 &ah_clone, &keystroke,
                                             ) {
-                                                error!(
-                                                    "Voice command keystroke failed: {}",
-                                                    e
-                                                );
+                                                error!("Voice command keystroke failed: {}", e);
                                                 let _ = ah_clone.emit("paste-error", ());
                                             }
                                             utils::hide_recording_overlay(&ah_clone);
-                                            change_tray_icon(
-                                                &ah_clone,
-                                                TrayIconState::Idle,
-                                            );
+                                            change_tray_icon(&ah_clone, TrayIconState::Idle);
                                         });
                                     }
                                     None => {
-                                        warn!(
-                                            "Voice command: no match for '{}'",
-                                            transcription
-                                        );
+                                        warn!("Voice command: no match for '{}'", transcription);
                                         let _ = ah.emit("paste-error", ());
                                         utils::hide_recording_overlay(&ah);
                                         change_tray_icon(&ah, TrayIconState::Idle);
@@ -1224,10 +1209,8 @@ impl ShortcutAction for TranscribeAction {
                             // route the transcription through a vision-capable LLM and paste the
                             // answer. Skips voice-edit and session buffer entirely.
                             if capture_screenshot {
-                                let image = captured_image_slot
-                                    .lock()
-                                    .ok()
-                                    .and_then(|mut s| s.take());
+                                let image =
+                                    captured_image_slot.lock().ok().and_then(|mut s| s.take());
                                 match image {
                                     Some(png) => {
                                         show_processing_overlay(&ah);
@@ -1245,9 +1228,7 @@ impl ShortcutAction for TranscribeAction {
                                                         transcription.clone(),
                                                         true,
                                                         Some(answer.clone()),
-                                                        Some(
-                                                            "Screenshot Q&A (vision)".to_string(),
-                                                        ),
+                                                        Some("Screenshot Q&A (vision)".to_string()),
                                                     ) {
                                                         error!(
                                                             "Failed to save screenshot history: {}",
@@ -1273,12 +1254,8 @@ impl ShortcutAction for TranscribeAction {
                                                             opts,
                                                         )
                                                     {
-                                                        error!(
-                                                            "Screenshot paste failed: {}",
-                                                            e
-                                                        );
-                                                        let _ =
-                                                            ah_clone.emit("paste-error", ());
+                                                        error!("Screenshot paste failed: {}", e);
+                                                        let _ = ah_clone.emit("paste-error", ());
                                                     }
                                                     utils::hide_recording_overlay(&ah_clone);
                                                     change_tray_icon(
@@ -1289,9 +1266,7 @@ impl ShortcutAction for TranscribeAction {
                                                 return;
                                             }
                                             None => {
-                                                warn!(
-                                                    "Screenshot Q&A returned no content"
-                                                );
+                                                warn!("Screenshot Q&A returned no content");
                                                 let _ = ah.emit("paste-error", ());
                                                 utils::hide_recording_overlay(&ah);
                                                 change_tray_icon(&ah, TrayIconState::Idle);
@@ -1361,34 +1336,24 @@ impl ShortcutAction for TranscribeAction {
 
                                         let ah_clone = ah.clone();
                                         let revised_for_paste = revised.clone();
-                                        let append_space_override =
-                                            overrides.append_trailing_space;
-                                        let _ = ah
-                                            .run_on_main_thread(move || {
-                                                let opts = PasteOptions {
-                                                    append_trailing_space: append_space_override,
-                                                    replace_prior_chars: replace_chars,
-                                                    suppress_auto_submit: true,
-                                                };
-                                                if let Err(e) =
-                                                    crate::clipboard::paste_with_options(
-                                                        revised_for_paste,
-                                                        ah_clone.clone(),
-                                                        opts,
-                                                    )
-                                                {
-                                                    error!(
-                                                        "Voice-edit paste failed: {}",
-                                                        e
-                                                    );
-                                                    let _ = ah_clone.emit("paste-error", ());
-                                                }
-                                                utils::hide_recording_overlay(&ah_clone);
-                                                change_tray_icon(
-                                                    &ah_clone,
-                                                    TrayIconState::Idle,
-                                                );
-                                            });
+                                        let append_space_override = overrides.append_trailing_space;
+                                        let _ = ah.run_on_main_thread(move || {
+                                            let opts = PasteOptions {
+                                                append_trailing_space: append_space_override,
+                                                replace_prior_chars: replace_chars,
+                                                suppress_auto_submit: true,
+                                            };
+                                            if let Err(e) = crate::clipboard::paste_with_options(
+                                                revised_for_paste,
+                                                ah_clone.clone(),
+                                                opts,
+                                            ) {
+                                                error!("Voice-edit paste failed: {}", e);
+                                                let _ = ah_clone.emit("paste-error", ());
+                                            }
+                                            utils::hide_recording_overlay(&ah_clone);
+                                            change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                        });
 
                                         // Replace the latest session entry with the revised text
                                         // so subsequent edits chain off the new content.
@@ -1501,15 +1466,17 @@ impl ShortcutAction for TranscribeAction {
                                             raw_transcript: transcription,
                                             final_text: processed.final_text.clone(),
                                             pasted_len_utf16: {
-                                                let base = session::utf16_len(
-                                                    &processed.final_text,
-                                                );
-                                                let trailing = overrides
-                                                    .append_trailing_space
-                                                    .unwrap_or(
+                                                let base =
+                                                    session::utf16_len(&processed.final_text);
+                                                let trailing =
+                                                    overrides.append_trailing_space.unwrap_or(
                                                         settings_snapshot.append_trailing_space,
                                                     );
-                                                if trailing { base + 1 } else { base }
+                                                if trailing {
+                                                    base + 1
+                                                } else {
+                                                    base
+                                                }
                                             },
                                             app: app_ctx.unwrap_or_default(),
                                             paste_method: settings_snapshot.paste_method,

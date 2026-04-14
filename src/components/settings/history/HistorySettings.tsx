@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import {
+  open as openDialog,
+  save as saveDialog,
+} from "@tauri-apps/plugin-dialog";
 import {
   ArrowDownNarrowWide,
   ArrowUpNarrowWide,
@@ -64,7 +67,8 @@ type SortMode = "newest" | "oldest" | "saved";
 
 function sortEntries(entries: HistoryEntry[], mode: SortMode): HistoryEntry[] {
   if (mode === "newest") return entries;
-  if (mode === "oldest") return [...entries].sort((a, b) => a.timestamp - b.timestamp);
+  if (mode === "oldest")
+    return [...entries].sort((a, b) => a.timestamp - b.timestamp);
   // "saved": pinned first, preserving newest order within each bucket
   return [...entries].sort((a, b) => {
     if (a.saved === b.saved) return b.timestamp - a.timestamp;
@@ -113,7 +117,9 @@ export const HistorySettings: React.FC = () => {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<HistoryEntry[] | null>(null);
+  const [searchResults, setSearchResults] = useState<HistoryEntry[] | null>(
+    null,
+  );
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSearchMode = searchQuery.trim().length > 0;
@@ -170,7 +176,10 @@ export const HistorySettings: React.FC = () => {
     setIsSearching(true);
     searchDebounceRef.current = setTimeout(async () => {
       try {
-        const result = await commands.searchHistoryEntries(searchQuery.trim(), 50);
+        const result = await commands.searchHistoryEntries(
+          searchQuery.trim(),
+          50,
+        );
         if (result.status === "ok") {
           setSearchResults(result.data);
         } else {
@@ -249,18 +258,21 @@ export const HistorySettings: React.FC = () => {
       list.map((e) => (e.id === id ? { ...e, saved: !e.saved } : e));
 
     setEntries((prev) => updateList(prev));
-    if (searchResults) setSearchResults((prev) => (prev ? updateList(prev) : prev));
+    if (searchResults)
+      setSearchResults((prev) => (prev ? updateList(prev) : prev));
 
     try {
       const result = await commands.toggleHistoryEntrySaved(id);
       if (result.status !== "ok") {
         setEntries((prev) => updateList(prev));
-        if (searchResults) setSearchResults((prev) => (prev ? updateList(prev) : prev));
+        if (searchResults)
+          setSearchResults((prev) => (prev ? updateList(prev) : prev));
       }
     } catch (error) {
       console.error("Failed to toggle saved status:", error);
       setEntries((prev) => updateList(prev));
-      if (searchResults) setSearchResults((prev) => (prev ? updateList(prev) : prev));
+      if (searchResults)
+        setSearchResults((prev) => (prev ? updateList(prev) : prev));
     }
   };
 
@@ -295,7 +307,10 @@ export const HistorySettings: React.FC = () => {
 
   const deleteAudioEntry = async (id: number) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
-    if (searchResults) setSearchResults((prev) => (prev ? prev.filter((e) => e.id !== id) : prev));
+    if (searchResults)
+      setSearchResults((prev) =>
+        prev ? prev.filter((e) => e.id !== id) : prev,
+      );
 
     try {
       const result = await commands.deleteHistoryEntry(id);
@@ -353,13 +368,25 @@ export const HistorySettings: React.FC = () => {
       const path = await saveDialog({
         defaultPath: isJson ? "history.json" : "history.docx",
         filters: isJson
-          ? [{ name: t("settings.history.export.jsonFilter", "JSON File"), extensions: ["json"] }]
-          : [{ name: t("settings.history.export.docxFilter", "Word Document"), extensions: ["docx"] }],
+          ? [
+              {
+                name: t("settings.history.export.jsonFilter", "JSON File"),
+                extensions: ["json"],
+              },
+            ]
+          : [
+              {
+                name: t("settings.history.export.docxFilter", "Word Document"),
+                extensions: ["docx"],
+              },
+            ],
       });
       if (!path) return;
       const result = await commands.exportHistory(path, format);
       if (result.status === "ok") {
-        toast.success(t("settings.history.export.success", "History exported successfully"));
+        toast.success(
+          t("settings.history.export.success", "History exported successfully"),
+        );
       } else {
         toast.error(String(result.error));
       }
@@ -401,7 +428,9 @@ export const HistorySettings: React.FC = () => {
       const result = await commands.transcribeAudioFile(filePath);
       if (result.status === "ok") {
         setEntries((prev) => [result.data, ...prev]);
-        toast.success(t("settings.history.fileTranscribe.success", "File transcribed"));
+        toast.success(
+          t("settings.history.fileTranscribe.success", "File transcribed"),
+        );
       } else {
         toast.error(String(result.error));
       }
@@ -419,20 +448,26 @@ export const HistorySettings: React.FC = () => {
 
   // Group consecutive entries by local day (only in newest/oldest modes where order is by time)
   const groupedEntries: Array<
-    { type: "header"; key: string; label: string } | { type: "entry"; entry: HistoryEntry }
+    | { type: "header"; key: string; label: string }
+    | { type: "entry"; entry: HistoryEntry }
   > = [];
   if (sortMode === "newest" || sortMode === "oldest") {
     let lastKey = "";
     for (const entry of displayedEntries) {
       const key = dayKey(entry.timestamp);
       if (key !== lastKey) {
-        groupedEntries.push({ type: "header", key, label: dayLabel(entry.timestamp, locale) });
+        groupedEntries.push({
+          type: "header",
+          key,
+          label: dayLabel(entry.timestamp, locale),
+        });
         lastKey = key;
       }
       groupedEntries.push({ type: "entry", entry });
     }
   } else {
-    for (const entry of displayedEntries) groupedEntries.push({ type: "entry", entry });
+    for (const entry of displayedEntries)
+      groupedEntries.push({ type: "entry", entry });
   }
 
   const renderEntry = (entry: HistoryEntry) => (
@@ -441,7 +476,9 @@ export const HistorySettings: React.FC = () => {
       entry={entry}
       searchQuery={isSearchMode ? searchQuery : ""}
       onToggleSaved={() => toggleSaved(entry.id)}
-      onCopyText={() => copyToClipboard(entry.post_processed_text ?? entry.transcription_text)}
+      onCopyText={() =>
+        copyToClipboard(entry.post_processed_text ?? entry.transcription_text)
+      }
       getAudioUrl={getAudioUrl}
       deleteAudio={deleteAudioEntry}
       retryTranscription={retryHistoryEntry}
@@ -519,22 +556,40 @@ export const HistorySettings: React.FC = () => {
               disabled={exportingJson || exportingDocx}
               title={t("settings.history.export.jsonButton", "Export as JSON")}
             >
-              {exportingJson ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileJson className="w-4 h-4" />}
+              {exportingJson ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileJson className="w-4 h-4" />
+              )}
             </IconButton>
             <IconButton
               onClick={() => exportHistory("docx")}
               disabled={exportingJson || exportingDocx}
-              title={t("settings.history.export.docxButton", "Export as Word document")}
+              title={t(
+                "settings.history.export.docxButton",
+                "Export as Word document",
+              )}
             >
-              {exportingDocx ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {exportingDocx ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
             </IconButton>
             <div className="w-px h-4 bg-mid-gray/20 mx-1" />
             <IconButton
               onClick={transcribeFile}
               disabled={transcribingFile}
-              title={t("settings.history.fileTranscribe.button", "Transcribe audio file")}
+              title={t(
+                "settings.history.fileTranscribe.button",
+                "Transcribe audio file",
+              )}
             >
-              {transcribingFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileAudio className="w-4 h-4" />}
+              {transcribingFile ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileAudio className="w-4 h-4" />
+              )}
             </IconButton>
             <IconButton
               onClick={openRecordingsFolder}
@@ -553,7 +608,10 @@ export const HistorySettings: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("settings.history.searchPlaceholder", "Search transcriptions…")}
+              placeholder={t(
+                "settings.history.searchPlaceholder",
+                "Search transcriptions…",
+              )}
               className="w-full pl-9 pr-8 py-1.5 text-sm bg-background border border-mid-gray/30 rounded-md
                          focus:outline-none focus:border-logo-primary/60 placeholder:text-mid-gray/40"
             />
@@ -579,9 +637,15 @@ export const HistorySettings: React.FC = () => {
                          focus:outline-none focus:border-logo-primary/60 cursor-pointer"
               title={t("settings.history.sort", "Sort")}
             >
-              <option value="newest">{t("settings.history.sortNewest", "Newest")}</option>
-              <option value="oldest">{t("settings.history.sortOldest", "Oldest")}</option>
-              <option value="saved">{t("settings.history.sortSaved", "Starred first")}</option>
+              <option value="newest">
+                {t("settings.history.sortNewest", "Newest")}
+              </option>
+              <option value="oldest">
+                {t("settings.history.sortOldest", "Oldest")}
+              </option>
+              <option value="saved">
+                {t("settings.history.sortSaved", "Starred first")}
+              </option>
             </select>
           </div>
         </div>
@@ -590,7 +654,6 @@ export const HistorySettings: React.FC = () => {
           {content}
         </div>
       </div>
-
     </div>
   );
 };
@@ -610,7 +673,9 @@ interface HistoryEntryProps {
 /** Highlight matching text in a string */
 function highlightText(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text;
-  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
+  const parts = text.split(
+    new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
+  );
   return parts.map((part, i) =>
     part.toLowerCase() === query.toLowerCase() ? (
       <mark key={i} className="bg-logo-primary/30 text-text rounded-sm">
@@ -720,9 +785,8 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
     ? highlightText(displayText, searchQuery)
     : displayText;
 
-  const truncated = isLong && !expanded
-    ? displayText.slice(0, 300) + "…"
-    : displayText;
+  const truncated =
+    isLong && !expanded ? displayText.slice(0, 300) + "…" : displayText;
 
   const renderedTruncated = searchQuery
     ? highlightText(truncated, searchQuery)
@@ -751,7 +815,10 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
                   setEditingTitle(false);
                 }
               }}
-              placeholder={t("settings.history.titlePlaceholder", "Add a title…")}
+              placeholder={t(
+                "settings.history.titlePlaceholder",
+                "Add a title…",
+              )}
               className="text-sm font-medium bg-background border border-mid-gray/30 rounded px-2 py-0.5 w-full
                          focus:outline-none focus:border-logo-primary/60"
             />
@@ -761,12 +828,16 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
               className="group flex items-center gap-1.5 text-left"
               title={t("settings.history.editTitle", "Edit title")}
             >
-              <span className="text-sm font-medium truncate">{displayTitle}</span>
+              <span className="text-sm font-medium truncate">
+                {displayTitle}
+              </span>
               <Pencil className="w-3 h-3 text-mid-gray/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </button>
           )}
           {showSubtitle && !editingTitle && (
-            <span className="text-xs text-mid-gray/70 truncate">{formattedDate}</span>
+            <span className="text-xs text-mid-gray/70 truncate">
+              {formattedDate}
+            </span>
           )}
         </div>
         <div className="flex items-center shrink-0">
@@ -832,7 +903,8 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
       {hasPostProcessed && (
         <div className="flex items-center gap-1.5">
           <span className="text-xs px-1.5 py-0.5 rounded-sm bg-logo-primary/15 text-logo-primary font-medium">
-            {entry.post_process_prompt ?? t("settings.history.postProcessed", "Post-processed")}
+            {entry.post_process_prompt ??
+              t("settings.history.postProcessed", "Post-processed")}
           </span>
         </div>
       )}
@@ -863,7 +935,9 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
           {retrying
             ? t("settings.history.transcribing")
             : hasTranscription
-              ? (isLong ? renderedTruncated : renderedText)
+              ? isLong
+                ? renderedTruncated
+                : renderedText
               : t("settings.history.transcriptionFailed")}
         </p>
 

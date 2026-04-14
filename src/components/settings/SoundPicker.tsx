@@ -48,7 +48,10 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
         <Dropdown
           selectedValue={selectedTheme}
           onSelect={(value) =>
-            updateSetting("sound_theme", value as "subtle" | "marimba" | "pop" | "custom")
+            updateSetting(
+              "sound_theme",
+              value as "subtle" | "marimba" | "pop" | "custom",
+            )
           }
           options={options}
         />

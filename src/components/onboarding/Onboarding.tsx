@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp, Zap, Shield, MousePointerClick } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Shield,
+  MousePointerClick,
+} from "lucide-react";
 import type { ModelInfo } from "@/bindings";
 import type { ModelCardStatus } from "./ModelCard";
 import ModelCard from "./ModelCard";
@@ -86,10 +92,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
   };
 
   const notDownloaded = models.filter((m: ModelInfo) => !m.is_downloaded);
-  const recommendedModels = notDownloaded.filter((m: ModelInfo) => m.is_recommended);
+  const recommendedModels = notDownloaded.filter(
+    (m: ModelInfo) => m.is_recommended,
+  );
   const otherModels = notDownloaded
     .filter((m: ModelInfo) => !m.is_recommended)
-    .sort((a: ModelInfo, b: ModelInfo) => Number(a.size_mb) - Number(b.size_mb));
+    .sort(
+      (a: ModelInfo, b: ModelInfo) => Number(a.size_mb) - Number(b.size_mb),
+    );
 
   const features = [
     { Icon: Shield, text: t("onboarding.features.onDevice") },

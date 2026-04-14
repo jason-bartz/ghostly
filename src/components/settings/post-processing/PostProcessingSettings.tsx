@@ -563,7 +563,9 @@ export const PostProcessingSettings: React.FC = () => {
               Collapsed by default so the main path stays clean. */}
           <details className="group rounded-lg border border-mid-gray/20">
             <summary className="cursor-pointer px-4 py-3 text-sm font-semibold select-none flex items-center gap-2">
-              <span className="transition-transform group-open:rotate-90">›</span>
+              <span className="transition-transform group-open:rotate-90">
+                ›
+              </span>
               {t("settings.postProcessing.advanced.title")}
             </summary>
             <div className="p-4 space-y-6 border-t border-mid-gray/20">
@@ -575,9 +577,7 @@ export const PostProcessingSettings: React.FC = () => {
                 />
               </SettingsGroup>
 
-              <SettingsGroup
-                title={t("settings.postProcessing.prompts.title")}
-              >
+              <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
                 <PostProcessingSettingsPrompts />
               </SettingsGroup>
 

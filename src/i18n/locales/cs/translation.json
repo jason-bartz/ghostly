@@ -5,6 +5,8 @@
     "copyLastTranscript": "Zkopírovat poslední přepis",
     "unloadModel": "Uvolnit model",
     "model": "Model",
+    "microphone": "Microphone",
+    "defaultMicrophone": "Default",
     "quit": "Ukončit",
     "cancel": "Zrušit"
   },
@@ -13,11 +15,25 @@
     "models": "Modely",
     "advanced": "Pokročilé",
     "postProcessing": "Následné zpracování",
+    "profiles": "Profiles",
     "history": "Historie",
+    "dictionary": "Dictionary",
+    "restApi": "Automation",
     "debug": "Ladění",
     "about": "O aplikaci"
   },
   "onboarding": {
+    "title": "Welcome to Ghostly",
+    "tagline": "Private, on-device voice transcription — works in any app.",
+    "features": {
+      "onDevice": "100% on-device — your voice never leaves this computer",
+      "fast": "Instant results — transcription in under a second",
+      "everywhere": "Works anywhere — paste into any app, any text field"
+    },
+    "modelSection": "Choose your model",
+    "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
+    "showMoreModels": "Show more models",
+    "hideMoreModels": "Show fewer models",
     "subtitle": "Pro začátek vyberte model pro přepis",
     "recommended": "Doporučeno",
     "download": "Stáhnout",
@@ -113,6 +129,7 @@
       "granted": "Uděleno",
       "waiting": "Čekání...",
       "allGranted": "Vše připraveno!",
+      "skipForNow": "Continue anyway",
       "errors": {
         "checkFailed": "Nepodařilo se zkontrolovat oprávnění. Zkuste to prosím znovu.",
         "requestFailed": "Nepodařilo se požádat o oprávnění. Zkuste to prosím znovu."
@@ -122,6 +139,7 @@
   "modelSelector": {
     "custom": "Vlastní",
     "active": "Aktivní",
+    "switching": "Přepínání...",
     "noModelsAvailable": "Nejsou dostupné žádné modely",
     "verifying": "Ověřování {{modelName}}...",
     "verifyingGeneric": "Ověřování...",
@@ -137,41 +155,22 @@
     "modelUnloaded": "Model uvolněn",
     "noModelDownloadRequired": "Žádný model - je nutné stáhnout",
     "deleteModel": "Smazat {{modelName}}",
-    "switching": "Přepínání...",
     "downloadSpeed": "{{speed}} MB/s",
+    "cancel": "Zrušit",
+    "cancelDownload": "Zrušit stahování",
     "capabilities": {
       "languageSelection": "Podporuje více vstupních jazyků",
-      "multiLanguage": "Vícejazyčný",
-      "translation": "Umí překládat do angličtiny",
-      "translate": "Přeložit do angličtiny",
       "singleLanguage": "Podporuje pouze tento jazyk",
-      "languageOnly": "Pouze {{language}}"
-    },
-    "cancel": "Zrušit",
-    "cancelDownload": "Zrušit stahování"
+      "multiLanguage": "Vícejazyčný",
+      "languageOnly": "Pouze {{language}}",
+      "translation": "Umí překládat do angličtiny",
+      "translate": "Přeložit do angličtiny"
+    }
   },
   "settings": {
     "modelSettings": {
       "title": "Nastavení {{model}}",
       "noSettingsNeeded": "Tento model funguje automaticky bez nutnosti konfigurace."
-    },
-    "models": {
-      "title": "Modely přepisu",
-      "description": "Vyberte model přepisu nebo stáhněte další modely. Různé modely nabízejí různé úrovně přesnosti a rychlosti.",
-      "downloaded": "Staženo",
-      "available": "K dispozici ke stažení",
-      "deleteConfirm": "Opravdu chcete smazat {{modelName}}? Pro opětovné použití jej budete muset znovu stáhnout.",
-      "deleteActiveConfirm": "{{modelName}} je váš aktivní model. Jeho smazáním se zastaví přepisy, dokud nevyberete nový model. Opravdu chcete pokračovat?",
-      "deleteTitle": "Smazat model",
-      "filters": {
-        "all": "Vše",
-        "multiLanguage": "Vícejazyčný",
-        "translation": "Překlad",
-        "allLanguages": "Všechny jazyky"
-      },
-      "noModelsMatch": "Tomuto filtru neodpovídají žádné modely.",
-      "yourModels": "Stažené modely",
-      "availableModels": "Dostupné ke stažení"
     },
     "general": {
       "title": "Obecné",
@@ -191,9 +190,9 @@
             "name": "Zkratka zrušení",
             "description": "Klávesová zkratka pro zrušení aktuálního nahrávání."
           },
-          "transcribe_with_post_process": {
-            "name": "Klávesa pro následné zpracování",
-            "description": "Volitelné: Vyhrazená klávesová zkratka, která vždy použije AI následné zpracování na váš přepis."
+          "transcribe_with_screenshot": {
+            "name": "Screenshot + Dictate",
+            "description": "Captures the screen on press, records your question, and pastes the vision LLM's answer. Requires a vision-capable provider (OpenAI, OpenRouter, Z.AI, or Groq)."
           }
         },
         "errors": {
@@ -215,6 +214,24 @@
         "description": "Podržte pro nahrávání, uvolněte pro zastavení"
       }
     },
+    "models": {
+      "title": "Modely přepisu",
+      "description": "Vyberte model přepisu nebo stáhněte další modely. Různé modely nabízejí různé úrovně přesnosti a rychlosti.",
+      "yourModels": "Stažené modely",
+      "availableModels": "Dostupné ke stažení",
+      "downloaded": "Staženo",
+      "available": "K dispozici ke stažení",
+      "deleteConfirm": "Opravdu chcete smazat {{modelName}}? Pro opětovné použití jej budete muset znovu stáhnout.",
+      "deleteActiveConfirm": "{{modelName}} je váš aktivní model. Jeho smazáním se zastaví přepisy, dokud nevyberete nový model. Opravdu chcete pokračovat?",
+      "deleteTitle": "Smazat model",
+      "filters": {
+        "all": "Vše",
+        "multiLanguage": "Vícejazyčný",
+        "translation": "Překlad",
+        "allLanguages": "Všechny jazyky"
+      },
+      "noModelsMatch": "Tomuto filtru neodpovídají žádné modely."
+    },
     "sound": {
       "title": "Zvuk",
       "microphone": {
@@ -226,6 +243,10 @@
       "audioFeedback": {
         "label": "Zvuková odezva",
         "description": "Přehrát zvuk při zahájení a ukončení nahrávání"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "The sound played when recording starts and stops."
       },
       "outputDevice": {
         "title": "Výstupní zařízení",
@@ -245,7 +266,8 @@
         "output": "Výstup",
         "transcription": "Přepis",
         "history": "Historie",
-        "experimental": "Experimentální"
+        "experimental": "Experimentální",
+        "developer": "Developer"
       },
       "experimentalToggle": {
         "label": "Experimentální funkce",
@@ -355,13 +377,51 @@
         "placeholder": "Přidat slovo",
         "add": "Přidat",
         "remove": "Odebrat {{word}}",
-        "duplicate": "\"{{word}}\" již existuje"
+        "duplicate": "\"{{word}}\" již existuje",
+        "presetAdded": "Added {{count}} word(s)",
+        "presetAlreadyAdded": "All words from this preset are already added",
+        "presets": {
+          "title": "Vocabulary presets",
+          "description": "One-click add curated technical terms. Great for coding and AI-assistant workflows.",
+          "web": "Web (React / TS / Tailwind)",
+          "rust": "Rust",
+          "python": "Python",
+          "ai": "AI tools"
+        }
+      },
+      "fillerWords": {
+        "title": "Filler Word Removal",
+        "description": "Strip fillers (um, uh, like) from transcripts automatically. Uses smart language defaults out of the box.",
+        "modes": {
+          "defaults": "Language defaults",
+          "custom": "Custom list",
+          "disabled": "Disabled"
+        },
+        "addTitle": "Custom filler words",
+        "addDescription": "Words to strip from every transcription. One word per entry.",
+        "placeholder": "Add a word",
+        "add": "Add",
+        "remove": "Remove {{word}}",
+        "duplicate": "\"{{word}}\" already exists"
       }
     },
     "postProcessing": {
       "title": "Následné zpracování",
+      "enable": {
+        "label": "Enable AI Refinement",
+        "description": "Use AI to clean up, format, or rephrase your transcriptions after they're captured. Requires an AI provider API key or Apple Intelligence."
+      },
       "hotkey": {
         "title": "Klávesová zkratka"
+      },
+      "advanced": {
+        "title": "Advanced"
+      },
+      "connection": {
+        "connected": "Connected via {{provider}} — refinement is on",
+        "appleIntelligence": "Apple Intelligence ready — runs on-device",
+        "needsKey": "Add your API key below to enable refinement",
+        "needsModel": "Select a model below to enable refinement"
       },
       "api": {
         "title": "API (kompatibilní s OpenAI)",
@@ -394,6 +454,14 @@
           "placeholderWithOptions": "Vyhledejte nebo vyberte model",
           "placeholderNoOptions": "Zadejte název modelu",
           "refreshModels": "Obnovit modely"
+        },
+        "testConnection": {
+          "title": "Test connection",
+          "description": "Sends a tiny request to verify your provider, model, and API key work together.",
+          "button": "Test",
+          "testing": "Testing…",
+          "success": "Connection works — AI refinement is ready.",
+          "failed": "Connection failed"
         }
       },
       "prompts": {
@@ -420,7 +488,17 @@
     },
     "history": {
       "title": "Historie",
+      "storageGroup": "Storage & Retention",
       "openFolder": "Otevřít složku nahrávek",
+      "export": {
+        "jsonButton": "Export as JSON",
+        "jsonLabel": "Export JSON",
+        "jsonFilter": "JSON File",
+        "docxButton": "Export as Word Document",
+        "docxLabel": "Export Word",
+        "docxFilter": "Word Document",
+        "success": "History exported successfully"
+      },
       "loading": "Načítám historii...",
       "empty": "Zatím žádné přepisy. Začněte nahrávat a vytvořte si historii!",
       "copyToClipboard": "Kopírovat přepis do schránky",
@@ -511,6 +589,7 @@
     },
     "about": {
       "title": "O aplikaci",
+      "updateGroup": "Updates",
       "version": {
         "title": "Verze",
         "description": "Aktuální verze Ghostly"
@@ -535,8 +614,127 @@
           "title": "Whisper.cpp",
           "description": "Vysoce výkonné inferenční zpracování modelu automatického rozpoznávání řeči Whisper od OpenAI",
           "details": "Ghostly používá Whisper.cpp pro rychlé lokální zpracování řeči na text. Díky skvělé práci Georgiho Gerganova a přispěvatelů."
+        },
+        "handy": {
+          "title": "Handy",
+          "description": "Ghostly is based on Handy by CJ Pais.",
+          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
         }
       }
+    },
+    "profiles": {
+      "title": "Per-App Profiles",
+      "enable": {
+        "title": "Enable Per-App Profiles",
+        "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
+      },
+      "empty": "No profiles yet.",
+      "add": "Add profile",
+      "detectCurrent": "Detect current app",
+      "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
+      "detectFailed": "Couldn't detect the frontmost app.",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Slack, VS Code, Gmail",
+        "enabled": "Enabled",
+        "rules": "Match rules",
+        "rulesHint": "Any rule matching will activate this profile. Most specific rule first.",
+        "rulesEmpty": "No rules yet. Add one or detect the current app.",
+        "addRule": "Add rule",
+        "prompt": "Prompt",
+        "promptInherit": "Inherit global prompt",
+        "postProcess": "Post-processing",
+        "postProcessInherit": "Inherit",
+        "postProcessOn": "Always on",
+        "postProcessOff": "Always off",
+        "provider": "Provider",
+        "providerInherit": "Inherit global provider",
+        "customVocab": "Profile vocabulary",
+        "customVocabPlaceholder": "Add word",
+        "customVocabHint": "Merged with the global custom words list for this profile.",
+        "trailingSpace": "Append trailing space",
+        "trailingSpaceInherit": "Inherit",
+        "trailingSpaceOn": "Always append",
+        "trailingSpaceOff": "Never append"
+      },
+      "rule": {
+        "kind": "Rule type",
+        "value": "Value",
+        "bundleId": "macOS bundle id",
+        "bundleIdPlaceholder": "com.tinyspeck.slackmacgap",
+        "processName": "Process name",
+        "processNamePlaceholder": "Code.exe",
+        "windowClass": "Window class (Linux X11)",
+        "exePathContains": "Exe path contains",
+        "windowTitleContains": "Window title contains"
+      }
+    },
+    "voiceCommands": {
+      "title": "Voice Commands",
+      "enable": {
+        "title": "Enable voice commands",
+        "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
+      },
+      "list": {
+        "title": "Commands",
+        "description": "Toggle or remove commands. Commands run when the voice-command shortcut is used."
+      },
+      "empty": "No voice commands configured.",
+      "remove": "Remove",
+      "missingFields": "Name, phrases, and keystroke are required.",
+      "add": {
+        "title": "Add a command",
+        "description": "Keystroke format: \"enter\", \"escape\", \"tab\", \"shift+tab\", \"cmd+s\", or a single character.",
+        "namePlaceholder": "Name (e.g. Approve)",
+        "phrasesPlaceholder": "Phrases, comma-separated (e.g. approve, yes, accept)",
+        "keystrokePlaceholder": "Keystroke (e.g. enter)",
+        "button": "Add command"
+      }
+    },
+    "voiceEditing": {
+      "title": "Voice Editing",
+      "enable": {
+        "title": "Enable voice editing",
+        "description": "Keep a short buffer of recent transcriptions so you can revise your last paste by speaking an edit instruction."
+      },
+      "experimental": "Experimental — may misfire in rich-text editors and fields where the cursor moved.",
+      "prefixDetection": {
+        "title": "Prefix detection",
+        "description": "Treat short utterances starting with phrases like 'fix that' or 'make it shorter' as edit commands. Risk of false positives — leave off unless you want it."
+      },
+      "replaceStrategy": {
+        "title": "Replace strategy",
+        "description": "How voice edits replace the previously pasted text.",
+        "selectAndPaste": "Select prior text, then paste",
+        "repasteOnly": "Paste new version only",
+        "off": "Disabled"
+      },
+      "bufferSize": {
+        "title": "Session buffer size",
+        "description": "Number of recent transcriptions kept for voice-edit context."
+      },
+      "idleTimeout": {
+        "title": "Session idle timeout",
+        "description": "Seconds before the session buffer expires and voice edits no longer chain off the last paste."
+      },
+      "clearSession": "Clear session",
+      "sessionCleared": "Session cleared."
+    },
+    "correctionPhrases": {
+      "title": "Correction Phrases",
+      "enable": {
+        "title": "Enable correction phrases",
+        "description": "Say a phrase mid-speech (e.g. 'scratch that') to discard everything before it in the same recording. Only what you say after the phrase gets pasted."
+      },
+      "phrasesTitle": "Phrases",
+      "phrasesDescription": "Say any of these mid-recording to cut everything before it. Matched case-insensitively with word boundaries.",
+      "placeholder": "e.g. scratch that",
+      "add": "Add",
+      "duplicate": "\"{{phrase}}\" is already in your list.",
+      "remove": "Remove \"{{phrase}}\""
     }
   },
   "footer": {
@@ -599,7 +797,8 @@
     "modelLoadFailed": "Nepodařilo se načíst model: {{model}}",
     "modelLoadFailedUnknown": "neznámý model",
     "pasteFailedTitle": "Vložení textu se nezdařilo",
-    "pasteFailed": "Text nebylo možné vložit do aktivní aplikace."
+    "pasteFailed": "Text nebylo možné vložit do aktivní aplikace.",
+    "postProcessFailedTitle": "AI Refinement Failed"
   },
   "appLanguage": {
     "title": "Jazyk aplikace",

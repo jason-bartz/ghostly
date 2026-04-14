@@ -35,7 +35,10 @@ export const FillerWords: React.FC<FillerWordsProps> = React.memo(
       if (next === "defaults") updateSetting("custom_filler_words", null);
       else if (next === "disabled") updateSetting("custom_filler_words", []);
       else if (next === "custom" && mode !== "custom") {
-        updateSetting("custom_filler_words", words.length ? words : ["um", "uh"]);
+        updateSetting(
+          "custom_filler_words",
+          words.length ? words : ["um", "uh"],
+        );
       }
     };
 
@@ -68,9 +71,18 @@ export const FillerWords: React.FC<FillerWordsProps> = React.memo(
     };
 
     const modeOptions = [
-      { value: "defaults", label: t("settings.advanced.fillerWords.modes.defaults") },
-      { value: "custom", label: t("settings.advanced.fillerWords.modes.custom") },
-      { value: "disabled", label: t("settings.advanced.fillerWords.modes.disabled") },
+      {
+        value: "defaults",
+        label: t("settings.advanced.fillerWords.modes.defaults"),
+      },
+      {
+        value: "custom",
+        label: t("settings.advanced.fillerWords.modes.custom"),
+      },
+      {
+        value: "disabled",
+        label: t("settings.advanced.fillerWords.modes.disabled"),
+      },
     ];
 
     return (
@@ -111,7 +123,9 @@ export const FillerWords: React.FC<FillerWordsProps> = React.memo(
                 />
                 <Button
                   onClick={handleAdd}
-                  disabled={!newWord.trim() || newWord.trim().length > 50 || updating}
+                  disabled={
+                    !newWord.trim() || newWord.trim().length > 50 || updating
+                  }
                   variant="primary"
                   size="md"
                 >
@@ -131,7 +145,9 @@ export const FillerWords: React.FC<FillerWordsProps> = React.memo(
                     variant="secondary"
                     size="sm"
                     className="inline-flex items-center gap-1 cursor-pointer"
-                    aria-label={t("settings.advanced.fillerWords.remove", { word })}
+                    aria-label={t("settings.advanced.fillerWords.remove", {
+                      word,
+                    })}
                   >
                     <span>{word}</span>
                     <svg

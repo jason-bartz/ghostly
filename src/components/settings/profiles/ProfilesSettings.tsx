@@ -10,9 +10,9 @@ import { ProfileEditor } from "./ProfileEditor";
 import type { ProfileLike, MatchRuleLike } from "./types";
 
 const newId = () =>
-  (typeof crypto !== "undefined" && "randomUUID" in crypto
+  typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
-    : `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    : `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 export const ProfilesSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -165,9 +165,7 @@ const ProfileRow: React.FC<ProfileRowProps> = ({
       />
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{profile.name}</div>
-        <div className="text-xs text-text/60 truncate">
-          {summary || "—"}
-        </div>
+        <div className="text-xs text-text/60 truncate">{summary || "—"}</div>
       </div>
       <Button variant="secondary" size="sm" onClick={onEdit}>
         <Pencil className="w-4 h-4" />

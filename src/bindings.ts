@@ -768,6 +768,12 @@ async unloadModelManually() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Validate the currently-configured AI provider by sending a tiny roundtrip
+ * request. Returns Ok on success, Err with a human-readable reason otherwise.
+ * Lets the user catch misconfigurations (bad key, wrong model, dead endpoint)
+ * before they hit them mid-transcription.
+ */
 async testPostProcessConnection() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("test_post_process_connection") };

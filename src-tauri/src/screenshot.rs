@@ -5,8 +5,7 @@ use xcap::Monitor;
 
 /// Capture the primary monitor as PNG bytes.
 pub fn capture_primary_png() -> Result<Vec<u8>> {
-    let monitors =
-        Monitor::all().map_err(|e| anyhow!("Failed to enumerate monitors: {}", e))?;
+    let monitors = Monitor::all().map_err(|e| anyhow!("Failed to enumerate monitors: {}", e))?;
     if monitors.is_empty() {
         return Err(anyhow!("No monitors detected"));
     }

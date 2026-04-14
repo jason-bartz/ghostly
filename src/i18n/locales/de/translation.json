@@ -5,6 +5,8 @@
     "copyLastTranscript": "Letzte Transkription kopieren",
     "unloadModel": "Modell entladen",
     "model": "Modell",
+    "microphone": "Microphone",
+    "defaultMicrophone": "Default",
     "quit": "Beenden",
     "cancel": "Abbrechen"
   },
@@ -13,11 +15,25 @@
     "models": "Modelle",
     "advanced": "Erweitert",
     "postProcessing": "Nachbearbeitung",
+    "profiles": "Profiles",
     "history": "Verlauf",
+    "dictionary": "Dictionary",
+    "restApi": "Automation",
     "debug": "Debug",
     "about": "Info"
   },
   "onboarding": {
+    "title": "Welcome to Ghostly",
+    "tagline": "Private, on-device voice transcription — works in any app.",
+    "features": {
+      "onDevice": "100% on-device — your voice never leaves this computer",
+      "fast": "Instant results — transcription in under a second",
+      "everywhere": "Works anywhere — paste into any app, any text field"
+    },
+    "modelSection": "Choose your model",
+    "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
+    "showMoreModels": "Show more models",
+    "hideMoreModels": "Show fewer models",
     "subtitle": "Wähle ein Transkriptionsmodell, um loszulegen",
     "recommended": "Empfohlen",
     "download": "Herunterladen",
@@ -113,6 +129,7 @@
       "granted": "Erteilt",
       "waiting": "Warten...",
       "allGranted": "Alles bereit!",
+      "skipForNow": "Continue anyway",
       "errors": {
         "checkFailed": "Berechtigungsprüfung fehlgeschlagen. Bitte erneut versuchen.",
         "requestFailed": "Berechtigungsanfrage fehlgeschlagen. Bitte erneut versuchen."
@@ -139,39 +156,21 @@
     "noModelDownloadRequired": "Kein Modell - Download erforderlich",
     "deleteModel": "{{modelName}} löschen",
     "downloadSpeed": "{{speed}} MB/s",
+    "cancel": "Abbrechen",
+    "cancelDownload": "Download abbrechen",
     "capabilities": {
       "languageSelection": "Unterstützt mehrere Eingabesprachen",
-      "multiLanguage": "Mehrsprachig",
-      "translation": "Kann ins Englische übersetzen",
-      "translate": "Ins Englische übersetzen",
       "singleLanguage": "Unterstützt nur diese Sprache",
-      "languageOnly": "Nur {{language}}"
-    },
-    "cancel": "Abbrechen",
-    "cancelDownload": "Download abbrechen"
+      "multiLanguage": "Mehrsprachig",
+      "languageOnly": "Nur {{language}}",
+      "translation": "Kann ins Englische übersetzen",
+      "translate": "Ins Englische übersetzen"
+    }
   },
   "settings": {
     "modelSettings": {
       "title": "{{model}}-Einstellungen",
       "noSettingsNeeded": "Dieses Modell funktioniert automatisch ohne Konfiguration."
-    },
-    "models": {
-      "title": "Transkriptionsmodelle",
-      "description": "Wähle ein Transkriptionsmodell aus oder lade zusätzliche Modelle herunter. Verschiedene Modelle bieten unterschiedliche Genauigkeits- und Geschwindigkeitsstufen.",
-      "downloaded": "Heruntergeladen",
-      "available": "Zum Download verfügbar",
-      "deleteConfirm": "Bist du sicher, dass du {{modelName}} löschen möchtest? Du musst es erneut herunterladen, um es zu verwenden.",
-      "deleteActiveConfirm": "{{modelName}} ist dein aktives Modell. Das Löschen stoppt Transkriptionen, bis du ein neues Modell auswählst. Bist du sicher?",
-      "deleteTitle": "Modell löschen",
-      "filters": {
-        "all": "Alle",
-        "multiLanguage": "Mehrsprachig",
-        "translation": "Übersetzung",
-        "allLanguages": "Alle Sprachen"
-      },
-      "noModelsMatch": "Keine Modelle entsprechen diesem Filter.",
-      "yourModels": "Heruntergeladene Modelle",
-      "availableModels": "Zum Download verfügbar"
     },
     "general": {
       "title": "Allgemein",
@@ -191,9 +190,9 @@
             "name": "Abbrechen-Tastenkürzel",
             "description": "Das Tastenkürzel zum Abbrechen der aktuellen Aufnahme."
           },
-          "transcribe_with_post_process": {
-            "name": "Nachbearbeitungs-Tastenkürzel",
-            "description": "Optional: Ein dediziertes Tastenkürzel, das immer die KI-Nachbearbeitung auf Ihre Transkription anwendet."
+          "transcribe_with_screenshot": {
+            "name": "Screenshot + Dictate",
+            "description": "Captures the screen on press, records your question, and pastes the vision LLM's answer. Requires a vision-capable provider (OpenAI, OpenRouter, Z.AI, or Groq)."
           }
         },
         "errors": {
@@ -215,6 +214,24 @@
         "description": "Gedrückt halten zum Aufnehmen, loslassen zum Stoppen"
       }
     },
+    "models": {
+      "title": "Transkriptionsmodelle",
+      "description": "Wähle ein Transkriptionsmodell aus oder lade zusätzliche Modelle herunter. Verschiedene Modelle bieten unterschiedliche Genauigkeits- und Geschwindigkeitsstufen.",
+      "yourModels": "Heruntergeladene Modelle",
+      "availableModels": "Zum Download verfügbar",
+      "downloaded": "Heruntergeladen",
+      "available": "Zum Download verfügbar",
+      "deleteConfirm": "Bist du sicher, dass du {{modelName}} löschen möchtest? Du musst es erneut herunterladen, um es zu verwenden.",
+      "deleteActiveConfirm": "{{modelName}} ist dein aktives Modell. Das Löschen stoppt Transkriptionen, bis du ein neues Modell auswählst. Bist du sicher?",
+      "deleteTitle": "Modell löschen",
+      "filters": {
+        "all": "Alle",
+        "multiLanguage": "Mehrsprachig",
+        "translation": "Übersetzung",
+        "allLanguages": "Alle Sprachen"
+      },
+      "noModelsMatch": "Keine Modelle entsprechen diesem Filter."
+    },
     "sound": {
       "title": "Ton",
       "microphone": {
@@ -226,6 +243,10 @@
       "audioFeedback": {
         "label": "Audio-Feedback",
         "description": "Ton bei Start und Ende der Aufnahme abspielen"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "The sound played when recording starts and stops."
       },
       "outputDevice": {
         "title": "Ausgabegerät",
@@ -245,7 +266,8 @@
         "output": "Ausgabe",
         "transcription": "Transkription",
         "history": "Verlauf",
-        "experimental": "Experimentell"
+        "experimental": "Experimentell",
+        "developer": "Developer"
       },
       "experimentalToggle": {
         "label": "Experimentelle Funktionen",
@@ -355,13 +377,51 @@
         "placeholder": "Wort hinzufügen",
         "add": "Hinzufügen",
         "remove": "{{word}} entfernen",
-        "duplicate": "\"{{word}}\" existiert bereits"
+        "duplicate": "\"{{word}}\" existiert bereits",
+        "presetAdded": "Added {{count}} word(s)",
+        "presetAlreadyAdded": "All words from this preset are already added",
+        "presets": {
+          "title": "Vocabulary presets",
+          "description": "One-click add curated technical terms. Great for coding and AI-assistant workflows.",
+          "web": "Web (React / TS / Tailwind)",
+          "rust": "Rust",
+          "python": "Python",
+          "ai": "AI tools"
+        }
+      },
+      "fillerWords": {
+        "title": "Filler Word Removal",
+        "description": "Strip fillers (um, uh, like) from transcripts automatically. Uses smart language defaults out of the box.",
+        "modes": {
+          "defaults": "Language defaults",
+          "custom": "Custom list",
+          "disabled": "Disabled"
+        },
+        "addTitle": "Custom filler words",
+        "addDescription": "Words to strip from every transcription. One word per entry.",
+        "placeholder": "Add a word",
+        "add": "Add",
+        "remove": "Remove {{word}}",
+        "duplicate": "\"{{word}}\" already exists"
       }
     },
     "postProcessing": {
       "title": "Nachbearbeitung",
+      "enable": {
+        "label": "Enable AI Refinement",
+        "description": "Use AI to clean up, format, or rephrase your transcriptions after they're captured. Requires an AI provider API key or Apple Intelligence."
+      },
       "hotkey": {
         "title": "Tastenkürzel"
+      },
+      "advanced": {
+        "title": "Advanced"
+      },
+      "connection": {
+        "connected": "Connected via {{provider}} — refinement is on",
+        "appleIntelligence": "Apple Intelligence ready — runs on-device",
+        "needsKey": "Add your API key below to enable refinement",
+        "needsModel": "Select a model below to enable refinement"
       },
       "api": {
         "title": "API (OpenAI-kompatibel)",
@@ -394,6 +454,14 @@
           "placeholderWithOptions": "Modell suchen oder auswählen",
           "placeholderNoOptions": "Modellnamen eingeben",
           "refreshModels": "Modelle aktualisieren"
+        },
+        "testConnection": {
+          "title": "Test connection",
+          "description": "Sends a tiny request to verify your provider, model, and API key work together.",
+          "button": "Test",
+          "testing": "Testing…",
+          "success": "Connection works — AI refinement is ready.",
+          "failed": "Connection failed"
         }
       },
       "prompts": {
@@ -420,7 +488,17 @@
     },
     "history": {
       "title": "Verlauf",
+      "storageGroup": "Storage & Retention",
       "openFolder": "Aufnahmeordner öffnen",
+      "export": {
+        "jsonButton": "Export as JSON",
+        "jsonLabel": "Export JSON",
+        "jsonFilter": "JSON File",
+        "docxButton": "Export as Word Document",
+        "docxLabel": "Export Word",
+        "docxFilter": "Word Document",
+        "success": "History exported successfully"
+      },
       "loading": "Verlauf wird geladen...",
       "empty": "Noch keine Transkriptionen. Starte eine Aufnahme, um deinen Verlauf aufzubauen!",
       "copyToClipboard": "Transkription in Zwischenablage kopieren",
@@ -511,6 +589,7 @@
     },
     "about": {
       "title": "Info",
+      "updateGroup": "Updates",
       "version": {
         "title": "Version",
         "description": "Aktuelle Version von Ghostly"
@@ -535,8 +614,127 @@
           "title": "Whisper.cpp",
           "description": "Hochleistungs-Inferenz des Whisper-Spracherkennungsmodells von OpenAI",
           "details": "Ghostly verwendet Whisper.cpp für schnelle, lokale Sprach-zu-Text-Verarbeitung. Dank an Georgi Gerganov und die Mitwirkenden für ihre großartige Arbeit."
+        },
+        "handy": {
+          "title": "Handy",
+          "description": "Ghostly is based on Handy by CJ Pais.",
+          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
         }
       }
+    },
+    "profiles": {
+      "title": "Per-App Profiles",
+      "enable": {
+        "title": "Enable Per-App Profiles",
+        "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
+      },
+      "empty": "No profiles yet.",
+      "add": "Add profile",
+      "detectCurrent": "Detect current app",
+      "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
+      "detectFailed": "Couldn't detect the frontmost app.",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Slack, VS Code, Gmail",
+        "enabled": "Enabled",
+        "rules": "Match rules",
+        "rulesHint": "Any rule matching will activate this profile. Most specific rule first.",
+        "rulesEmpty": "No rules yet. Add one or detect the current app.",
+        "addRule": "Add rule",
+        "prompt": "Prompt",
+        "promptInherit": "Inherit global prompt",
+        "postProcess": "Post-processing",
+        "postProcessInherit": "Inherit",
+        "postProcessOn": "Always on",
+        "postProcessOff": "Always off",
+        "provider": "Provider",
+        "providerInherit": "Inherit global provider",
+        "customVocab": "Profile vocabulary",
+        "customVocabPlaceholder": "Add word",
+        "customVocabHint": "Merged with the global custom words list for this profile.",
+        "trailingSpace": "Append trailing space",
+        "trailingSpaceInherit": "Inherit",
+        "trailingSpaceOn": "Always append",
+        "trailingSpaceOff": "Never append"
+      },
+      "rule": {
+        "kind": "Rule type",
+        "value": "Value",
+        "bundleId": "macOS bundle id",
+        "bundleIdPlaceholder": "com.tinyspeck.slackmacgap",
+        "processName": "Process name",
+        "processNamePlaceholder": "Code.exe",
+        "windowClass": "Window class (Linux X11)",
+        "exePathContains": "Exe path contains",
+        "windowTitleContains": "Window title contains"
+      }
+    },
+    "voiceCommands": {
+      "title": "Voice Commands",
+      "enable": {
+        "title": "Enable voice commands",
+        "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
+      },
+      "list": {
+        "title": "Commands",
+        "description": "Toggle or remove commands. Commands run when the voice-command shortcut is used."
+      },
+      "empty": "No voice commands configured.",
+      "remove": "Remove",
+      "missingFields": "Name, phrases, and keystroke are required.",
+      "add": {
+        "title": "Add a command",
+        "description": "Keystroke format: \"enter\", \"escape\", \"tab\", \"shift+tab\", \"cmd+s\", or a single character.",
+        "namePlaceholder": "Name (e.g. Approve)",
+        "phrasesPlaceholder": "Phrases, comma-separated (e.g. approve, yes, accept)",
+        "keystrokePlaceholder": "Keystroke (e.g. enter)",
+        "button": "Add command"
+      }
+    },
+    "voiceEditing": {
+      "title": "Voice Editing",
+      "enable": {
+        "title": "Enable voice editing",
+        "description": "Keep a short buffer of recent transcriptions so you can revise your last paste by speaking an edit instruction."
+      },
+      "experimental": "Experimental — may misfire in rich-text editors and fields where the cursor moved.",
+      "prefixDetection": {
+        "title": "Prefix detection",
+        "description": "Treat short utterances starting with phrases like 'fix that' or 'make it shorter' as edit commands. Risk of false positives — leave off unless you want it."
+      },
+      "replaceStrategy": {
+        "title": "Replace strategy",
+        "description": "How voice edits replace the previously pasted text.",
+        "selectAndPaste": "Select prior text, then paste",
+        "repasteOnly": "Paste new version only",
+        "off": "Disabled"
+      },
+      "bufferSize": {
+        "title": "Session buffer size",
+        "description": "Number of recent transcriptions kept for voice-edit context."
+      },
+      "idleTimeout": {
+        "title": "Session idle timeout",
+        "description": "Seconds before the session buffer expires and voice edits no longer chain off the last paste."
+      },
+      "clearSession": "Clear session",
+      "sessionCleared": "Session cleared."
+    },
+    "correctionPhrases": {
+      "title": "Correction Phrases",
+      "enable": {
+        "title": "Enable correction phrases",
+        "description": "Say a phrase mid-speech (e.g. 'scratch that') to discard everything before it in the same recording. Only what you say after the phrase gets pasted."
+      },
+      "phrasesTitle": "Phrases",
+      "phrasesDescription": "Say any of these mid-recording to cut everything before it. Matched case-insensitively with word boundaries.",
+      "placeholder": "e.g. scratch that",
+      "add": "Add",
+      "duplicate": "\"{{phrase}}\" is already in your list.",
+      "remove": "Remove \"{{phrase}}\""
     }
   },
   "footer": {
@@ -599,7 +797,8 @@
     "modelLoadFailed": "Modell konnte nicht geladen werden: {{model}}",
     "modelLoadFailedUnknown": "unbekanntes Modell",
     "pasteFailedTitle": "Text konnte nicht eingefügt werden",
-    "pasteFailed": "Der Text konnte nicht in die aktive Anwendung eingefügt werden."
+    "pasteFailed": "Der Text konnte nicht in die aktive Anwendung eingefügt werden.",
+    "postProcessFailedTitle": "AI Refinement Failed"
   },
   "appLanguage": {
     "title": "Anwendungssprache",

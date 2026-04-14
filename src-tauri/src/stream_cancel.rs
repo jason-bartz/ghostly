@@ -49,9 +49,7 @@ impl StreamCancellation {
     /// should check. The token is pre-seeded with any already-fired cancel so
     /// a cancel that races begin() still propagates.
     pub fn begin(&self) -> Arc<AtomicBool> {
-        let token = Arc::new(AtomicBool::new(
-            self.cancelled.load(Ordering::Relaxed),
-        ));
+        let token = Arc::new(AtomicBool::new(self.cancelled.load(Ordering::Relaxed)));
         let mut slot = self.active.lock().unwrap_or_else(|e| e.into_inner());
         *slot = Some(token.clone());
         token

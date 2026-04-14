@@ -12,14 +12,19 @@ export const CorrectionPhrases: React.FC = React.memo(() => {
   const { getSetting, updateSetting, isUpdating } = useSettings();
   const [newPhrase, setNewPhrase] = useState("");
 
-  const enabled = (getSetting("correction_phrases_enabled") as boolean) ?? false;
-  const phrases = (getSetting("correction_phrases") as string[]) ?? ["scratch that"];
+  const enabled =
+    (getSetting("correction_phrases_enabled") as boolean) ?? false;
+  const phrases = (getSetting("correction_phrases") as string[]) ?? [
+    "scratch that",
+  ];
 
   const handleAdd = () => {
     const trimmed = newPhrase.trim().toLowerCase();
     if (!trimmed || trimmed.length > 60) return;
     if (phrases.includes(trimmed)) {
-      toast.error(t("settings.correctionPhrases.duplicate", { phrase: trimmed }));
+      toast.error(
+        t("settings.correctionPhrases.duplicate", { phrase: trimmed }),
+      );
       return;
     }
     updateSetting("correction_phrases" as any, [...phrases, trimmed] as any);
@@ -93,7 +98,9 @@ export const CorrectionPhrases: React.FC = React.memo(() => {
                   variant="secondary"
                   size="sm"
                   className="inline-flex items-center gap-1 cursor-pointer"
-                  aria-label={t("settings.correctionPhrases.remove", { phrase })}
+                  aria-label={t("settings.correctionPhrases.remove", {
+                    phrase,
+                  })}
                 >
                   <span>{phrase}</span>
                   <svg

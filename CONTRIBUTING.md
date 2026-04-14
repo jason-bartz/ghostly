@@ -105,7 +105,6 @@ Enable debug mode (`Cmd/Ctrl+Shift+D`) to gather diagnostic information.
 3. **Test thoroughly** on your target platform(s).
 
 4. **Commit your changes** using conventional commit messages:
-
    - `feat:` for new features
    - `fix:` for bug fixes
    - `docs:` for documentation changes

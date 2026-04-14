@@ -675,7 +675,10 @@ pub fn paste_with_options(
             )
         {
             if let Err(e) = select_backward(&mut enigo, n) {
-                log::warn!("Voice-edit select-backward failed, falling through to re-paste: {}", e);
+                log::warn!(
+                    "Voice-edit select-backward failed, falling through to re-paste: {}",
+                    e
+                );
             } else {
                 std::thread::sleep(Duration::from_millis(30));
             }
@@ -730,7 +733,6 @@ pub fn paste_with_options(
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

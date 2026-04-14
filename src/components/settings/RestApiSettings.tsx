@@ -102,12 +102,51 @@ export const RestApiSettings: React.FC = () => {
             >
               <div className="text-xs font-mono space-y-1 text-mid-gray/80 bg-mid-gray/5 rounded-md p-3 border border-mid-gray/20">
                 {[
-                  { method: "POST", path: "/api/transcribe/start", desc: t("settings.restApi.endpoint.transcribeStart", "Start/toggle transcription") },
-                  { method: "POST", path: "/api/transcribe/stop", desc: t("settings.restApi.endpoint.transcribeStop", "Stop transcription") },
-                  { method: "POST", path: "/api/cancel", desc: t("settings.restApi.endpoint.cancel", "Cancel current operation") },
-                  { method: "POST", path: "/api/paste", desc: t("settings.restApi.endpoint.paste", 'Paste text (body: {"text":"…"})') },
-                  { method: "GET", path: "/api/history", desc: t("settings.restApi.endpoint.history", "Recent history entries") },
-                  { method: "GET", path: "/api/status", desc: t("settings.restApi.endpoint.status", "App status") },
+                  {
+                    method: "POST",
+                    path: "/api/transcribe/start",
+                    desc: t(
+                      "settings.restApi.endpoint.transcribeStart",
+                      "Start/toggle transcription",
+                    ),
+                  },
+                  {
+                    method: "POST",
+                    path: "/api/transcribe/stop",
+                    desc: t(
+                      "settings.restApi.endpoint.transcribeStop",
+                      "Stop transcription",
+                    ),
+                  },
+                  {
+                    method: "POST",
+                    path: "/api/cancel",
+                    desc: t(
+                      "settings.restApi.endpoint.cancel",
+                      "Cancel current operation",
+                    ),
+                  },
+                  {
+                    method: "POST",
+                    path: "/api/paste",
+                    desc: t(
+                      "settings.restApi.endpoint.paste",
+                      'Paste text (body: {"text":"…"})',
+                    ),
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/history",
+                    desc: t(
+                      "settings.restApi.endpoint.history",
+                      "Recent history entries",
+                    ),
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/status",
+                    desc: t("settings.restApi.endpoint.status", "App status"),
+                  },
                 ].map(({ method, path, desc }) => (
                   <div key={path} className="flex gap-3 items-start">
                     <span
@@ -118,7 +157,8 @@ export const RestApiSettings: React.FC = () => {
                       {method}
                     </span>
                     <span className="shrink-0 text-text/90">
-                      http://127.0.0.1:{port}{path}
+                      http://127.0.0.1:{port}
+                      {path}
                     </span>
                     <span className="text-mid-gray/60">{desc}</span>
                   </div>

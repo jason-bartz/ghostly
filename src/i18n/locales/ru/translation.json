@@ -5,6 +5,8 @@
     "copyLastTranscript": "Скопировать последнюю транскрипцию",
     "unloadModel": "Выгрузить модель",
     "model": "Модель",
+    "microphone": "Microphone",
+    "defaultMicrophone": "Default",
     "quit": "Выход",
     "cancel": "Отмена"
   },
@@ -13,11 +15,25 @@
     "models": "Модели",
     "advanced": "Продвинутые",
     "postProcessing": "Постобработка",
+    "profiles": "Profiles",
     "history": "История",
+    "dictionary": "Dictionary",
+    "restApi": "Automation",
     "debug": "Отладка",
     "about": "О программе"
   },
   "onboarding": {
+    "title": "Welcome to Ghostly",
+    "tagline": "Private, on-device voice transcription — works in any app.",
+    "features": {
+      "onDevice": "100% on-device — your voice never leaves this computer",
+      "fast": "Instant results — transcription in under a second",
+      "everywhere": "Works anywhere — paste into any app, any text field"
+    },
+    "modelSection": "Choose your model",
+    "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
+    "showMoreModels": "Show more models",
+    "hideMoreModels": "Show fewer models",
     "subtitle": "Для начала выберите модель транскрипции",
     "recommended": "Рекомендуется",
     "download": "Скачать",
@@ -113,6 +129,7 @@
       "granted": "Предоставлено",
       "waiting": "Ожидание...",
       "allGranted": "Всё готово!",
+      "skipForNow": "Continue anyway",
       "errors": {
         "checkFailed": "Не удалось проверить разрешения. Пожалуйста, попробуйте снова.",
         "requestFailed": "Не удалось запросить разрешение. Пожалуйста, попробуйте снова."
@@ -139,39 +156,21 @@
     "noModelDownloadRequired": "Нет модели – требуется загрузка",
     "deleteModel": "Удалить {{modelName}}",
     "downloadSpeed": "{{speed}} МБ/с",
+    "cancel": "Отмена",
+    "cancelDownload": "Отменить загрузку",
     "capabilities": {
       "languageSelection": "Поддерживает несколько языков ввода",
-      "multiLanguage": "Многоязычная",
-      "translation": "Может переводить на английский",
-      "translate": "Перевод на английский",
       "singleLanguage": "Поддерживает только этот язык",
-      "languageOnly": "Только {{language}}"
-    },
-    "cancel": "Отмена",
-    "cancelDownload": "Отменить загрузку"
+      "multiLanguage": "Многоязычная",
+      "languageOnly": "Только {{language}}",
+      "translation": "Может переводить на английский",
+      "translate": "Перевод на английский"
+    }
   },
   "settings": {
     "modelSettings": {
       "title": "Настройки {{model}}",
       "noSettingsNeeded": "Эта модель работает автоматически без необходимости настройки."
-    },
-    "models": {
-      "title": "Модели транскрипции",
-      "description": "Выберите модель транскрипции или загрузите дополнительные модели. Разные модели предлагают разные уровни точности и скорости.",
-      "downloaded": "Загружено",
-      "available": "Доступные для загрузки",
-      "deleteConfirm": "Вы уверены, что хотите удалить {{modelName}}? Вам нужно будет загрузить её снова, чтобы использовать.",
-      "deleteActiveConfirm": "{{modelName}} — ваша активная модель. Удаление остановит транскрипцию, пока вы не выберете новую модель. Вы уверены?",
-      "deleteTitle": "Удалить модель",
-      "filters": {
-        "all": "Все",
-        "multiLanguage": "Многоязычные",
-        "translation": "Перевод",
-        "allLanguages": "Все языки"
-      },
-      "noModelsMatch": "Нет моделей, соответствующих этому фильтру.",
-      "yourModels": "Загруженные модели",
-      "availableModels": "Доступны для загрузки"
     },
     "general": {
       "title": "Общие",
@@ -191,9 +190,9 @@
             "name": "Горячая клавиша отмены",
             "description": "Сочетание клавиш для отмены текущей записи."
           },
-          "transcribe_with_post_process": {
-            "name": "Горячая клавиша постобработки",
-            "description": "Специальное сочетание клавиш для ИИ-постобработки вашей транскрипции."
+          "transcribe_with_screenshot": {
+            "name": "Screenshot + Dictate",
+            "description": "Captures the screen on press, records your question, and pastes the vision LLM's answer. Requires a vision-capable provider (OpenAI, OpenRouter, Z.AI, or Groq)."
           }
         },
         "errors": {
@@ -215,6 +214,24 @@
         "description": "Удерживайте, чтобы записать, отпустите, чтобы остановить"
       }
     },
+    "models": {
+      "title": "Модели транскрипции",
+      "description": "Выберите модель транскрипции или загрузите дополнительные модели. Разные модели предлагают разные уровни точности и скорости.",
+      "yourModels": "Загруженные модели",
+      "availableModels": "Доступны для загрузки",
+      "downloaded": "Загружено",
+      "available": "Доступные для загрузки",
+      "deleteConfirm": "Вы уверены, что хотите удалить {{modelName}}? Вам нужно будет загрузить её снова, чтобы использовать.",
+      "deleteActiveConfirm": "{{modelName}} — ваша активная модель. Удаление остановит транскрипцию, пока вы не выберете новую модель. Вы уверены?",
+      "deleteTitle": "Удалить модель",
+      "filters": {
+        "all": "Все",
+        "multiLanguage": "Многоязычные",
+        "translation": "Перевод",
+        "allLanguages": "Все языки"
+      },
+      "noModelsMatch": "Нет моделей, соответствующих этому фильтру."
+    },
     "sound": {
       "title": "Звук",
       "microphone": {
@@ -226,6 +243,10 @@
       "audioFeedback": {
         "label": "Обратная звуковая связь",
         "description": "Воспроизведение звука при запуске и остановке записи"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "The sound played when recording starts and stops."
       },
       "outputDevice": {
         "title": "Устройство вывода",
@@ -245,7 +266,8 @@
         "output": "Вывод",
         "transcription": "Транскрипция",
         "history": "История",
-        "experimental": "Экспериментальное"
+        "experimental": "Экспериментальное",
+        "developer": "Developer"
       },
       "experimentalToggle": {
         "label": "Экспериментальные функции",
@@ -355,13 +377,51 @@
         "placeholder": "Добавить слово",
         "add": "Добавить",
         "remove": "Удалить {{word}}",
-        "duplicate": "\"{{word}}\" уже существует"
+        "duplicate": "\"{{word}}\" уже существует",
+        "presetAdded": "Added {{count}} word(s)",
+        "presetAlreadyAdded": "All words from this preset are already added",
+        "presets": {
+          "title": "Vocabulary presets",
+          "description": "One-click add curated technical terms. Great for coding and AI-assistant workflows.",
+          "web": "Web (React / TS / Tailwind)",
+          "rust": "Rust",
+          "python": "Python",
+          "ai": "AI tools"
+        }
+      },
+      "fillerWords": {
+        "title": "Filler Word Removal",
+        "description": "Strip fillers (um, uh, like) from transcripts automatically. Uses smart language defaults out of the box.",
+        "modes": {
+          "defaults": "Language defaults",
+          "custom": "Custom list",
+          "disabled": "Disabled"
+        },
+        "addTitle": "Custom filler words",
+        "addDescription": "Words to strip from every transcription. One word per entry.",
+        "placeholder": "Add a word",
+        "add": "Add",
+        "remove": "Remove {{word}}",
+        "duplicate": "\"{{word}}\" already exists"
       }
     },
     "postProcessing": {
       "title": "Постобработка",
+      "enable": {
+        "label": "Enable AI Refinement",
+        "description": "Use AI to clean up, format, or rephrase your transcriptions after they're captured. Requires an AI provider API key or Apple Intelligence."
+      },
       "hotkey": {
         "title": "Горячая клавиша"
+      },
+      "advanced": {
+        "title": "Advanced"
+      },
+      "connection": {
+        "connected": "Connected via {{provider}} — refinement is on",
+        "appleIntelligence": "Apple Intelligence ready — runs on-device",
+        "needsKey": "Add your API key below to enable refinement",
+        "needsModel": "Select a model below to enable refinement"
       },
       "api": {
         "title": "API (совместимый с OpenAI)",
@@ -394,6 +454,14 @@
           "placeholderWithOptions": "Найдите или выберите модель",
           "placeholderNoOptions": "Введите название модели",
           "refreshModels": "Обновить модели"
+        },
+        "testConnection": {
+          "title": "Test connection",
+          "description": "Sends a tiny request to verify your provider, model, and API key work together.",
+          "button": "Test",
+          "testing": "Testing…",
+          "success": "Connection works — AI refinement is ready.",
+          "failed": "Connection failed"
         }
       },
       "prompts": {
@@ -420,7 +488,17 @@
     },
     "history": {
       "title": "История",
+      "storageGroup": "Storage & Retention",
       "openFolder": "Открыть папку с записями",
+      "export": {
+        "jsonButton": "Export as JSON",
+        "jsonLabel": "Export JSON",
+        "jsonFilter": "JSON File",
+        "docxButton": "Export as Word Document",
+        "docxLabel": "Export Word",
+        "docxFilter": "Word Document",
+        "success": "History exported successfully"
+      },
       "loading": "Загрузка истории...",
       "empty": "Транскрипций пока нет. Начните запись, чтобы создать свою историю!",
       "copyToClipboard": "Скопировать транскрипцию в буфер обмена",
@@ -511,6 +589,7 @@
     },
     "about": {
       "title": "О программе",
+      "updateGroup": "Updates",
       "version": {
         "title": "Версия",
         "description": "Текущая версия Ghostly"
@@ -535,8 +614,127 @@
           "title": "Whisper.cpp",
           "description": "Высокопроизводительная модель автоматического распознавания речи OpenAI Whisper",
           "details": "Ghostly использует Whisper.cpp для быстрого локального преобразования речи в текст. Спасибо великолепной работе Георгия Герганова и участников."
+        },
+        "handy": {
+          "title": "Handy",
+          "description": "Ghostly is based on Handy by CJ Pais.",
+          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
         }
       }
+    },
+    "profiles": {
+      "title": "Per-App Profiles",
+      "enable": {
+        "title": "Enable Per-App Profiles",
+        "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
+      },
+      "empty": "No profiles yet.",
+      "add": "Add profile",
+      "detectCurrent": "Detect current app",
+      "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
+      "detectFailed": "Couldn't detect the frontmost app.",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Slack, VS Code, Gmail",
+        "enabled": "Enabled",
+        "rules": "Match rules",
+        "rulesHint": "Any rule matching will activate this profile. Most specific rule first.",
+        "rulesEmpty": "No rules yet. Add one or detect the current app.",
+        "addRule": "Add rule",
+        "prompt": "Prompt",
+        "promptInherit": "Inherit global prompt",
+        "postProcess": "Post-processing",
+        "postProcessInherit": "Inherit",
+        "postProcessOn": "Always on",
+        "postProcessOff": "Always off",
+        "provider": "Provider",
+        "providerInherit": "Inherit global provider",
+        "customVocab": "Profile vocabulary",
+        "customVocabPlaceholder": "Add word",
+        "customVocabHint": "Merged with the global custom words list for this profile.",
+        "trailingSpace": "Append trailing space",
+        "trailingSpaceInherit": "Inherit",
+        "trailingSpaceOn": "Always append",
+        "trailingSpaceOff": "Never append"
+      },
+      "rule": {
+        "kind": "Rule type",
+        "value": "Value",
+        "bundleId": "macOS bundle id",
+        "bundleIdPlaceholder": "com.tinyspeck.slackmacgap",
+        "processName": "Process name",
+        "processNamePlaceholder": "Code.exe",
+        "windowClass": "Window class (Linux X11)",
+        "exePathContains": "Exe path contains",
+        "windowTitleContains": "Window title contains"
+      }
+    },
+    "voiceCommands": {
+      "title": "Voice Commands",
+      "enable": {
+        "title": "Enable voice commands",
+        "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
+      },
+      "list": {
+        "title": "Commands",
+        "description": "Toggle or remove commands. Commands run when the voice-command shortcut is used."
+      },
+      "empty": "No voice commands configured.",
+      "remove": "Remove",
+      "missingFields": "Name, phrases, and keystroke are required.",
+      "add": {
+        "title": "Add a command",
+        "description": "Keystroke format: \"enter\", \"escape\", \"tab\", \"shift+tab\", \"cmd+s\", or a single character.",
+        "namePlaceholder": "Name (e.g. Approve)",
+        "phrasesPlaceholder": "Phrases, comma-separated (e.g. approve, yes, accept)",
+        "keystrokePlaceholder": "Keystroke (e.g. enter)",
+        "button": "Add command"
+      }
+    },
+    "voiceEditing": {
+      "title": "Voice Editing",
+      "enable": {
+        "title": "Enable voice editing",
+        "description": "Keep a short buffer of recent transcriptions so you can revise your last paste by speaking an edit instruction."
+      },
+      "experimental": "Experimental — may misfire in rich-text editors and fields where the cursor moved.",
+      "prefixDetection": {
+        "title": "Prefix detection",
+        "description": "Treat short utterances starting with phrases like 'fix that' or 'make it shorter' as edit commands. Risk of false positives — leave off unless you want it."
+      },
+      "replaceStrategy": {
+        "title": "Replace strategy",
+        "description": "How voice edits replace the previously pasted text.",
+        "selectAndPaste": "Select prior text, then paste",
+        "repasteOnly": "Paste new version only",
+        "off": "Disabled"
+      },
+      "bufferSize": {
+        "title": "Session buffer size",
+        "description": "Number of recent transcriptions kept for voice-edit context."
+      },
+      "idleTimeout": {
+        "title": "Session idle timeout",
+        "description": "Seconds before the session buffer expires and voice edits no longer chain off the last paste."
+      },
+      "clearSession": "Clear session",
+      "sessionCleared": "Session cleared."
+    },
+    "correctionPhrases": {
+      "title": "Correction Phrases",
+      "enable": {
+        "title": "Enable correction phrases",
+        "description": "Say a phrase mid-speech (e.g. 'scratch that') to discard everything before it in the same recording. Only what you say after the phrase gets pasted."
+      },
+      "phrasesTitle": "Phrases",
+      "phrasesDescription": "Say any of these mid-recording to cut everything before it. Matched case-insensitively with word boundaries.",
+      "placeholder": "e.g. scratch that",
+      "add": "Add",
+      "duplicate": "\"{{phrase}}\" is already in your list.",
+      "remove": "Remove \"{{phrase}}\""
     }
   },
   "footer": {
@@ -599,7 +797,8 @@
     "modelLoadFailed": "Не удалось загрузить модель: {{model}}",
     "modelLoadFailedUnknown": "неизвестная модель",
     "pasteFailedTitle": "Не удалось вставить текст",
-    "pasteFailed": "Не удалось вставить текст в активное приложение."
+    "pasteFailed": "Не удалось вставить текст в активное приложение.",
+    "postProcessFailedTitle": "AI Refinement Failed"
   },
   "appLanguage": {
     "title": "Язык приложения",

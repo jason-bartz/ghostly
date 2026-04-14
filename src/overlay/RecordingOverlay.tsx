@@ -101,11 +101,10 @@ const RecordingOverlay: React.FC = () => {
 
   // Truncate preview text to fit the overlay width
   const truncatedPreview =
-    previewText.length > 40
-      ? previewText.slice(0, 38) + "…"
-      : previewText;
+    previewText.length > 40 ? previewText.slice(0, 38) + "…" : previewText;
 
-  const glowIntensity = state === "recording" ? Math.min(1, peakLevel * 1.5) : 0;
+  const glowIntensity =
+    state === "recording" ? Math.min(1, peakLevel * 1.5) : 0;
 
   return (
     <div
@@ -135,16 +134,12 @@ const RecordingOverlay: React.FC = () => {
         )}
         {state === "transcribing" && (
           <div className="transcribing-text state-fade">
-            {previewText
-              ? truncatedPreview
-              : t("overlay.transcribing")}
+            {previewText ? truncatedPreview : t("overlay.transcribing")}
           </div>
         )}
         {state === "processing" && (
           <div className="transcribing-text state-fade">
-            {previewText
-              ? truncatedPreview
-              : t("overlay.processing")}
+            {previewText ? truncatedPreview : t("overlay.processing")}
           </div>
         )}
       </div>

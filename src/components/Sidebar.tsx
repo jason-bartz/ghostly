@@ -1,6 +1,17 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Cog, FlaskConical, History, Info, Sparkles, Cpu, AppWindow, Mic, Network } from "lucide-react";
+import {
+  BookOpen,
+  Cog,
+  FlaskConical,
+  History,
+  Info,
+  Sparkles,
+  Cpu,
+  AppWindow,
+  Mic,
+  Network,
+} from "lucide-react";
 import GhostlyLogo from "./icons/GhostwriterLogo";
 import { useSettings } from "../hooks/useSettings";
 import {

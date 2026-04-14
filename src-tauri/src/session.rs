@@ -75,9 +75,7 @@ impl SessionBuffer {
         let entry = buf.back()?.clone();
         drop(buf);
 
-        if idle_timeout_secs > 0
-            && now.duration_since(entry.at).as_secs() > idle_timeout_secs
-        {
+        if idle_timeout_secs > 0 && now.duration_since(entry.at).as_secs() > idle_timeout_secs {
             return None;
         }
         if let Some(ctx) = current_app {
@@ -85,9 +83,7 @@ impl SessionBuffer {
                 return None;
             }
         }
-        if matches!(strategy, VoiceEditReplaceStrategy::SelectAndPaste)
-            && !entry.is_replaceable()
-        {
+        if matches!(strategy, VoiceEditReplaceStrategy::SelectAndPaste) && !entry.is_replaceable() {
             return None;
         }
         Some(entry)

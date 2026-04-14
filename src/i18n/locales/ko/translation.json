@@ -5,6 +5,8 @@
     "copyLastTranscript": "마지막 녹음 내용 복사",
     "unloadModel": "모델 언로드",
     "model": "모델",
+    "microphone": "Microphone",
+    "defaultMicrophone": "Default",
     "quit": "종료",
     "cancel": "취소"
   },
@@ -13,11 +15,25 @@
     "models": "모델",
     "advanced": "고급",
     "postProcessing": "후처리",
+    "profiles": "Profiles",
     "history": "히스토리",
+    "dictionary": "Dictionary",
+    "restApi": "Automation",
     "debug": "디버그",
     "about": "정보"
   },
   "onboarding": {
+    "title": "Welcome to Ghostly",
+    "tagline": "Private, on-device voice transcription — works in any app.",
+    "features": {
+      "onDevice": "100% on-device — your voice never leaves this computer",
+      "fast": "Instant results — transcription in under a second",
+      "everywhere": "Works anywhere — paste into any app, any text field"
+    },
+    "modelSection": "Choose your model",
+    "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
+    "showMoreModels": "Show more models",
+    "hideMoreModels": "Show fewer models",
     "subtitle": "시작하려면 음성 인식 모델을 선택하세요",
     "recommended": "추천",
     "download": "다운로드",
@@ -113,6 +129,7 @@
       "granted": "승인됨",
       "waiting": "대기 중...",
       "allGranted": "모두 설정 완료!",
+      "skipForNow": "Continue anyway",
       "errors": {
         "checkFailed": "권한 확인에 실패했습니다. 다시 시도해주세요.",
         "requestFailed": "권한 요청에 실패했습니다. 다시 시도해주세요."
@@ -173,9 +190,9 @@
             "name": "취소 단축키",
             "description": "현재 녹음을 취소하는 키보드 단축키입니다."
           },
-          "transcribe_with_post_process": {
-            "name": "후처리 단축키",
-            "description": "선택 사항: 항상 AI 후처리를 적용하는 전용 단축키입니다."
+          "transcribe_with_screenshot": {
+            "name": "Screenshot + Dictate",
+            "description": "Captures the screen on press, records your question, and pastes the vision LLM's answer. Requires a vision-capable provider (OpenAI, OpenRouter, Z.AI, or Groq)."
           }
         },
         "errors": {
@@ -197,29 +214,6 @@
         "description": "누르고 있으면 녹음, 놓으면 정지"
       }
     },
-    "sound": {
-      "title": "사운드",
-      "microphone": {
-        "title": "마이크",
-        "description": "선호하는 마이크 장치를 선택하세요",
-        "placeholder": "마이크 선택...",
-        "loading": "로딩 중..."
-      },
-      "audioFeedback": {
-        "label": "오디오 피드백",
-        "description": "녹음 시작 및 정지 시 소리 재생"
-      },
-      "outputDevice": {
-        "title": "출력 장치",
-        "description": "피드백 사운드를 위한 오디오 출력 장치를 선택하세요",
-        "placeholder": "출력 장치 선택...",
-        "loading": "로딩 중..."
-      },
-      "volume": {
-        "title": "볼륨",
-        "description": "오디오 피드백 사운드의 볼륨 조절"
-      }
-    },
     "models": {
       "title": "음성 인식 모델",
       "description": "음성 인식 모델을 선택하거나 추가 모델을 다운로드하세요. 모델마다 정확도와 속도가 다릅니다.",
@@ -238,6 +232,33 @@
       },
       "noModelsMatch": "이 필터에 맞는 모델이 없습니다."
     },
+    "sound": {
+      "title": "사운드",
+      "microphone": {
+        "title": "마이크",
+        "description": "선호하는 마이크 장치를 선택하세요",
+        "placeholder": "마이크 선택...",
+        "loading": "로딩 중..."
+      },
+      "audioFeedback": {
+        "label": "오디오 피드백",
+        "description": "녹음 시작 및 정지 시 소리 재생"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "The sound played when recording starts and stops."
+      },
+      "outputDevice": {
+        "title": "출력 장치",
+        "description": "피드백 사운드를 위한 오디오 출력 장치를 선택하세요",
+        "placeholder": "출력 장치 선택...",
+        "loading": "로딩 중..."
+      },
+      "volume": {
+        "title": "볼륨",
+        "description": "오디오 피드백 사운드의 볼륨 조절"
+      }
+    },
     "advanced": {
       "title": "고급",
       "groups": {
@@ -245,7 +266,8 @@
         "output": "출력",
         "transcription": "전사",
         "history": "히스토리",
-        "experimental": "실험적"
+        "experimental": "실험적",
+        "developer": "Developer"
       },
       "experimentalToggle": {
         "label": "실험적 기능",
@@ -355,13 +377,51 @@
         "placeholder": "단어 추가",
         "add": "추가",
         "remove": "{{word}} 제거",
-        "duplicate": "\"{{word}}\"이(가) 이미 존재합니다"
+        "duplicate": "\"{{word}}\"이(가) 이미 존재합니다",
+        "presetAdded": "Added {{count}} word(s)",
+        "presetAlreadyAdded": "All words from this preset are already added",
+        "presets": {
+          "title": "Vocabulary presets",
+          "description": "One-click add curated technical terms. Great for coding and AI-assistant workflows.",
+          "web": "Web (React / TS / Tailwind)",
+          "rust": "Rust",
+          "python": "Python",
+          "ai": "AI tools"
+        }
+      },
+      "fillerWords": {
+        "title": "Filler Word Removal",
+        "description": "Strip fillers (um, uh, like) from transcripts automatically. Uses smart language defaults out of the box.",
+        "modes": {
+          "defaults": "Language defaults",
+          "custom": "Custom list",
+          "disabled": "Disabled"
+        },
+        "addTitle": "Custom filler words",
+        "addDescription": "Words to strip from every transcription. One word per entry.",
+        "placeholder": "Add a word",
+        "add": "Add",
+        "remove": "Remove {{word}}",
+        "duplicate": "\"{{word}}\" already exists"
       }
     },
     "postProcessing": {
       "title": "후처리",
+      "enable": {
+        "label": "Enable AI Refinement",
+        "description": "Use AI to clean up, format, or rephrase your transcriptions after they're captured. Requires an AI provider API key or Apple Intelligence."
+      },
       "hotkey": {
         "title": "단축키"
+      },
+      "advanced": {
+        "title": "Advanced"
+      },
+      "connection": {
+        "connected": "Connected via {{provider}} — refinement is on",
+        "appleIntelligence": "Apple Intelligence ready — runs on-device",
+        "needsKey": "Add your API key below to enable refinement",
+        "needsModel": "Select a model below to enable refinement"
       },
       "api": {
         "title": "API (OpenAI 호환)",
@@ -394,6 +454,14 @@
           "placeholderWithOptions": "모델 검색 또는 선택",
           "placeholderNoOptions": "모델 이름 입력",
           "refreshModels": "모델 새로고침"
+        },
+        "testConnection": {
+          "title": "Test connection",
+          "description": "Sends a tiny request to verify your provider, model, and API key work together.",
+          "button": "Test",
+          "testing": "Testing…",
+          "success": "Connection works — AI refinement is ready.",
+          "failed": "Connection failed"
         }
       },
       "prompts": {
@@ -420,7 +488,17 @@
     },
     "history": {
       "title": "히스토리",
+      "storageGroup": "Storage & Retention",
       "openFolder": "녹음 폴더 열기",
+      "export": {
+        "jsonButton": "Export as JSON",
+        "jsonLabel": "Export JSON",
+        "jsonFilter": "JSON File",
+        "docxButton": "Export as Word Document",
+        "docxLabel": "Export Word",
+        "docxFilter": "Word Document",
+        "success": "History exported successfully"
+      },
       "loading": "히스토리 로딩 중...",
       "empty": "아직 변환된 내용이 없습니다. 녹음을 시작하여 히스토리를 만드세요!",
       "copyToClipboard": "녹음 내용을 클립보드에 복사",
@@ -495,6 +573,11 @@
         "description": "키보드 단축키 백엔드를 선택하세요.",
         "bindingsReset": "키보드 단축키가 호환되지 않아 기본값으로 재설정되었습니다"
       },
+      "paths": {
+        "appData": "앱 데이터:",
+        "models": "모델:",
+        "settings": "설정:"
+      },
       "pasteDelay": {
         "title": "붙여넣기 지연",
         "description": "붙여넣기 키 입력을 보내기 전 지연 시간(밀리초). 잘못된 텍스트가 붙여넣어지면 늘리세요."
@@ -502,15 +585,11 @@
       "recordingBuffer": {
         "title": "추가 녹음 버퍼",
         "description": "키를 놓은 후 추가로 녹음을 계속하는 시간(밀리초). 후행 오디오를 캡처하기 위함. 0 = 추가 버퍼 없음."
-      },
-      "paths": {
-        "appData": "앱 데이터:",
-        "models": "모델:",
-        "settings": "설정:"
       }
     },
     "about": {
       "title": "정보",
+      "updateGroup": "Updates",
       "version": {
         "title": "버전",
         "description": "Ghostly의 현재 버전"
@@ -535,8 +614,127 @@
           "title": "Whisper.cpp",
           "description": "OpenAI의 Whisper 자동 음성 인식 모델의 고성능 추론",
           "details": "Ghostly는 빠르고 로컬 음성-텍스트 처리를 위해 Whisper.cpp를 사용합니다. Georgi Gerganov와 기여자들의 놀라운 작업에 감사드립니다."
+        },
+        "handy": {
+          "title": "Handy",
+          "description": "Ghostly is based on Handy by CJ Pais.",
+          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
         }
       }
+    },
+    "profiles": {
+      "title": "Per-App Profiles",
+      "enable": {
+        "title": "Enable Per-App Profiles",
+        "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
+      },
+      "empty": "No profiles yet.",
+      "add": "Add profile",
+      "detectCurrent": "Detect current app",
+      "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
+      "detectFailed": "Couldn't detect the frontmost app.",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "fields": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Slack, VS Code, Gmail",
+        "enabled": "Enabled",
+        "rules": "Match rules",
+        "rulesHint": "Any rule matching will activate this profile. Most specific rule first.",
+        "rulesEmpty": "No rules yet. Add one or detect the current app.",
+        "addRule": "Add rule",
+        "prompt": "Prompt",
+        "promptInherit": "Inherit global prompt",
+        "postProcess": "Post-processing",
+        "postProcessInherit": "Inherit",
+        "postProcessOn": "Always on",
+        "postProcessOff": "Always off",
+        "provider": "Provider",
+        "providerInherit": "Inherit global provider",
+        "customVocab": "Profile vocabulary",
+        "customVocabPlaceholder": "Add word",
+        "customVocabHint": "Merged with the global custom words list for this profile.",
+        "trailingSpace": "Append trailing space",
+        "trailingSpaceInherit": "Inherit",
+        "trailingSpaceOn": "Always append",
+        "trailingSpaceOff": "Never append"
+      },
+      "rule": {
+        "kind": "Rule type",
+        "value": "Value",
+        "bundleId": "macOS bundle id",
+        "bundleIdPlaceholder": "com.tinyspeck.slackmacgap",
+        "processName": "Process name",
+        "processNamePlaceholder": "Code.exe",
+        "windowClass": "Window class (Linux X11)",
+        "exePathContains": "Exe path contains",
+        "windowTitleContains": "Window title contains"
+      }
+    },
+    "voiceCommands": {
+      "title": "Voice Commands",
+      "enable": {
+        "title": "Enable voice commands",
+        "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
+      },
+      "list": {
+        "title": "Commands",
+        "description": "Toggle or remove commands. Commands run when the voice-command shortcut is used."
+      },
+      "empty": "No voice commands configured.",
+      "remove": "Remove",
+      "missingFields": "Name, phrases, and keystroke are required.",
+      "add": {
+        "title": "Add a command",
+        "description": "Keystroke format: \"enter\", \"escape\", \"tab\", \"shift+tab\", \"cmd+s\", or a single character.",
+        "namePlaceholder": "Name (e.g. Approve)",
+        "phrasesPlaceholder": "Phrases, comma-separated (e.g. approve, yes, accept)",
+        "keystrokePlaceholder": "Keystroke (e.g. enter)",
+        "button": "Add command"
+      }
+    },
+    "voiceEditing": {
+      "title": "Voice Editing",
+      "enable": {
+        "title": "Enable voice editing",
+        "description": "Keep a short buffer of recent transcriptions so you can revise your last paste by speaking an edit instruction."
+      },
+      "experimental": "Experimental — may misfire in rich-text editors and fields where the cursor moved.",
+      "prefixDetection": {
+        "title": "Prefix detection",
+        "description": "Treat short utterances starting with phrases like 'fix that' or 'make it shorter' as edit commands. Risk of false positives — leave off unless you want it."
+      },
+      "replaceStrategy": {
+        "title": "Replace strategy",
+        "description": "How voice edits replace the previously pasted text.",
+        "selectAndPaste": "Select prior text, then paste",
+        "repasteOnly": "Paste new version only",
+        "off": "Disabled"
+      },
+      "bufferSize": {
+        "title": "Session buffer size",
+        "description": "Number of recent transcriptions kept for voice-edit context."
+      },
+      "idleTimeout": {
+        "title": "Session idle timeout",
+        "description": "Seconds before the session buffer expires and voice edits no longer chain off the last paste."
+      },
+      "clearSession": "Clear session",
+      "sessionCleared": "Session cleared."
+    },
+    "correctionPhrases": {
+      "title": "Correction Phrases",
+      "enable": {
+        "title": "Enable correction phrases",
+        "description": "Say a phrase mid-speech (e.g. 'scratch that') to discard everything before it in the same recording. Only what you say after the phrase gets pasted."
+      },
+      "phrasesTitle": "Phrases",
+      "phrasesDescription": "Say any of these mid-recording to cut everything before it. Matched case-insensitively with word boundaries.",
+      "placeholder": "e.g. scratch that",
+      "add": "Add",
+      "duplicate": "\"{{phrase}}\" is already in your list.",
+      "remove": "Remove \"{{phrase}}\""
     }
   },
   "footer": {
@@ -599,7 +797,8 @@
     "modelLoadFailed": "모델을 불러오지 못했습니다: {{model}}",
     "modelLoadFailedUnknown": "알 수 없는 모델",
     "pasteFailedTitle": "텍스트 붙여넣기 실패",
-    "pasteFailed": "활성 애플리케이션에 텍스트를 붙여넣을 수 없습니다."
+    "pasteFailed": "활성 애플리케이션에 텍스트를 붙여넣을 수 없습니다.",
+    "postProcessFailedTitle": "AI Refinement Failed"
   },
   "appLanguage": {
     "title": "애플리케이션 언어",

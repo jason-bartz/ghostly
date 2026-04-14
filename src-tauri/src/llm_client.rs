@@ -512,9 +512,7 @@ where
             let Some(newline_pos) = buffer.find('\n') else {
                 break;
             };
-            let line = buffer[..newline_pos]
-                .trim_end_matches('\r')
-                .to_string();
+            let line = buffer[..newline_pos].trim_end_matches('\r').to_string();
             buffer.drain(..=newline_pos);
 
             let Some(data) = line.strip_prefix("data: ") else {

@@ -1224,9 +1224,7 @@ fn hydrate_api_keys_from_keychain(settings: &mut AppSettings) -> bool {
             .unwrap_or_default();
         if current.is_empty() {
             if let Some(stored) = crate::keychain::get_api_key(&provider_id) {
-                settings
-                    .post_process_api_keys
-                    .insert(provider_id, stored);
+                settings.post_process_api_keys.insert(provider_id, stored);
             }
         } else if crate::keychain::set_api_key(&provider_id, &current) {
             // Plaintext key successfully migrated to keychain.
@@ -1256,8 +1254,7 @@ fn sanitize_for_storage(settings: &AppSettings) -> AppSettings {
     for provider_id in providers {
         // Only clear the JSON copy if the keychain actually holds the key.
         if crate::keychain::get_api_key(&provider_id).is_some() {
-            out.post_process_api_keys
-                .insert(provider_id, String::new());
+            out.post_process_api_keys.insert(provider_id, String::new());
         }
     }
     out

@@ -8,7 +8,9 @@
   background: #0a0a14e6;
   border-radius: 22px;
   border: 1px solid #a78bfa22;
-  box-shadow: 0 0 20px #7c3aed30, 0 4px 24px #00000080;
+  box-shadow:
+    0 0 20px #7c3aed30,
+    0 4px 24px #00000080;
   opacity: 0;
   transform: translateY(4px) scale(0.98);
   transition:
@@ -64,7 +66,9 @@
   max-height: 28px;
   border-radius: 2px;
   min-height: 3px;
-  box-shadow: 0 0 5px #a78bfa, 0 0 10px #7c3aed60;
+  box-shadow:
+    0 0 5px #a78bfa,
+    0 0 10px #7c3aed60;
 }
 
 .recording-overlay.fade-in {

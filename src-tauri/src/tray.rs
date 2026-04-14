@@ -208,15 +208,9 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
         for device in &devices {
             let is_active = current_mic.as_deref() == Some(device.name.as_str());
             let item_id = format!("mic_select:{}", device.name);
-            let item = CheckMenuItem::with_id(
-                app,
-                &item_id,
-                &device.name,
-                true,
-                is_active,
-                None::<&str>,
-            )
-            .expect("failed to create mic item");
+            let item =
+                CheckMenuItem::with_id(app, &item_id, &device.name, true, is_active, None::<&str>)
+                    .expect("failed to create mic item");
             let _ = submenu.append(&item);
         }
 

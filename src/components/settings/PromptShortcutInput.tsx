@@ -3,7 +3,11 @@ import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { commands } from "@/bindings";
 import { useOsType } from "@/hooks/useOsType";
-import { formatKeyCombination, getKeyName, normalizeKey } from "@/lib/utils/keyboard";
+import {
+  formatKeyCombination,
+  getKeyName,
+  normalizeKey,
+} from "@/lib/utils/keyboard";
 import { toast } from "sonner";
 
 interface PromptShortcutInputProps {
@@ -35,8 +39,17 @@ export const PromptShortcutInput: React.FC<PromptShortcutInputProps> = ({
 
     let cleanup = false;
     const modifiers = [
-      "ctrl", "control", "shift", "alt", "option",
-      "meta", "command", "cmd", "super", "win", "windows",
+      "ctrl",
+      "control",
+      "shift",
+      "alt",
+      "option",
+      "meta",
+      "command",
+      "cmd",
+      "super",
+      "win",
+      "windows",
     ];
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -70,7 +83,10 @@ export const PromptShortcutInput: React.FC<PromptShortcutInputProps> = ({
         setKeyPressed([]);
         setRecordedKeys([]);
         try {
-          const result = await commands.setPromptShortcut(promptId, newShortcut);
+          const result = await commands.setPromptShortcut(
+            promptId,
+            newShortcut,
+          );
           if (result.status === "error") {
             toast.error(String(result.error));
           } else {
@@ -84,7 +100,10 @@ export const PromptShortcutInput: React.FC<PromptShortcutInputProps> = ({
 
     const handleClickOutside = (e: MouseEvent) => {
       if (cleanup) return;
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setIsRecording(false);
         setKeyPressed([]);
         setRecordedKeys([]);
@@ -101,7 +120,14 @@ export const PromptShortcutInput: React.FC<PromptShortcutInputProps> = ({
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("click", handleClickOutside);
     };
-  }, [isRecording, keyPressed, recordedKeys, promptId, osType, onShortcutChange]);
+  }, [
+    isRecording,
+    keyPressed,
+    recordedKeys,
+    promptId,
+    osType,
+    onShortcutChange,
+  ]);
 
   const handleClear = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -151,7 +177,10 @@ export const PromptShortcutInput: React.FC<PromptShortcutInputProps> = ({
           <button
             onClick={handleClear}
             className="p-1 rounded text-text/40 hover:text-text/80 transition-colors"
-            title={t("settings.postProcessing.prompts.shortcut.clear", "Remove shortcut")}
+            title={t(
+              "settings.postProcessing.prompts.shortcut.clear",
+              "Remove shortcut",
+            )}
           >
             <X size={14} />
           </button>
@@ -160,7 +189,7 @@ export const PromptShortcutInput: React.FC<PromptShortcutInputProps> = ({
       <p className="text-xs text-mid-gray/60">
         {t(
           "settings.postProcessing.prompts.shortcut.description",
-          "Press this shortcut to transcribe and apply this prompt directly."
+          "Press this shortcut to transcribe and apply this prompt directly.",
         )}
       </p>
     </div>

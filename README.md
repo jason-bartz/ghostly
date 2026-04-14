@@ -40,12 +40,12 @@ Your audio never leaves your computer. Transcription runs on-device using your c
 
 ### Multiple Model Options
 
-| Model | Size | Notes |
-|---|---|---|
-| Small | 487 MB | Fast, good for quick dictation |
-| Medium | 492 MB | Balanced accuracy and speed |
-| Turbo | 1.6 GB | High accuracy, reasonable speed |
-| Large | 1.1 GB | Maximum accuracy |
+| Model  | Size   | Notes                           |
+| ------ | ------ | ------------------------------- |
+| Small  | 487 MB | Fast, good for quick dictation  |
+| Medium | 492 MB | Balanced accuracy and speed     |
+| Turbo  | 1.6 GB | High accuracy, reasonable speed |
+| Large  | 1.1 GB | Maximum accuracy                |
 
 ### Push-to-Talk or Toggle
 

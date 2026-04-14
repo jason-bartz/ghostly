@@ -5,11 +5,7 @@ import { Dropdown, SettingContainer } from "../../ui";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { useSettings } from "../../../hooks/useSettings";
-import type {
-  MatchRuleKind,
-  MatchRuleLike,
-  ProfileLike,
-} from "./types";
+import type { MatchRuleKind, MatchRuleLike, ProfileLike } from "./types";
 
 interface Props {
   profile: ProfileLike;
@@ -152,9 +148,7 @@ export const ProfileEditor: React.FC<Props> = ({
                   label: t(`settings.profiles.rule.${kindI18n(k)}`),
                 }))}
                 selectedValue={rule.kind}
-                onSelect={(v) =>
-                  updateRule(i, { kind: v as MatchRuleKind })
-                }
+                onSelect={(v) => updateRule(i, { kind: v as MatchRuleKind })}
               />
               <Input
                 type="text"
@@ -195,9 +189,7 @@ export const ProfileEditor: React.FC<Props> = ({
             ...prompts.map((p) => ({ value: p.id, label: p.name })),
           ]}
           selectedValue={draft.prompt_id ?? "__inherit__"}
-          onSelect={(v) =>
-            update("prompt_id", v === "__inherit__" ? null : v)
-          }
+          onSelect={(v) => update("prompt_id", v === "__inherit__" ? null : v)}
         />
       </SettingContainer>
 
@@ -362,10 +354,7 @@ function kindI18n(k: MatchRuleKind): string {
   }
 }
 
-function placeholderFor(
-  kind: MatchRuleKind,
-  t: (k: string) => string,
-): string {
+function placeholderFor(kind: MatchRuleKind, t: (k: string) => string): string {
   switch (kind) {
     case "bundle_id":
       return t("settings.profiles.rule.bundleIdPlaceholder");

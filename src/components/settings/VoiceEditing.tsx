@@ -3,12 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { commands } from "@/bindings";
 import { useSettings } from "../../hooks/useSettings";
-import {
-  Dropdown,
-  SettingContainer,
-  Slider,
-  ToggleSwitch,
-} from "../ui";
+import { Dropdown, SettingContainer, Slider, ToggleSwitch } from "../ui";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
 import { ShortcutInput } from "./ShortcutInput";
@@ -23,8 +18,9 @@ export const VoiceEditing: React.FC = React.memo(() => {
   const prefixDetection =
     (getSetting("voice_edit_prefix_detection") as boolean) ?? false;
   const strategy =
-    (getSetting("voice_edit_replace_strategy") as ReplaceStrategy | undefined) ??
-    "select_and_paste";
+    (getSetting("voice_edit_replace_strategy") as
+      | ReplaceStrategy
+      | undefined) ?? "select_and_paste";
   const bufferSize = (getSetting("session_buffer_size") as number) ?? 10;
   const idleTimeout =
     (getSetting("session_idle_timeout_secs") as number) ?? 120;
@@ -44,7 +40,9 @@ export const VoiceEditing: React.FC = React.memo(() => {
         label={t("settings.voiceEditing.enable.title")}
         description={t("settings.voiceEditing.enable.description")}
         checked={enabled}
-        onChange={(v) => updateSetting("voice_editing_enabled" as any, v as any)}
+        onChange={(v) =>
+          updateSetting("voice_editing_enabled" as any, v as any)
+        }
         isUpdating={isUpdating("voice_editing_enabled")}
         grouped={true}
       />
@@ -132,11 +130,7 @@ export const VoiceEditing: React.FC = React.memo(() => {
           />
 
           <div className="px-4 py-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleClearSession}
-            >
+            <Button variant="secondary" size="sm" onClick={handleClearSession}>
               {t("settings.voiceEditing.clearSession")}
             </Button>
           </div>
