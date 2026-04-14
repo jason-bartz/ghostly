@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "Благодарности",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "Высокопроизводительная модель автоматического распознавания речи OpenAI Whisper",
-          "details": "Ghostly использует Whisper.cpp для быстрого локального преобразования речи в текст. Спасибо великолепной работе Георгия Герганова и участников."
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "Уведомления третьих лиц",
+          "description": "Лицензии с открытым исходным кодом и атрибуция.",
+          "link": "Открыть NOTICE.md"
         }
       }
     },

@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "Teşekkürler",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "OpenAI'nin Whisper otomatik konuşma tanıma modelinin yüksek performanslı çıkarımı",
-          "details": "Ghostly, hızlı ve yerel konuşmadan metne dönüştürme için Whisper.cpp kullanır. Georgi Gerganov ve katkıda bulunanların harika çalışmaları için teşekkür ederiz."
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "Üçüncü taraf bildirimleri",
+          "description": "Açık kaynak lisansları ve atıflar.",
+          "link": "NOTICE.md'yi görüntüle"
         }
       }
     },

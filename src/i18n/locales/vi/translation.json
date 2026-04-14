@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "Lời cảm ơn",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "Suy luận hiệu suất cao của mô hình nhận dạng giọng nói tự động Whisper của OpenAI",
-          "details": "Ghostly sử dụng Whisper.cpp để xử lý chuyển đổi giọng nói thành văn bản nhanh, cục bộ. Cảm ơn công việc tuyệt vời của Georgi Gerganov và các cộng tác viên."
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "Thông báo bên thứ ba",
+          "description": "Giấy phép mã nguồn mở và ghi công.",
+          "link": "Xem NOTICE.md"
         }
       }
     },
