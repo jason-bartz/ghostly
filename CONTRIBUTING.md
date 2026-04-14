@@ -16,7 +16,7 @@ Ghostly aims to be a simple, private, local speech-to-text app that stays out of
 
 - [Rust](https://rustup.rs/) (latest stable)
 - [Bun](https://bun.sh/) package manager
-- Platform-specific build tools (see [BUILD.md](BUILD.md))
+- macOS 10.15+ with Xcode Command Line Tools (see [BUILD.md](BUILD.md))
 
 ### Setting Up Your Development Environment
 
@@ -46,11 +46,11 @@ Ghostly aims to be a simple, private, local speech-to-text app that stays out of
 
    ```bash
    bun run tauri dev
-   # On macOS if you encounter cmake errors:
+   # If you encounter cmake errors:
    CMAKE_POLICY_VERSION_MINIMUM=3.5 bun run tauri dev
    ```
 
-For detailed platform-specific setup instructions, see [BUILD.md](BUILD.md).
+For detailed setup, see [BUILD.md](BUILD.md).
 
 ### Understanding the Codebase
 
@@ -79,14 +79,14 @@ Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.md) when creatin
 When creating a bug report, please include:
 
 - App version (found in settings or about section)
-- Operating system (e.g., macOS 14.1, Windows 11)
-- CPU and GPU (e.g., Apple M2, Intel i7-12700K)
+- macOS version (e.g., macOS 14.1)
+- CPU (e.g., Apple M2, Intel i7)
 - Clear description of the bug
 - Steps to reproduce
 - Expected vs. actual behavior
 - Screenshots or logs if applicable
 
-Enable debug mode (`Cmd/Ctrl+Shift+D`) to gather diagnostic information.
+Enable debug mode (`Cmd+Shift+D`) to gather diagnostic information.
 
 ## Making Code Contributions
 
@@ -102,7 +102,7 @@ Enable debug mode (`Cmd/Ctrl+Shift+D`) to gather diagnostic information.
 
 2. **Make your changes** — follow existing code style and patterns.
 
-3. **Test thoroughly** on your target platform(s).
+3. **Test thoroughly** on macOS.
 
 4. **Commit your changes** using conventional commit messages:
    - `feat:` for new features
