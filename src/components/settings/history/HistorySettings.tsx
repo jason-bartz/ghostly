@@ -3,6 +3,8 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
+  ArrowDownNarrowWide,
+  ArrowUpNarrowWide,
   Check,
   ChevronDown,
   ChevronUp,
@@ -13,6 +15,7 @@ import {
   FileJson,
   FolderOpen,
   Loader2,
+  Pencil,
   RotateCcw,
   Search,
   Star,
@@ -57,8 +60,46 @@ const IconButton: React.FC<{
 
 const PAGE_SIZE = 30;
 
+type SortMode = "newest" | "oldest" | "saved";
+
+function sortEntries(entries: HistoryEntry[], mode: SortMode): HistoryEntry[] {
+  if (mode === "newest") return entries;
+  if (mode === "oldest") return [...entries].sort((a, b) => a.timestamp - b.timestamp);
+  // "saved": pinned first, preserving newest order within each bucket
+  return [...entries].sort((a, b) => {
+    if (a.saved === b.saved) return b.timestamp - a.timestamp;
+    return a.saved ? -1 : 1;
+  });
+}
+
+function dayKey(timestamp: number): string {
+  const d = new Date(timestamp * 1000);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabel(timestamp: number, locale: string): string {
+  const d = new Date(timestamp * 1000);
+  const now = new Date();
+  const startOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round(
+    (startOfDay(now) - startOfDay(d)) / (1000 * 60 * 60 * 24),
+  );
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays > 1 && diffDays < 7) {
+    return d.toLocaleDateString(locale, { weekday: "long" });
+  }
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(locale, {
+    month: "long",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+  });
+}
+
 export const HistorySettings: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const osType = useOsType();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +107,9 @@ export const HistorySettings: React.FC = () => {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef<HistoryEntry[]>([]);
   const loadingRef = useRef(false);
+
+  // Sort state
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -264,6 +308,25 @@ export const HistorySettings: React.FC = () => {
     }
   };
 
+  const updateTitle = async (id: number, title: string | null) => {
+    try {
+      const result = await commands.updateHistoryEntryTitle(id, title);
+      if (result.status === "ok") {
+        const updated = result.data;
+        setEntries((prev) => prev.map((e) => (e.id === id ? updated : e)));
+        if (searchResults)
+          setSearchResults((prev) =>
+            prev ? prev.map((e) => (e.id === id ? updated : e)) : prev,
+          );
+      } else {
+        toast.error(String(result.error));
+      }
+    } catch (error) {
+      console.error("Failed to update title:", error);
+      toast.error(String(error));
+    }
+  };
+
   const retryHistoryEntry = async (id: number) => {
     const result = await commands.retryHistoryEntryTranscription(id);
     if (result.status !== "ok") {
@@ -350,7 +413,42 @@ export const HistorySettings: React.FC = () => {
     }
   };
 
-  const displayedEntries = isSearchMode ? (searchResults ?? []) : entries;
+  const rawDisplayed = isSearchMode ? (searchResults ?? []) : entries;
+  const displayedEntries = sortEntries(rawDisplayed, sortMode);
+  const locale = i18n.language;
+
+  // Group consecutive entries by local day (only in newest/oldest modes where order is by time)
+  const groupedEntries: Array<
+    { type: "header"; key: string; label: string } | { type: "entry"; entry: HistoryEntry }
+  > = [];
+  if (sortMode === "newest" || sortMode === "oldest") {
+    let lastKey = "";
+    for (const entry of displayedEntries) {
+      const key = dayKey(entry.timestamp);
+      if (key !== lastKey) {
+        groupedEntries.push({ type: "header", key, label: dayLabel(entry.timestamp, locale) });
+        lastKey = key;
+      }
+      groupedEntries.push({ type: "entry", entry });
+    }
+  } else {
+    for (const entry of displayedEntries) groupedEntries.push({ type: "entry", entry });
+  }
+
+  const renderEntry = (entry: HistoryEntry) => (
+    <HistoryEntryComponent
+      key={entry.id}
+      entry={entry}
+      searchQuery={isSearchMode ? searchQuery : ""}
+      onToggleSaved={() => toggleSaved(entry.id)}
+      onCopyText={() => copyToClipboard(entry.post_processed_text ?? entry.transcription_text)}
+      getAudioUrl={getAudioUrl}
+      deleteAudio={deleteAudioEntry}
+      retryTranscription={retryHistoryEntry}
+      pasteEntry={pasteHistoryEntry}
+      updateTitle={updateTitle}
+    />
+  );
 
   let content: React.ReactNode;
 
@@ -378,19 +476,18 @@ export const HistorySettings: React.FC = () => {
     content = (
       <>
         <div className="divide-y divide-mid-gray/20">
-          {displayedEntries.map((entry) => (
-            <HistoryEntryComponent
-              key={entry.id}
-              entry={entry}
-              searchQuery={isSearchMode ? searchQuery : ""}
-              onToggleSaved={() => toggleSaved(entry.id)}
-              onCopyText={() => copyToClipboard(entry.post_processed_text ?? entry.transcription_text)}
-              getAudioUrl={getAudioUrl}
-              deleteAudio={deleteAudioEntry}
-              retryTranscription={retryHistoryEntry}
-              pasteEntry={pasteHistoryEntry}
-            />
-          ))}
+          {groupedEntries.map((item) =>
+            item.type === "header" ? (
+              <div
+                key={`h-${item.key}`}
+                className="px-4 py-1.5 text-[11px] uppercase tracking-wide font-semibold text-mid-gray/80 bg-mid-gray/5 sticky top-0 z-[1]"
+              >
+                {item.label}
+              </div>
+            ) : (
+              renderEntry(item.entry)
+            ),
+          )}
         </div>
         {/* Sentinel for infinite scroll (only in browse mode) */}
         {!isSearchMode && <div ref={sentinelRef} className="h-1" />}
@@ -448,9 +545,9 @@ export const HistorySettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="px-4">
-          <div className="relative flex items-center">
+        {/* Search + sort */}
+        <div className="px-4 flex items-center gap-2">
+          <div className="relative flex items-center flex-1">
             <Search className="absolute left-3 w-4 h-4 text-mid-gray/60 pointer-events-none" />
             <input
               type="text"
@@ -468,6 +565,24 @@ export const HistorySettings: React.FC = () => {
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+          <div className="flex items-center gap-1 text-xs">
+            {sortMode === "oldest" ? (
+              <ArrowUpNarrowWide className="w-3.5 h-3.5 text-mid-gray/60" />
+            ) : (
+              <ArrowDownNarrowWide className="w-3.5 h-3.5 text-mid-gray/60" />
+            )}
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className="py-1.5 px-2 bg-background border border-mid-gray/30 rounded-md text-sm
+                         focus:outline-none focus:border-logo-primary/60 cursor-pointer"
+              title={t("settings.history.sort", "Sort")}
+            >
+              <option value="newest">{t("settings.history.sortNewest", "Newest")}</option>
+              <option value="oldest">{t("settings.history.sortOldest", "Oldest")}</option>
+              <option value="saved">{t("settings.history.sortSaved", "Starred first")}</option>
+            </select>
           </div>
         </div>
 
@@ -489,6 +604,7 @@ interface HistoryEntryProps {
   deleteAudio: (id: number) => Promise<void>;
   retryTranscription: (id: number) => Promise<void>;
   pasteEntry: (id: number) => Promise<void>;
+  updateTitle: (id: number, title: string | null) => Promise<void>;
 }
 
 /** Highlight matching text in a string */
@@ -515,12 +631,35 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   deleteAudio,
   retryTranscription,
   pasteEntry,
+  updateTitle,
 }) => {
   const { t, i18n } = useTranslation();
   const [showCopied, setShowCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [pasting, setPasting] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(entry.user_title ?? "");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTitleDraft(entry.user_title ?? "");
+  }, [entry.user_title]);
+
+  useEffect(() => {
+    if (editingTitle) titleInputRef.current?.focus();
+  }, [editingTitle]);
+
+  const commitTitle = async () => {
+    const next = titleDraft.trim();
+    const current = entry.user_title ?? "";
+    if (next === current) {
+      setEditingTitle(false);
+      return;
+    }
+    await updateTitle(entry.id, next.length > 0 ? next : null);
+    setEditingTitle(false);
+  };
 
   const hasTranscription = entry.transcription_text.trim().length > 0;
   const hasPostProcessed =
@@ -589,11 +728,48 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
     ? highlightText(truncated, searchQuery)
     : truncated;
 
+  const displayTitle = entry.user_title?.trim() || formattedDate;
+  const showSubtitle = !!entry.user_title?.trim();
+
   return (
     <div className="px-4 py-2 pb-5 flex flex-col gap-3">
-      <div className="flex justify-between items-center">
-        <p className="text-sm font-medium">{formattedDate}</p>
-        <div className="flex items-center">
+      <div className="flex justify-between items-center gap-2">
+        <div className="flex-1 min-w-0 flex flex-col">
+          {editingTitle ? (
+            <input
+              ref={titleInputRef}
+              type="text"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitTitle();
+                } else if (e.key === "Escape") {
+                  setTitleDraft(entry.user_title ?? "");
+                  setEditingTitle(false);
+                }
+              }}
+              placeholder={t("settings.history.titlePlaceholder", "Add a title…")}
+              className="text-sm font-medium bg-background border border-mid-gray/30 rounded px-2 py-0.5 w-full
+                         focus:outline-none focus:border-logo-primary/60"
+            />
+          ) : (
+            <button
+              onClick={() => setEditingTitle(true)}
+              className="group flex items-center gap-1.5 text-left"
+              title={t("settings.history.editTitle", "Edit title")}
+            >
+              <span className="text-sm font-medium truncate">{displayTitle}</span>
+              <Pencil className="w-3 h-3 text-mid-gray/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </button>
+          )}
+          {showSubtitle && !editingTitle && (
+            <span className="text-xs text-mid-gray/70 truncate">{formattedDate}</span>
+          )}
+        </div>
+        <div className="flex items-center shrink-0">
           <IconButton
             onClick={handleCopyText}
             disabled={!hasTranscription || retrying}

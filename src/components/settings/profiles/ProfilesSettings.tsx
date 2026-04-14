@@ -95,48 +95,46 @@ export const ProfilesSettings: React.FC = () => {
           checked={enabled}
           onChange={(v) => updateSetting("profiles_enabled" as any, v as any)}
           isUpdating={isUpdating("profiles_enabled")}
+          descriptionMode="inline"
           grouped={true}
         />
       </SettingsGroup>
 
-      <SettingsGroup>
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="text-sm text-text/70">
-            {profiles.length === 0
-              ? t("settings.profiles.empty")
-              : `${profiles.length} ${profiles.length === 1 ? "profile" : "profiles"}`}
+      {enabled && (
+        <SettingsGroup>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="text-sm text-text/70">
+              {profiles.length === 0
+                ? t("settings.profiles.empty")
+                : `${profiles.length} ${profiles.length === 1 ? "profile" : "profiles"}`}
+            </div>
+            <Button variant="primary" size="sm" onClick={handleAdd}>
+              <Plus className="w-4 h-4" />
+              <span>{t("settings.profiles.add")}</span>
+            </Button>
           </div>
-          <Button variant="primary" size="sm" onClick={handleAdd}>
-            <Plus className="w-4 h-4" />
-            <span>{t("settings.profiles.add")}</span>
-          </Button>
-        </div>
 
-        {profiles.map((p) => (
-          <div
-            key={p.id}
-            className="px-4 py-3 border-t border-mid-gray/20 flex flex-col gap-2"
-          >
-            {editingId === p.id ? (
-              <ProfileEditor
-                profile={p}
-                onSave={handleSave}
-                onCancel={() => setEditingId(null)}
-                onDetect={handleDetect}
-              />
-            ) : (
-              <ProfileRow
-                profile={p}
-                onEdit={() => setEditingId(p.id)}
-                onDelete={() => handleDelete(p.id)}
-                onToggleEnabled={(v) =>
-                  handleSave({ ...p, enabled: v })
-                }
-              />
-            )}
-          </div>
-        ))}
-      </SettingsGroup>
+          {profiles.map((p) => (
+            <div key={p.id} className="px-4 py-3 flex flex-col gap-2">
+              {editingId === p.id ? (
+                <ProfileEditor
+                  profile={p}
+                  onSave={handleSave}
+                  onCancel={() => setEditingId(null)}
+                  onDetect={handleDetect}
+                />
+              ) : (
+                <ProfileRow
+                  profile={p}
+                  onEdit={() => setEditingId(p.id)}
+                  onDelete={() => handleDelete(p.id)}
+                  onToggleEnabled={(v) => handleSave({ ...p, enabled: v })}
+                />
+              )}
+            </div>
+          ))}
+        </SettingsGroup>
+      )}
     </div>
   );
 };

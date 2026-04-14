@@ -15,7 +15,9 @@ pub struct CliArgs {
     #[arg(long)]
     pub toggle_transcription: bool,
 
-    /// Toggle transcription with post-processing on/off (sent to running instance)
+    /// Deprecated alias for --toggle-transcription. Kept for backward
+    /// compatibility; AI refinement now applies automatically when an LLM
+    /// is configured.
     #[arg(long)]
     pub toggle_post_process: bool,
 

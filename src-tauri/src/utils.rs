@@ -20,6 +20,14 @@ pub fn cancel_current_operation(app: &AppHandle) {
     // Unregister the cancel shortcut asynchronously
     shortcut::unregister_cancel_shortcut(app);
 
+    // Signal any in-flight LLM stream to stop. The stream loop checks this
+    // flag between chunks and returns a cancellation error.
+    if let Some(stream_cancel) =
+        app.try_state::<Arc<crate::stream_cancel::StreamCancellation>>()
+    {
+        stream_cancel.cancel();
+    }
+
     // Cancel any ongoing recording
     let audio_manager = app.state::<Arc<AudioRecordingManager>>();
     let recording_was_active = audio_manager.is_recording();

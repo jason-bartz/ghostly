@@ -137,6 +137,23 @@ function App() {
     };
   }, [t]);
 
+  // Listen for AI refinement failures so users aren't left guessing when the
+  // raw transcript appears instead of the refined version. The Rust side emits
+  // a concise reason; full stack traces are in ghostly.log.
+  useEffect(() => {
+    const unlisten = listen<{ message: string }>(
+      "post-process-failed",
+      (event) => {
+        toast.error(t("errors.postProcessFailedTitle"), {
+          description: event.payload.message,
+        });
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
   // Listen for model loading failures and show a toast
   useEffect(() => {
     const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {

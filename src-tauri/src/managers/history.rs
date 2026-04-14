@@ -65,6 +65,7 @@ static MIGRATIONS: &[M] = &[
             created_at INTEGER NOT NULL
         );",
     ),
+    M::up("ALTER TABLE transcription_history ADD COLUMN user_title TEXT;"),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -93,6 +94,7 @@ pub struct HistoryEntry {
     pub timestamp: i64,
     pub saved: bool,
     pub title: String,
+    pub user_title: Option<String>,
     pub transcription_text: String,
     pub post_processed_text: Option<String>,
     pub post_process_prompt: Option<String>,
@@ -246,6 +248,7 @@ impl HistoryManager {
             timestamp: row.get("timestamp")?,
             saved: row.get("saved")?,
             title: row.get("title")?,
+            user_title: row.get("user_title").ok(),
             transcription_text: row.get("transcription_text")?,
             post_processed_text: row.get("post_processed_text")?,
             post_process_prompt: row.get("post_process_prompt")?,
@@ -300,6 +303,7 @@ impl HistoryManager {
             timestamp,
             saved: false,
             title,
+            user_title: None,
             transcription_text,
             post_processed_text,
             post_process_prompt,
@@ -351,7 +355,7 @@ impl HistoryManager {
 
         let entry = conn
             .query_row(
-                "SELECT id, file_name, timestamp, saved, title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
                  FROM transcription_history WHERE id = ?1",
                 params![id],
                 Self::map_history_entry,
@@ -502,7 +506,7 @@ impl HistoryManager {
             (Some(cursor_id), Some(lim)) => {
                 let fetch_count = (lim + 1) as i64;
                 let mut stmt = conn.prepare(
-                    "SELECT id, file_name, timestamp, saved, title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
                      FROM transcription_history
                      WHERE id < ?1
                      ORDER BY id DESC
@@ -516,7 +520,7 @@ impl HistoryManager {
             (None, Some(lim)) => {
                 let fetch_count = (lim + 1) as i64;
                 let mut stmt = conn.prepare(
-                    "SELECT id, file_name, timestamp, saved, title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
                      FROM transcription_history
                      ORDER BY id DESC
                      LIMIT ?1",
@@ -528,7 +532,7 @@ impl HistoryManager {
             }
             (_, None) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, file_name, timestamp, saved, title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
                      FROM transcription_history
                      ORDER BY id DESC",
                 )?;
@@ -584,6 +588,7 @@ impl HistoryManager {
                 timestamp,
                 saved,
                 title,
+                user_title,
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
@@ -611,6 +616,7 @@ impl HistoryManager {
                 timestamp,
                 saved,
                 title,
+                user_title,
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
@@ -622,6 +628,39 @@ impl HistoryManager {
         )?;
 
         let entry = stmt.query_row([], Self::map_history_entry).optional()?;
+        Ok(entry)
+    }
+
+    pub async fn update_user_title(&self, id: i64, user_title: Option<String>) -> Result<HistoryEntry> {
+        let conn = self.get_connection()?;
+        let trimmed = user_title
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let updated = conn.execute(
+            "UPDATE transcription_history SET user_title = ?1 WHERE id = ?2",
+            params![trimmed, id],
+        )?;
+
+        if updated == 0 {
+            return Err(anyhow!("History entry {} not found", id));
+        }
+
+        let entry = conn.query_row(
+            "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+             FROM transcription_history WHERE id = ?1",
+            params![id],
+            Self::map_history_entry,
+        )?;
+
+        if let Err(e) = (HistoryUpdatePayload::Updated {
+            entry: entry.clone(),
+        })
+        .emit(&self.app_handle)
+        {
+            error!("Failed to emit history-updated event: {}", e);
+        }
+
         Ok(entry)
     }
 
@@ -665,6 +704,7 @@ impl HistoryManager {
                 timestamp,
                 saved,
                 title,
+                user_title,
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
@@ -797,7 +837,7 @@ impl HistoryManager {
     pub async fn get_all_history_for_export(&self) -> Result<Vec<HistoryEntry>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT id, file_name, timestamp, saved, title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+            "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
              FROM transcription_history
              ORDER BY id DESC",
         )?;
@@ -832,6 +872,7 @@ mod tests {
                 timestamp INTEGER NOT NULL,
                 saved BOOLEAN NOT NULL DEFAULT 0,
                 title TEXT NOT NULL,
+                user_title TEXT,
                 transcription_text TEXT NOT NULL,
                 post_processed_text TEXT,
                 post_process_prompt TEXT,

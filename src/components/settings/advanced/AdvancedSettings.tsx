@@ -2,6 +2,8 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { ModelUnloadTimeoutSetting } from "../ModelUnloadTimeout";
 import { CustomWords } from "../CustomWords";
+import { FillerWords } from "../FillerWords";
+import { VoiceCommands } from "../VoiceCommands";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { StartHidden } from "../StartHidden";
 import { AutostartToggle } from "../AutostartToggle";
@@ -36,7 +38,13 @@ export const AdvancedSettings: React.FC = () => {
       {/* ── Transcription ── word corrections & model behavior */}
       <SettingsGroup title={t("settings.advanced.groups.transcription")}>
         <CustomWords descriptionMode="tooltip" grouped />
+        <FillerWords descriptionMode="tooltip" grouped />
         <ModelUnloadTimeoutSetting descriptionMode="tooltip" grouped={true} />
+      </SettingsGroup>
+
+      {/* ── Voice Commands ── agent control via spoken keywords */}
+      <SettingsGroup title={t("settings.voiceCommands.title")}>
+        <VoiceCommands descriptionMode="tooltip" grouped />
       </SettingsGroup>
 
       {/* ── Startup & System ── how the app launches and sits in the tray */}

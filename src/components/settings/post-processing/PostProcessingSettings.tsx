@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { RefreshCcw } from "lucide-react";
+import { toast } from "sonner";
 import { commands } from "@/bindings";
 
 import { Alert } from "../../ui/Alert";
@@ -143,7 +144,51 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
           </div>
         </SettingContainer>
       )}
+
+      <TestConnectionRow />
     </>
+  );
+};
+
+const TestConnectionRow: React.FC = () => {
+  const { t } = useTranslation();
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleTest = async () => {
+    setIsTesting(true);
+    try {
+      const result = await commands.testPostProcessConnection();
+      if (result.status === "ok") {
+        toast.success(t("settings.postProcessing.api.testConnection.success"));
+      } else {
+        toast.error(t("settings.postProcessing.api.testConnection.failed"), {
+          description: result.error,
+        });
+      }
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <SettingContainer
+      title={t("settings.postProcessing.api.testConnection.title")}
+      description={t("settings.postProcessing.api.testConnection.description")}
+      descriptionMode="tooltip"
+      layout="horizontal"
+      grouped={true}
+    >
+      <Button
+        onClick={handleTest}
+        disabled={isTesting}
+        variant="secondary"
+        size="md"
+      >
+        {isTesting
+          ? t("settings.postProcessing.api.testConnection.testing")
+          : t("settings.postProcessing.api.testConnection.button")}
+      </Button>
+    </SettingContainer>
   );
 };
 
@@ -434,6 +479,64 @@ export const PostProcessingSettingsPrompts = React.memo(
 );
 PostProcessingSettingsPrompts.displayName = "PostProcessingSettingsPrompts";
 
+const APPLE_INTELLIGENCE_PROVIDER_ID = "apple_intelligence";
+
+const ConnectionStatusCard: React.FC = () => {
+  const { t } = useTranslation();
+  const { getSetting } = useSettings();
+
+  const providerId = (getSetting("post_process_provider_id") as string) || "";
+  const providers =
+    (getSetting("post_process_providers") as
+      | { id: string; label: string }[]
+      | undefined) ?? [];
+  const models =
+    (getSetting("post_process_models") as Record<string, string> | undefined) ??
+    {};
+  const apiKeys =
+    (getSetting("post_process_api_keys") as
+      | Record<string, string>
+      | undefined) ?? {};
+
+  const provider = providers.find((p) => p.id === providerId);
+  const model = (models[providerId] ?? "").trim();
+  const apiKey = (apiKeys[providerId] ?? "").trim();
+  const isApple = providerId === APPLE_INTELLIGENCE_PROVIDER_ID;
+
+  let status: "connected" | "needs-key" | "needs-model";
+  if (isApple) {
+    status = model ? "connected" : "needs-model";
+  } else if (!apiKey) {
+    status = "needs-key";
+  } else if (!model) {
+    status = "needs-model";
+  } else {
+    status = "connected";
+  }
+
+  const connected = status === "connected";
+  const iconColor = connected ? "text-green-500" : "text-amber-500";
+  const label = provider?.label ?? providerId;
+
+  const message = connected
+    ? isApple
+      ? t("settings.postProcessing.connection.appleIntelligence")
+      : t("settings.postProcessing.connection.connected", { provider: label })
+    : status === "needs-key"
+      ? t("settings.postProcessing.connection.needsKey")
+      : t("settings.postProcessing.connection.needsModel");
+
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-mid-gray/20 bg-mid-gray/5"
+      role="status"
+    >
+      <span className={`text-lg ${iconColor}`}>{connected ? "✓" : "⚠"}</span>
+      <span className="text-sm">{message}</span>
+    </div>
+  );
+};
+
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
   const { getSetting } = useSettings();
@@ -448,25 +551,41 @@ export const PostProcessingSettings: React.FC = () => {
 
       {enabled && (
         <>
-          <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
-            <ShortcutInput
-              shortcutId="transcribe_with_post_process"
-              descriptionMode="tooltip"
-              grouped={true}
-            />
-          </SettingsGroup>
+          {/* Connection status at the top — user sees at a glance whether
+              refinement is ready to go. */}
+          <ConnectionStatusCard />
 
           <SettingsGroup title={t("settings.postProcessing.api.title")}>
             <PostProcessingSettingsApi />
           </SettingsGroup>
 
-          <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
-            <PostProcessingSettingsPrompts />
-          </SettingsGroup>
+          {/* Advanced: prompt selection, extra hotkeys, voice editing.
+              Collapsed by default so the main path stays clean. */}
+          <details className="group rounded-lg border border-mid-gray/20">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold select-none flex items-center gap-2">
+              <span className="transition-transform group-open:rotate-90">›</span>
+              {t("settings.postProcessing.advanced.title")}
+            </summary>
+            <div className="p-4 space-y-6 border-t border-mid-gray/20">
+              <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
+                <ShortcutInput
+                  shortcutId="transcribe_with_screenshot"
+                  descriptionMode="tooltip"
+                  grouped={true}
+                />
+              </SettingsGroup>
 
-          <SettingsGroup title={t("settings.voiceEditing.title")}>
-            <VoiceEditing />
-          </SettingsGroup>
+              <SettingsGroup
+                title={t("settings.postProcessing.prompts.title")}
+              >
+                <PostProcessingSettingsPrompts />
+              </SettingsGroup>
+
+              <SettingsGroup title={t("settings.voiceEditing.title")}>
+                <VoiceEditing />
+              </SettingsGroup>
+            </div>
+          </details>
         </>
       )}
 

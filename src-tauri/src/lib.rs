@@ -11,15 +11,19 @@ mod edit_intent;
 mod frontmost;
 mod helpers;
 mod input;
+mod keychain;
 mod llm_client;
 mod managers;
 mod overlay;
 pub mod portable;
 mod profiles;
+mod screenshot;
 mod session;
+mod voice_commands;
 mod settings;
 mod shortcut;
 mod signal_handle;
+mod stream_cancel;
 mod transcription_coordinator;
 mod tray;
 mod tray_i18n;
@@ -171,6 +175,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
     app_handle.manage(Arc::new(SessionBuffer::new()));
+    app_handle.manage(Arc::new(stream_cancel::StreamCancellation::new()));
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -460,8 +465,10 @@ pub fn run(cli_args: CliArgs) {
             commands::transcription::set_model_unload_timeout,
             commands::transcription::get_model_load_status,
             commands::transcription::unload_model_manually,
+            commands::transcription::test_post_process_connection,
             commands::history::get_history_entries,
             commands::history::toggle_history_entry_saved,
+            commands::history::update_history_entry_title,
             commands::history::get_audio_file_path,
             commands::history::delete_history_entry,
             commands::history::retry_history_entry_transcription,
@@ -551,7 +558,9 @@ pub fn run(cli_args: CliArgs) {
             if args.iter().any(|a| a == "--toggle-transcription") {
                 signal_handle::send_transcription_input(app, "transcribe", "CLI");
             } else if args.iter().any(|a| a == "--toggle-post-process") {
-                signal_handle::send_transcription_input(app, "transcribe_with_post_process", "CLI");
+                // Backward-compat: post-process is now auto-applied by the main
+                // transcribe shortcut when an LLM is configured.
+                signal_handle::send_transcription_input(app, "transcribe", "CLI");
             } else if args.iter().any(|a| a == "--cancel") {
                 crate::utils::cancel_current_operation(app);
             } else {
@@ -579,10 +588,10 @@ pub fn run(cli_args: CliArgs) {
             let mut win_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("/".into()))
                     .title("Ghostly")
-                    .inner_size(680.0, 570.0)
-                    .min_inner_size(680.0, 570.0)
+                    .inner_size(960.0, 720.0)
+                    .min_inner_size(720.0, 520.0)
                     .resizable(true)
-                    .maximizable(false)
+                    .maximizable(true)
                     .visible(false);
 
             if let Some(data_dir) = portable::data_dir() {

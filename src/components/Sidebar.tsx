@@ -40,12 +40,6 @@ export const SECTIONS_CONFIG = {
     component: GeneralSettings,
     enabled: () => true,
   },
-  models: {
-    labelKey: "sidebar.models",
-    icon: Cpu,
-    component: ModelsSettings,
-    enabled: () => true,
-  },
   advanced: {
     labelKey: "sidebar.advanced",
     icon: Cog,
@@ -80,6 +74,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.restApi",
     icon: Network,
     component: RestApiSettings,
+    enabled: () => true,
+  },
+  models: {
+    labelKey: "sidebar.models",
+    icon: Cpu,
+    component: ModelsSettings,
     enabled: () => true,
   },
   about: {
@@ -123,13 +123,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <div
               key={section.id}
-              className={`flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-colors ${
+              className={`relative flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out ${
                 isActive
-                  ? "bg-logo-primary/80"
-                  : "hover:bg-mid-gray/20 hover:opacity-100 opacity-85"
+                  ? "bg-logo-primary/80 shadow-sm"
+                  : "hover:bg-mid-gray/20 hover:translate-x-0.5 hover:opacity-100 opacity-80"
               }`}
               onClick={() => onSectionChange(section.id)}
             >
+              <span
+                aria-hidden
+                className={`absolute start-0 top-1/2 -translate-y-1/2 w-0.5 rounded-full bg-logo-primary transition-all duration-200 ease-out ${
+                  isActive ? "h-5 opacity-100" : "h-0 opacity-0"
+                }`}
+              />
               <Icon width={24} height={24} className="shrink-0" />
               <p
                 className="text-sm font-medium truncate"

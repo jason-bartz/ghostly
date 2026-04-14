@@ -87,6 +87,22 @@ pub struct ShortcutBinding {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct VoiceCommand {
+    /// Display label for settings UI.
+    pub name: String,
+    /// Trigger phrases. Matched case-insensitively against the normalized
+    /// transcription as whole strings (not substrings).
+    pub phrases: Vec<String>,
+    /// Keystroke to inject. Format: "enter", "escape", "shift+tab", "cmd+s",
+    /// "y". Modifiers: ctrl/shift/alt/option/cmd/meta. Keys: named (enter,
+    /// escape, tab, space, backspace, delete, up/down/left/right, home, end,
+    /// pageup, pagedown, f1-f12) or a single character.
+    pub keystroke: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct LLMPrompt {
     pub id: String,
     pub name: String,
@@ -108,6 +124,8 @@ pub struct PostProcessProvider {
     pub models_endpoint: Option<String>,
     #[serde(default)]
     pub supports_structured_output: bool,
+    #[serde(default)]
+    pub supports_vision: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
@@ -466,6 +484,12 @@ pub struct AppSettings {
     #[serde(default = "default_rest_api_port")]
     pub rest_api_port: u16,
 
+    // --- Voice commands (agent control) ---
+    #[serde(default)]
+    pub voice_commands_enabled: bool,
+    #[serde(default = "default_voice_commands")]
+    pub voice_commands: Vec<VoiceCommand>,
+
     // --- Correction phrases (Feature D) ---
     /// When true, speaking a correction phrase deletes the last transcription.
     #[serde(default)]
@@ -513,11 +537,11 @@ fn default_translate_to_english() -> bool {
 }
 
 fn default_start_hidden() -> bool {
-    false
+    true
 }
 
 fn default_autostart_enabled() -> bool {
-    false
+    true
 }
 
 fn default_update_checks_enabled() -> bool {
@@ -576,7 +600,9 @@ fn default_sound_theme() -> SoundTheme {
 }
 
 fn default_post_process_enabled() -> bool {
-    false
+    // Default-on: when an LLM is connected, the main transcribe shortcut
+    // auto-refines. When no LLM is configured, this is effectively a no-op.
+    true
 }
 
 fn default_app_language() -> String {
@@ -602,6 +628,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            supports_vision: true,
         },
         PostProcessProvider {
             id: "zai".to_string(),
@@ -610,6 +637,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            supports_vision: true,
         },
         PostProcessProvider {
             id: "openrouter".to_string(),
@@ -618,6 +646,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            supports_vision: true,
         },
         PostProcessProvider {
             id: "anthropic".to_string(),
@@ -626,6 +655,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            supports_vision: false,
         },
         PostProcessProvider {
             id: "groq".to_string(),
@@ -634,6 +664,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            supports_vision: true,
         },
         PostProcessProvider {
             id: "cerebras".to_string(),
@@ -642,6 +673,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            supports_vision: false,
         },
     ];
 
@@ -658,6 +690,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: None,
             supports_structured_output: true,
+            supports_vision: false,
         });
     }
 
@@ -669,6 +702,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: true,
         models_endpoint: Some("/models".to_string()),
         supports_structured_output: false,
+        supports_vision: false,
     });
 
     providers
@@ -705,6 +739,8 @@ fn default_post_process_models() -> HashMap<String, String> {
 pub const BUILTIN_PROMPT_IDS: &[&str] = &[
     "default_improve_transcriptions",
     "builtin_developer",
+    "builtin_ai_prompt",
+    "builtin_screenshot_qa",
     "builtin_email",
     "builtin_casual",
     "builtin_structured",
@@ -722,6 +758,18 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
             id: "builtin_developer".to_string(),
             name: "Developer".to_string(),
             prompt: "You are a developer assistant. Clean this voice transcription for a coding context:\n1. Format identifiers: detect spoken camelCase (\"my variable\" → myVariable), snake_case (\"my function\" → my_function), and UPPER_CASE constants\n2. Format CLI syntax: convert spoken commands to code (\"git force push\" → git push --force, \"make directory\" → mkdir, \"pipe to grep\" → | grep)\n3. Convert spoken symbols: \"dot\" → \".\", \"slash\" → \"/\", \"double colon\" → \"::\", \"arrow\" → \"->\", \"fat arrow\" → \"=>\"\n4. Fix punctuation: add semicolons, brackets where spoken (\"open paren\" → \"(\", \"close bracket\" → \"]\")\n5. Preserve technical terms exactly (React, Kubernetes, PostgreSQL, TypeScript, etc.)\n6. Remove filler words only\n\nReturn only the cleaned text.\n\nTranscript:\n${output}".to_string(),
+            shortcut: None,
+        },
+        LLMPrompt {
+            id: "builtin_ai_prompt".to_string(),
+            name: "AI Prompt Rewriter".to_string(),
+            prompt: "You rewrite rambly spoken instructions into clean prompts for AI coding assistants (Cursor, Claude Code, Windsurf, v0).\n\nRestructure the input into this shape when the content supports it:\n- **Goal:** one sentence describing what to build, fix, or change\n- **Context:** files, functions, libraries, or constraints the user mentioned\n- **Acceptance:** observable criteria for \"done\" — only if the user stated or clearly implied them\n\nRules:\n- Preserve the user's intent exactly. Do not invent requirements, files, or constraints they didn't mention.\n- Preserve technical terms, identifiers, and code fragments verbatim (camelCase, snake_case, file paths, CLI flags).\n- Remove filler words and false starts. Tighten rambling phrasing.\n- If the input is a short one-liner, return a single clean sentence instead of forcing the structure.\n- Return only the rewritten prompt — no preamble, no explanation.\n\nInput:\n${output}".to_string(),
+            shortcut: None,
+        },
+        LLMPrompt {
+            id: "builtin_screenshot_qa".to_string(),
+            name: "Screenshot Q&A".to_string(),
+            prompt: "You are a vision assistant. The user has attached a screenshot and dictated a request.\n\nRules:\n- Look carefully at the screenshot.\n- Answer the dictated request directly and concisely.\n- If the user asks for code, a prompt, a commit message, or any specific output, return ONLY that output — no preamble, no explanation.\n- If the user asks a general question about the screen, answer plainly in one or two sentences unless more is clearly needed.\n- Preserve any identifiers, file paths, CLI flags, and code fragments verbatim.\n\nDictated request:\n${output}".to_string(),
             shortcut: None,
         },
         LLMPrompt {
@@ -792,6 +840,46 @@ fn default_rest_api_port() -> u16 {
 
 fn default_correction_phrases() -> Vec<String> {
     vec!["scratch that".to_string()]
+}
+
+fn default_voice_commands() -> Vec<VoiceCommand> {
+    vec![
+        VoiceCommand {
+            name: "Approve".to_string(),
+            phrases: vec![
+                "approve".to_string(),
+                "accept".to_string(),
+                "yes".to_string(),
+                "okay".to_string(),
+                "confirm".to_string(),
+            ],
+            keystroke: "enter".to_string(),
+            enabled: true,
+        },
+        VoiceCommand {
+            name: "Reject".to_string(),
+            phrases: vec![
+                "reject".to_string(),
+                "decline".to_string(),
+                "no".to_string(),
+                "cancel".to_string(),
+            ],
+            keystroke: "escape".to_string(),
+            enabled: true,
+        },
+        VoiceCommand {
+            name: "Next".to_string(),
+            phrases: vec!["next".to_string()],
+            keystroke: "tab".to_string(),
+            enabled: true,
+        },
+        VoiceCommand {
+            name: "Back".to_string(),
+            phrases: vec!["back".to_string(), "previous".to_string()],
+            keystroke: "shift+tab".to_string(),
+            enabled: true,
+        },
+    ]
 }
 
 fn default_typing_tool() -> TypingTool {
@@ -877,24 +965,31 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: default_shortcut.to_string(),
         },
     );
-    #[cfg(target_os = "windows")]
-    let default_post_process_shortcut = "ctrl+shift+space";
-    #[cfg(target_os = "macos")]
-    let default_post_process_shortcut = "option+shift+space";
-    #[cfg(target_os = "linux")]
-    let default_post_process_shortcut = "ctrl+shift+space";
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let default_post_process_shortcut = "alt+shift+space";
-
+    // Voice command shortcut — unbound by default; user opts in.
     bindings.insert(
-        "transcribe_with_post_process".to_string(),
+        "voice_command".to_string(),
         ShortcutBinding {
-            id: "transcribe_with_post_process".to_string(),
-            name: "Transcribe with Post-Processing".to_string(),
-            description: "Converts your speech into text and applies AI post-processing."
-                .to_string(),
-            default_binding: default_post_process_shortcut.to_string(),
-            current_binding: default_post_process_shortcut.to_string(),
+            id: "voice_command".to_string(),
+            name: "Voice Command".to_string(),
+            description:
+                "Records a short phrase and maps it to a keystroke (e.g. \"approve\" → Enter) instead of pasting text. Great for AI agent control in Cursor, Claude Code, and similar tools."
+                    .to_string(),
+            default_binding: "".to_string(),
+            current_binding: "".to_string(),
+        },
+    );
+
+    // Screenshot + dictate shortcut — unbound by default so users opt in explicitly.
+    bindings.insert(
+        "transcribe_with_screenshot".to_string(),
+        ShortcutBinding {
+            id: "transcribe_with_screenshot".to_string(),
+            name: "Screenshot + Dictate".to_string(),
+            description:
+                "Captures the screen, records your question, and sends both to a vision-capable LLM. Requires a vision provider."
+                    .to_string(),
+            default_binding: "".to_string(),
+            current_binding: "".to_string(),
         },
     );
     bindings.insert(
@@ -982,6 +1077,10 @@ pub fn get_default_settings() -> AppSettings {
         voice_edit_prefix_detection: false,
         rest_api_enabled: false,
         rest_api_port: default_rest_api_port(),
+        voice_commands_enabled: false,
+        voice_commands: default_voice_commands(),
+        correction_phrases_enabled: false,
+        correction_phrases: default_correction_phrases(),
     }
 }
 
@@ -1005,6 +1104,35 @@ impl AppSettings {
         self.post_process_providers
             .iter_mut()
             .find(|provider| provider.id == provider_id)
+    }
+
+    /// Returns true when the user has a usable LLM configured: a valid
+    /// provider + model selected, and either an API key entered or the
+    /// provider is Apple Intelligence (native, no key required).
+    ///
+    /// Used to decide whether the default transcribe shortcut should auto-
+    /// apply AI refinement.
+    pub fn has_working_llm(&self) -> bool {
+        let Some(provider) = self.active_post_process_provider() else {
+            return false;
+        };
+        let model = self
+            .post_process_models
+            .get(&provider.id)
+            .map(|s| s.trim())
+            .unwrap_or("");
+        if model.is_empty() {
+            return false;
+        }
+        if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
+            return true;
+        }
+        let key = self
+            .post_process_api_keys
+            .get(&provider.id)
+            .map(|s| s.trim())
+            .unwrap_or("");
+        !key.is_empty()
     }
 }
 
@@ -1031,6 +1159,18 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
                     }
                 }
 
+                // Migration: `transcribe_with_post_process` was removed in
+                // favor of auto-refinement on the main transcribe shortcut.
+                // Drop any orphan binding carried over from older installs.
+                if settings
+                    .bindings
+                    .remove("transcribe_with_post_process")
+                    .is_some()
+                {
+                    debug!("Removing obsolete `transcribe_with_post_process` binding");
+                    updated = true;
+                }
+
                 if updated {
                     debug!("Settings updated with new bindings");
                     store.set("settings", serde_json::to_value(&settings).unwrap());
@@ -1054,11 +1194,73 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_builtin_prompts(&mut settings);
-    if changed {
-        store.set("settings", serde_json::to_value(&settings).unwrap());
+    let migrated = hydrate_api_keys_from_keychain(&mut settings);
+    if changed || migrated {
+        store.set(
+            "settings",
+            serde_json::to_value(sanitize_for_storage(&settings)).unwrap(),
+        );
     }
 
     settings
+}
+
+/// Hydrate API keys from the OS keychain into the in-memory settings.
+/// Migrates any plaintext keys still in the JSON up into the keychain.
+/// Returns true when plaintext keys were successfully migrated (and thus
+/// should be cleared from the JSON store on the next save).
+fn hydrate_api_keys_from_keychain(settings: &mut AppSettings) -> bool {
+    let providers: Vec<String> = settings
+        .post_process_providers
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    let mut migrated_plaintext = false;
+    for provider_id in providers {
+        let current = settings
+            .post_process_api_keys
+            .get(&provider_id)
+            .cloned()
+            .unwrap_or_default();
+        if current.is_empty() {
+            if let Some(stored) = crate::keychain::get_api_key(&provider_id) {
+                settings
+                    .post_process_api_keys
+                    .insert(provider_id, stored);
+            }
+        } else if crate::keychain::set_api_key(&provider_id, &current) {
+            // Plaintext key successfully migrated to keychain.
+            migrated_plaintext = true;
+        } else {
+            // Keychain unavailable — leave plaintext in place so the user
+            // doesn't lose their key. We'll try again next load.
+            warn!(
+                "Keychain write failed for provider '{}'; keeping plaintext in settings.",
+                provider_id
+            );
+        }
+    }
+    migrated_plaintext
+}
+
+/// Produce a copy of settings with API keys cleared for each provider whose
+/// key is present in the OS keychain. Keys only get cleared when the keychain
+/// confirms it has them, so a keychain outage can't cause data loss.
+fn sanitize_for_storage(settings: &AppSettings) -> AppSettings {
+    let mut out = settings.clone();
+    let providers: Vec<String> = out
+        .post_process_providers
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    for provider_id in providers {
+        // Only clear the JSON copy if the keychain actually holds the key.
+        if crate::keychain::get_api_key(&provider_id).is_some() {
+            out.post_process_api_keys
+                .insert(provider_id, String::new());
+        }
+    }
+    out
 }
 
 pub fn get_settings(app: &AppHandle) -> AppSettings {
@@ -1069,19 +1271,29 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     let mut settings = if let Some(settings_value) = store.get("settings") {
         serde_json::from_value::<AppSettings>(settings_value).unwrap_or_else(|_| {
             let default_settings = get_default_settings();
-            store.set("settings", serde_json::to_value(&default_settings).unwrap());
+            store.set(
+                "settings",
+                serde_json::to_value(sanitize_for_storage(&default_settings)).unwrap(),
+            );
             default_settings
         })
     } else {
         let default_settings = get_default_settings();
-        store.set("settings", serde_json::to_value(&default_settings).unwrap());
+        store.set(
+            "settings",
+            serde_json::to_value(sanitize_for_storage(&default_settings)).unwrap(),
+        );
         default_settings
     };
 
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_builtin_prompts(&mut settings);
-    if changed {
-        store.set("settings", serde_json::to_value(&settings).unwrap());
+    let migrated = hydrate_api_keys_from_keychain(&mut settings);
+    if changed || migrated {
+        store.set(
+            "settings",
+            serde_json::to_value(sanitize_for_storage(&settings)).unwrap(),
+        );
     }
 
     settings
@@ -1092,7 +1304,21 @@ pub fn write_settings(app: &AppHandle, settings: AppSettings) {
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
 
-    store.set("settings", serde_json::to_value(&settings).unwrap());
+    // Persist API keys to the OS keychain; they never hit disk in plaintext.
+    for (provider_id, key) in settings.post_process_api_keys.iter() {
+        if !key.is_empty() {
+            crate::keychain::set_api_key(provider_id, key);
+        } else {
+            // Empty key means the user cleared it — drop the keychain entry so
+            // it stops being returned on the next hydrate.
+            crate::keychain::delete_api_key(provider_id);
+        }
+    }
+
+    store.set(
+        "settings",
+        serde_json::to_value(sanitize_for_storage(&settings)).unwrap(),
+    );
 }
 
 pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {

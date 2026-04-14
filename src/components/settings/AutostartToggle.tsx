@@ -13,7 +13,7 @@ export const AutostartToggle: React.FC<AutostartToggleProps> = React.memo(
     const { t } = useTranslation();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
-    const autostartEnabled = getSetting("autostart_enabled") ?? false;
+    const autostartEnabled = getSetting("autostart_enabled") ?? true;
 
     return (
       <ToggleSwitch

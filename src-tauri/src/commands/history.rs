@@ -205,6 +205,20 @@ pub async fn get_history_entries(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn update_history_entry_title(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    id: i64,
+    title: Option<String>,
+) -> Result<HistoryEntry, String> {
+    history_manager
+        .update_user_title(id, title)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn toggle_history_entry_saved(
     _app: AppHandle,
     history_manager: State<'_, Arc<HistoryManager>>,

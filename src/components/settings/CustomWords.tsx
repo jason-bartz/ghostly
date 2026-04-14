@@ -11,6 +11,44 @@ interface CustomWordsProps {
   grouped?: boolean;
 }
 
+const VOCAB_PRESETS: { id: string; labelKey: string; words: string[] }[] = [
+  {
+    id: "web",
+    labelKey: "settings.advanced.customWords.presets.web",
+    words: [
+      "React", "Next.js", "TypeScript", "JavaScript", "Tailwind", "shadcn",
+      "Vite", "ESLint", "Prettier", "Zustand", "TanStack", "Zod", "tRPC",
+      "Vercel", "Supabase", "Prisma", "NextAuth", "pnpm", "npm", "bun",
+      "useState", "useEffect", "useMemo", "useCallback", "useRef",
+    ],
+  },
+  {
+    id: "rust",
+    labelKey: "settings.advanced.customWords.presets.rust",
+    words: [
+      "Rust", "Cargo", "Tokio", "Serde", "Tauri", "rustc", "clippy",
+      "Axum", "Actix", "anyhow", "thiserror", "rustup", "crates.io",
+    ],
+  },
+  {
+    id: "python",
+    labelKey: "settings.advanced.customWords.presets.python",
+    words: [
+      "Python", "FastAPI", "Django", "Flask", "pytest", "NumPy", "PyTorch",
+      "TensorFlow", "pip", "uv", "poetry", "Pydantic", "pandas", "Jupyter",
+    ],
+  },
+  {
+    id: "ai",
+    labelKey: "settings.advanced.customWords.presets.ai",
+    words: [
+      "Cursor", "Claude", "Windsurf", "Cline", "Copilot", "ChatGPT",
+      "Anthropic", "OpenAI", "GPT", "Whisper", "MCP", "LLM", "RAG",
+      "Ollama", "LangChain",
+    ],
+  },
+];
+
 export const CustomWords: React.FC<CustomWordsProps> = React.memo(
   ({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
@@ -43,6 +81,21 @@ export const CustomWords: React.FC<CustomWordsProps> = React.memo(
       updateSetting(
         "custom_words",
         customWords.filter((word) => word !== wordToRemove),
+      );
+    };
+
+    const handleAddPreset = (presetId: string) => {
+      const preset = VOCAB_PRESETS.find((p) => p.id === presetId);
+      if (!preset) return;
+      const existing = new Set(customWords);
+      const toAdd = preset.words.filter((w) => !existing.has(w));
+      if (toAdd.length === 0) {
+        toast(t("settings.advanced.customWords.presetAlreadyAdded"));
+        return;
+      }
+      updateSetting("custom_words", [...customWords, ...toAdd]);
+      toast.success(
+        t("settings.advanced.customWords.presetAdded", { count: toAdd.length }),
       );
     };
 
@@ -85,6 +138,26 @@ export const CustomWords: React.FC<CustomWordsProps> = React.memo(
             >
               {t("settings.advanced.customWords.add")}
             </Button>
+          </div>
+        </SettingContainer>
+        <SettingContainer
+          title={t("settings.advanced.customWords.presets.title")}
+          description={t("settings.advanced.customWords.presets.description")}
+          descriptionMode={descriptionMode}
+          grouped={grouped}
+        >
+          <div className="flex flex-wrap gap-2">
+            {VOCAB_PRESETS.map((preset) => (
+              <Button
+                key={preset.id}
+                onClick={() => handleAddPreset(preset.id)}
+                disabled={isUpdating("custom_words")}
+                variant="secondary"
+                size="sm"
+              >
+                {t(preset.labelKey)}
+              </Button>
+            ))}
           </div>
         </SettingContainer>
         {customWords.length > 0 && (

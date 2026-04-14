@@ -20,6 +20,7 @@ const RecordingOverlay: React.FC = () => {
   const [state, setState] = useState<OverlayState>("recording");
   const [levels, setLevels] = useState<number[]>(Array(14).fill(0));
   const smoothedLevelsRef = useRef<number[]>(Array(16).fill(0));
+  const [peakLevel, setPeakLevel] = useState<number>(0);
   const [previewText, setPreviewText] = useState<string>("");
   const direction = getLanguageDirection(i18n.language);
 
@@ -56,7 +57,18 @@ const RecordingOverlay: React.FC = () => {
         });
 
         smoothedLevelsRef.current = smoothed;
-        setLevels(smoothed.slice(0, 14));
+        const sliced = smoothed.slice(0, 14);
+        // Arrange peak-in-middle: largest values center, smallest at edges
+        const sorted = [...sliced].sort((a, b) => a - b);
+        const mirrored: number[] = new Array(sliced.length);
+        for (let i = 0; i < sliced.length; i++) {
+          const center = (sliced.length - 1) / 2;
+          const dist = Math.abs(i - center);
+          const rank = sliced.length - 1 - Math.round(dist * 2);
+          mirrored[i] = sorted[Math.max(0, Math.min(sorted.length - 1, rank))];
+        }
+        setLevels(mirrored);
+        setPeakLevel(Math.max(...sliced));
       });
 
       // Listen for transcription preview from Rust (shows text before paste)
@@ -93,16 +105,21 @@ const RecordingOverlay: React.FC = () => {
       ? previewText.slice(0, 38) + "…"
       : previewText;
 
+  const glowIntensity = state === "recording" ? Math.min(1, peakLevel * 1.5) : 0;
+
   return (
     <div
       dir={direction}
       className={`recording-overlay ${isVisible ? "fade-in" : ""}`}
+      style={{
+        boxShadow: `0 0 ${20 + glowIntensity * 18}px rgba(124, 58, 237, ${0.18 + glowIntensity * 0.35}), 0 4px 24px #00000080`,
+      }}
     >
       <div className="overlay-left">{getIcon()}</div>
 
       <div className="overlay-middle">
         {state === "recording" && (
-          <div className="bars-container">
+          <div className="bars-container state-fade">
             {levels.map((v, i) => (
               <div
                 key={i}
@@ -110,21 +127,21 @@ const RecordingOverlay: React.FC = () => {
                 style={{
                   height: `${Math.min(28, 3 + Math.pow(v, 0.65) * 25)}px`,
                   transition: "height 55ms ease-out, opacity 100ms ease-out",
-                  opacity: Math.max(0.25, v * 2),
+                  opacity: Math.max(0.35, Math.min(1, v * 2)),
                 }}
               />
             ))}
           </div>
         )}
         {state === "transcribing" && (
-          <div className="transcribing-text">
+          <div className="transcribing-text state-fade">
             {previewText
               ? truncatedPreview
               : t("overlay.transcribing")}
           </div>
         )}
         {state === "processing" && (
-          <div className="transcribing-text">
+          <div className="transcribing-text state-fade">
             {previewText
               ? truncatedPreview
               : t("overlay.processing")}
