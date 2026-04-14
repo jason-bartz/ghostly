@@ -295,6 +295,14 @@ async updateCustomWords(words: string[]) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async updateCustomWordPhonetics(phonetics: Partial<{ [key in string]: string }>) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_custom_word_phonetics", { phonetics }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Temporarily unregister a binding while the user is editing it in the UI.
  * This avoids firing the action while keys are being recorded.
@@ -345,14 +353,6 @@ async changeLazyStreamCloseSetting(enabled: boolean) : Promise<Result<null, stri
 async changeAppLanguageSetting(language: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_app_language_setting", { language }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeUpdateChecksSetting(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_update_checks_setting", { enabled }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -438,14 +438,6 @@ async startHandyKeysRecording(bindingId: string) : Promise<Result<null, string>>
 async stopHandyKeysRecording() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("stop_handy_keys_recording") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async triggerUpdateCheck() : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("trigger_update_check") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -910,6 +902,14 @@ async exportHistory(path: string, format: string) : Promise<Result<null, string>
     else return { status: "error", error: e  as any };
 }
 },
+async getTranscriptionStats() : Promise<Result<TranscriptionStats, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_transcription_stats") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
@@ -1062,6 +1062,118 @@ async clearVoiceEditSession() : Promise<Result<null, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Return the bundled EULA text and the current EULA version string. The
+ * frontend compares the version against `eula_accepted_version` in settings
+ * to decide whether to show the click-through modal.
+ */
+async getEula() : Promise<Result<[string, string], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_eula") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Return the bundled third-party notices text.
+ */
+async getThirdPartyNotices() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_third_party_notices") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Record that the user has accepted the EULA at `version`. The app will not
+ * prompt again until `CURRENT_EULA_VERSION` differs from the stored value.
+ */
+async acceptEula(version: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("accept_eula", { version }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getUsageStats() : Promise<Result<UsageStats, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_usage_stats") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Debug-only: flip the free-tier override so devs can exercise the paywall
+ * without carrying a real license. No-op on `effective_is_pro()` when
+ * `is_pro` is already false.
+ */
+async setDevForceFreeTier(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_dev_force_free_tier", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Debug-only: flip the local `is_pro` flag. Once the real license flow
+ * ships this will be replaced by a validated license key path; for now it
+ * lets us test the Pro UI state without payment.
+ */
+async setDevIsPro(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_dev_is_pro", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Return the built-in IDE preset packs (Cursor, Claude Code, Windsurf, VS
+ * Code, Replit). Used by settings UI to render the preset list.
+ */
+async getIdePresets() : Promise<IdePreset[]> {
+    return await TAURI_INVOKE("get_ide_presets");
+},
+/**
+ * Mark the one-time IDE hint as seen for the given preset id. Idempotent.
+ */
+async markIdeHintSeen(presetId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mark_ide_hint_seen", { presetId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setIdePresetsEnabled(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_ide_presets_enabled", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setIdeAutoSubmit(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_ide_auto_submit", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async resetSeenIdeHints() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reset_seen_ide_hints") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -1081,7 +1193,14 @@ historyUpdatePayload: "history-update-payload"
 /** user-defined types **/
 
 export type AppContext = { bundleId: string | null; processName: string | null; windowClass: string | null; exePath: string | null; windowTitle: string | null }
-export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path: string | null; custom_filler_words?: string[] | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; extra_recording_buffer_ms?: number; profiles_enabled?: boolean; profiles?: Profile[]; 
+export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
+/**
+ * Optional phonetic ("sounds like") hints keyed by the lowercased custom
+ * word. Used as a Soundex override so users can nudge fuzzy-match for
+ * proper nouns whose spelling diverges from pronunciation
+ * (e.g. "Siobhan" -> "shavawn"). Not sent to Whisper as initial_prompt.
+ */
+custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path: string | null; custom_filler_words?: string[] | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; extra_recording_buffer_ms?: number; profiles_enabled?: boolean; profiles?: Profile[]; 
 /**
  * When true, built-in app-category profiles auto-activate for common apps.
  */
@@ -1091,16 +1210,60 @@ builtin_profiles_enabled?: boolean; voice_editing_enabled?: boolean; session_buf
  */
 voice_edit_prefix_detection?: boolean; rest_api_enabled?: boolean; rest_api_port?: number; voice_commands_enabled?: boolean; voice_commands?: VoiceCommand[]; 
 /**
+ * When true, Ghostly detects supported IDEs/agent CLIs (Cursor, Claude
+ * Code, Windsurf, VS Code, Replit) and surfaces a one-time hint chip in
+ * the overlay plus context-aware voice-command matching.
+ */
+ide_presets_enabled?: boolean; 
+/**
+ * Preset IDs the user has already been shown the hint for. Used to make
+ * the onscreen hint strictly one-time per app.
+ */
+seen_ide_hints?: string[]; 
+/**
+ * When true, dictation into a detected IDE with `auto_submit: true`
+ * presses Enter after paste regardless of the global `auto_submit`
+ * setting. This is what makes "auto populate AND auto send" work.
+ */
+ide_auto_submit?: boolean; 
+/**
  * When true, speaking a correction phrase deletes the last transcription.
+ * No AI required — pure regex word-boundary replacement.
  */
 correction_phrases_enabled?: boolean; 
 /**
  * Phrases that trigger deletion of the last pasted transcription.
  */
-correction_phrases?: string[] }
+correction_phrases?: string[]; 
+/**
+ * Version string of the EULA the user has accepted. `None` means the
+ * user has not yet accepted any EULA — app must show the click-through
+ * modal before allowing use. When `CURRENT_EULA_VERSION` bumps, the
+ * stored value will not match and the user re-accepts.
+ */
+eula_accepted_version?: string | null; 
+/**
+ * True when the user has a valid Pro license. Bypasses the weekly
+ * usage cap. Populated later by the license module; stub default is false.
+ */
+is_pro?: boolean; 
+/**
+ * Debug-only override that forces the free-tier code path regardless of
+ * `is_pro`. Only settable from the Debug settings pane; not exposed in
+ * the normal UI. Lets us test the paywall flow on a Pro build.
+ */
+dev_force_free_tier?: boolean }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }
+/**
+ * Authoritative list of achievement badge identifiers. Serialised as
+ * snake_case strings so the wire format stays stable across refactors and
+ * is human-readable in logs; specta exports this as a TypeScript
+ * string-literal union, letting both sides share a single source of truth
+ * and giving the compiler an early warning if the two catalogs ever drift.
+ */
+export type BadgeId = "first_words" | "getting_started" | "regular" | "devoted" | "paragraph" | "marathon" | "one_hour_club" | "ten_hour_club" | "post_processor" | "collector" | "lexicographer" | "early_bird" | "night_owl" | "lunch_break" | "every_day_of_the_week" | "sprint" | "questioner" | "exclaimer"
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
@@ -1108,6 +1271,31 @@ export type EngineType = "Whisper" | "Parakeet" | "Moonshine" | "MoonshineStream
 export type GpuDeviceOption = { id: number; name: string; total_vram_mb: number }
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; user_title: string | null; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean }
 export type HistoryUpdatePayload = { action: "added"; entry: HistoryEntry } | { action: "updated"; entry: HistoryEntry } | { action: "deleted"; id: number } | { action: "toggled"; id: number }
+/**
+ * Single voice command exposed by a preset. Separate from `VoiceCommand`
+ * because we want a user-readable `description` for the hint chip.
+ */
+export type IdeCommand = { 
+/**
+ * Spoken phrase, lowercase. Additional synonyms live in `aliases`.
+ */
+phrase: string; aliases?: string[]; 
+/**
+ * Keystroke in `voice_commands` format: "enter", "escape", "cmd+enter", ...
+ */
+keystroke: string; 
+/**
+ * Short description for the one-time overlay hint.
+ */
+description: string }
+/**
+ * Preset pack for one IDE / agent UI.
+ */
+export type IdePreset = { id: string; name: string; 
+/**
+ * When true, a normal dictation into this app is auto-submitted (paste + Enter).
+ */
+autoSubmit: boolean; commands: IdeCommand[] }
 /**
  * Result of changing keyboard implementation
  */
@@ -1186,7 +1374,21 @@ export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "
 export type SecretMap = Partial<{ [key in string]: string }>
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
 export type SoundTheme = "subtle" | "marimba" | "pop" | "custom"
+/**
+ * Aggregate usage statistics derived from the transcription history table.
+ * All fields are lifetime totals across non-empty entries. Rows missing an
+ * `audio_duration_ms` value (migrated from before the column existed) are
+ * counted toward word/count totals but contribute zero to duration.
+ */
+export type TranscriptionStats = { total_words: number; total_duration_ms: number; transcription_count: number; longest_transcription_words: number; first_transcription_timestamp: number | null; latest_transcription_timestamp: number | null; earned_badge_ids: BadgeId[] }
 export type TypingTool = "auto" | "wtype" | "kwtype" | "dotool" | "ydotool" | "xdotool"
+export type UsageStats = { week_start_iso: string; seconds_used: number; weekly_limit_secs: number; is_pro: boolean; is_over_limit: boolean; is_at_warning: boolean; 
+/**
+ * Unix timestamp (seconds) when the current week resets (next Monday
+ * 00:00 local). Frontend computes "time remaining" from this.
+ */
+resets_at_unix: number; lifetime_seconds: number; history: UsageWeek[] }
+export type UsageWeek = { week_start_iso: string; seconds: number; hit_limit: boolean }
 export type VoiceCommand = { 
 /**
  * Display label for settings UI.

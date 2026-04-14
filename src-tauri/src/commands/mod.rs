@@ -3,6 +3,7 @@ pub mod history;
 pub mod models;
 pub mod profiles;
 pub mod transcription;
+pub mod usage;
 
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
 use crate::utils::cancel_current_operation;
@@ -210,6 +211,97 @@ pub async fn set_rest_api_enabled(app: AppHandle, enabled: bool) -> Result<(), S
 pub async fn set_rest_api_port(app: AppHandle, port: u16) -> Result<(), String> {
     let mut settings = get_settings(&app);
     settings.rest_api_port = port;
+    write_settings(&app, settings);
+    Ok(())
+}
+
+/// Return the bundled EULA text and the current EULA version string. The
+/// frontend compares the version against `eula_accepted_version` in settings
+/// to decide whether to show the click-through modal.
+#[tauri::command]
+#[specta::specta]
+pub fn get_eula(app: AppHandle) -> Result<(String, String), String> {
+    let path = app
+        .path()
+        .resolve(
+            "resources/legal/EULA.md",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("Failed to resolve EULA path: {}", e))?;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read EULA at {:?}: {}", path, e))?;
+    Ok((text, crate::settings::CURRENT_EULA_VERSION.to_string()))
+}
+
+/// Return the bundled third-party notices text.
+#[tauri::command]
+#[specta::specta]
+pub fn get_third_party_notices(app: AppHandle) -> Result<String, String> {
+    let path = app
+        .path()
+        .resolve(
+            "resources/legal/THIRD_PARTY_NOTICES.md",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("Failed to resolve notices path: {}", e))?;
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read notices at {:?}: {}", path, e))
+}
+
+/// Return the built-in IDE preset packs (Cursor, Claude Code, Windsurf, VS
+/// Code, Replit). Used by settings UI to render the preset list.
+#[tauri::command]
+#[specta::specta]
+pub fn get_ide_presets() -> Vec<crate::ide_presets::IdePreset> {
+    crate::ide_presets::all_presets()
+}
+
+/// Mark the one-time IDE hint as seen for the given preset id. Idempotent.
+#[tauri::command]
+#[specta::specta]
+pub fn mark_ide_hint_seen(app: AppHandle, preset_id: String) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    if !settings.seen_ide_hints.iter().any(|id| id == &preset_id) {
+        settings.seen_ide_hints.push(preset_id);
+        write_settings(&app, settings);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_ide_presets_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.ide_presets_enabled = enabled;
+    write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_ide_auto_submit(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.ide_auto_submit = enabled;
+    write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn reset_seen_ide_hints(app: AppHandle) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.seen_ide_hints.clear();
+    write_settings(&app, settings);
+    Ok(())
+}
+
+/// Record that the user has accepted the EULA at `version`. The app will not
+/// prompt again until `CURRENT_EULA_VERSION` differs from the stored value.
+#[tauri::command]
+#[specta::specta]
+pub fn accept_eula(app: AppHandle, version: String) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.eula_accepted_version = Some(version);
     write_settings(&app, settings);
     Ok(())
 }

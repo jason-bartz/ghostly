@@ -9,6 +9,7 @@ mod commands;
 mod edit_intent;
 mod frontmost;
 mod helpers;
+mod ide_presets;
 mod input;
 mod keychain;
 mod llm_client;
@@ -39,6 +40,7 @@ use managers::audio::AudioRecordingManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
+use managers::usage::UsageManager;
 use session::SessionBuffer;
 #[cfg(unix)]
 use signal_hook::consts::{SIGUSR1, SIGUSR2};
@@ -165,6 +167,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     );
     let history_manager =
         Arc::new(HistoryManager::new(app_handle).expect("Failed to initialize history manager"));
+    let usage_manager = Arc::new(UsageManager::new());
 
     // Apply accelerator preferences before any model loads
     managers::transcription::apply_accelerator_settings(app_handle);
@@ -174,6 +177,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(model_manager.clone());
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
+    app_handle.manage(usage_manager.clone());
     app_handle.manage(Arc::new(SessionBuffer::new()));
     app_handle.manage(Arc::new(stream_cancel::StreamCancellation::new()));
 
@@ -231,13 +235,6 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
                 show_main_window(app);
-            }
-            "check_updates" => {
-                let settings = settings::get_settings(app);
-                if settings.update_checks_enabled {
-                    show_main_window(app);
-                    let _ = app.emit("check-for-updates", ());
-                }
             }
             "copy_last_transcript" => {
                 tray::copy_last_transcript(app);
@@ -344,33 +341,21 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
-fn trigger_update_check(app: AppHandle) -> Result<(), String> {
-    let settings = settings::get_settings(&app);
-    if !settings.update_checks_enabled {
-        return Ok(());
-    }
-    app.emit("check-for-updates", ())
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
 fn show_main_window_command(app: AppHandle) -> Result<(), String> {
     show_main_window(&app);
     Ok(())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run(cli_args: CliArgs) {
-    // Detect portable mode before anything else
-    portable::init();
-
-    // Parse console logging directives from RUST_LOG, falling back to info-level logging
-    // when the variable is unset
-    let console_filter = build_console_filter();
-
-    let specta_builder = Builder::<tauri::Wry>::new()
+/// Construct the `tauri-specta` builder used both by the running app and by
+/// the `export_bindings` binary. Keeping a single source of truth prevents
+/// command/event drift between the generated TypeScript bindings and the
+/// handlers actually mounted into Tauri at runtime.
+///
+/// The list of commands is the authoritative catalog of the Rust→JS surface.
+/// Any command added here must also be routed into `invoke_handler` below,
+/// which happens automatically via `specta_builder.invoke_handler()`.
+pub fn build_specta_builder() -> Builder<tauri::Wry> {
+    Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             shortcut::change_binding,
             shortcut::reset_binding,
@@ -408,13 +393,13 @@ pub fn run(cli_args: CliArgs) {
             shortcut::set_prompt_shortcut,
             shortcut::remove_prompt_shortcut,
             shortcut::update_custom_words,
+            shortcut::update_custom_word_phonetics,
             shortcut::suspend_binding,
             shortcut::resume_binding,
             shortcut::change_mute_while_recording_setting,
             shortcut::change_append_trailing_space_setting,
             shortcut::change_lazy_stream_close_setting,
             shortcut::change_app_language_setting,
-            shortcut::change_update_checks_setting,
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
             shortcut::change_show_tray_icon_setting,
@@ -424,7 +409,6 @@ pub fn run(cli_args: CliArgs) {
             shortcut::get_available_accelerators,
             shortcut::handy_keys::start_handy_keys_recording,
             shortcut::handy_keys::stop_handy_keys_recording,
-            trigger_update_check,
             show_main_window_command,
             commands::cancel_operation,
             commands::is_portable,
@@ -485,6 +469,7 @@ pub fn run(cli_args: CliArgs) {
             commands::history::toggle_word_correction,
             commands::history::delete_word_correction,
             commands::history::export_history,
+            commands::history::get_transcription_stats,
             helpers::clamshell::is_laptop,
             commands::set_rest_api_enabled,
             commands::set_rest_api_port,
@@ -503,8 +488,31 @@ pub fn run(cli_args: CliArgs) {
             commands::profiles::set_session_buffer_size,
             commands::profiles::set_session_idle_timeout_secs,
             commands::profiles::clear_voice_edit_session,
+            commands::get_eula,
+            commands::get_third_party_notices,
+            commands::accept_eula,
+            commands::usage::get_usage_stats,
+            commands::usage::set_dev_force_free_tier,
+            commands::usage::set_dev_is_pro,
+            commands::get_ide_presets,
+            commands::mark_ide_hint_seen,
+            commands::set_ide_presets_enabled,
+            commands::set_ide_auto_submit,
+            commands::reset_seen_ide_hints,
         ])
-        .events(collect_events![managers::history::HistoryUpdatePayload,]);
+        .events(collect_events![managers::history::HistoryUpdatePayload,])
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run(cli_args: CliArgs) {
+    // Detect portable mode before anything else
+    portable::init();
+
+    // Parse console logging directives from RUST_LOG, falling back to info-level logging
+    // when the variable is unset
+    let console_filter = build_console_filter();
+
+    let specta_builder = build_specta_builder();
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
     specta_builder
@@ -571,7 +579,6 @@ pub fn run(cli_args: CliArgs) {
             }
         }))
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_macos_permissions::init())

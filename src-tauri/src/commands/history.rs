@@ -1,6 +1,6 @@
 use crate::actions::process_transcription_output;
 use crate::managers::{
-    history::{HistoryEntry, HistoryManager, PaginatedHistory, WordCorrection},
+    history::{HistoryEntry, HistoryManager, PaginatedHistory, TranscriptionStats, WordCorrection},
     transcription::TranscriptionManager,
 };
 use chrono::Utc;
@@ -492,6 +492,15 @@ pub async fn toggle_word_correction(
     history_manager
         .toggle_word_correction(id)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transcription_stats(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+) -> Result<TranscriptionStats, String> {
+    history_manager.get_stats().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

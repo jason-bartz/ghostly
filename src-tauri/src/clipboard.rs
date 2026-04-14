@@ -717,7 +717,22 @@ pub fn paste_with_options(
         }
     }
 
-    if !options.suppress_auto_submit && should_send_auto_submit(settings.auto_submit, paste_method)
+    // IDE presets can force auto-submit even when the global setting is off:
+    // dictating into Cursor/Claude Code/Windsurf/Replit should paste AND press
+    // Enter so the prompt fires without the user touching the keyboard.
+    let ide_forces_submit = if settings.ide_presets_enabled && settings.ide_auto_submit {
+        crate::frontmost::current()
+            .ok()
+            .flatten()
+            .and_then(|ctx| crate::ide_presets::detect(&ctx))
+            .map(|preset| preset.auto_submit)
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    let effective_auto_submit = settings.auto_submit || ide_forces_submit;
+
+    if !options.suppress_auto_submit && should_send_auto_submit(effective_auto_submit, paste_method)
     {
         std::thread::sleep(Duration::from_millis(50));
         send_return_key(&mut enigo, settings.auto_submit_key)?;

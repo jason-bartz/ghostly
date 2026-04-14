@@ -7,6 +7,9 @@ export { DictionarySettings } from "./dictionary/DictionarySettings";
 export { AboutSettings } from "./about/AboutSettings";
 export { PostProcessingSettings } from "./post-processing/PostProcessingSettings";
 export { ModelsSettings } from "./models/ModelsSettings";
+export { AchievementsSettings } from "./achievements/AchievementsSettings";
+export { UsageSettings } from "./usage/UsageSettings";
+export { DeveloperSettings } from "./developer/DeveloperSettings";
 
 // Individual setting components
 export { MicrophoneSelector } from "./MicrophoneSelector";
@@ -31,8 +34,8 @@ export { StartHidden } from "./StartHidden";
 export { HistoryLimit } from "./HistoryLimit";
 export { RecordingRetentionPeriodSelector } from "./RecordingRetentionPeriod";
 export { AutostartToggle } from "./AutostartToggle";
-export { UpdateChecksToggle } from "./UpdateChecksToggle";
 export { VoiceEditing } from "./VoiceEditing";
 export { VoiceCommands } from "./VoiceCommands";
+export { IdePresets } from "./IdePresets";
 export { ProfilesSettings } from "./profiles/ProfilesSettings";
 export { ProfilesEnableToggle } from "./ProfilesEnableToggle";

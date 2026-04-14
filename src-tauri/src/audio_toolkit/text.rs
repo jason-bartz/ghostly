@@ -35,6 +35,7 @@ fn find_best_match<'a>(
     candidate: &str,
     custom_words: &'a [String],
     custom_words_nospace: &[String],
+    phonetic_targets: &[Option<String>],
     threshold: f64,
 ) -> Option<(&'a String, f64)> {
     if candidate.is_empty() || candidate.len() > 50 {
@@ -64,8 +65,15 @@ fn find_best_match<'a>(
             1.0
         };
 
-        // Calculate phonetic similarity using Soundex
-        let phonetic_match = soundex(candidate, custom_word_nospace);
+        // Calculate phonetic similarity using Soundex. If the user provided a
+        // phonetic hint for this custom word, compare against that instead of
+        // the literal spelling — lets users bias fuzzy-match for proper nouns
+        // whose pronunciation diverges from spelling.
+        let phonetic_target = phonetic_targets
+            .get(i)
+            .and_then(|p| p.as_deref())
+            .unwrap_or(custom_word_nospace.as_str());
+        let phonetic_match = soundex(candidate, phonetic_target);
 
         // Combine scores: favor phonetic matches, but also consider string similarity
         let combined_score = if phonetic_match {
@@ -99,7 +107,12 @@ fn find_best_match<'a>(
 ///
 /// # Returns
 /// The corrected text with custom words applied
-pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -> String {
+pub fn apply_custom_words(
+    text: &str,
+    custom_words: &[String],
+    phonetics: &std::collections::HashMap<String, String>,
+    threshold: f64,
+) -> String {
     if custom_words.is_empty() {
         return text.to_string();
     }
@@ -111,6 +124,22 @@ pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -
     let custom_words_nospace: Vec<String> = custom_words_lower
         .iter()
         .map(|w| w.replace(' ', ""))
+        .collect();
+
+    // Resolve phonetic override per custom word (keyed by lowercased word,
+    // spaces preserved since that's what the UI stores).
+    let phonetic_targets: Vec<Option<String>> = custom_words_lower
+        .iter()
+        .map(|w| {
+            phonetics.get(w).and_then(|p| {
+                let cleaned = p.trim().to_lowercase().replace(' ', "");
+                if cleaned.is_empty() {
+                    None
+                } else {
+                    Some(cleaned)
+                }
+            })
+        })
         .collect();
 
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -129,9 +158,13 @@ pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -
             let ngram_words = &words[i..i + n];
             let ngram = build_ngram(ngram_words);
 
-            if let Some((replacement, _score)) =
-                find_best_match(&ngram, custom_words, &custom_words_nospace, threshold)
-            {
+            if let Some((replacement, _score)) = find_best_match(
+                &ngram,
+                custom_words,
+                &custom_words_nospace,
+                &phonetic_targets,
+                threshold,
+            ) {
                 // Extract punctuation from first and last words of the n-gram
                 let (prefix, _) = extract_punctuation(ngram_words[0]);
                 let (_, suffix) = extract_punctuation(ngram_words[n - 1]);
@@ -327,7 +360,8 @@ mod tests {
     fn test_apply_custom_words_exact_match() {
         let text = "hello world";
         let custom_words = vec!["Hello".to_string(), "World".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert_eq!(result, "Hello World");
     }
 
@@ -335,7 +369,8 @@ mod tests {
     fn test_apply_custom_words_fuzzy_match() {
         let text = "helo wrold";
         let custom_words = vec!["hello".to_string(), "world".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert_eq!(result, "hello world");
     }
 
@@ -357,7 +392,8 @@ mod tests {
     fn test_empty_custom_words() {
         let text = "hello world";
         let custom_words = vec![];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert_eq!(result, "hello world");
     }
 
@@ -512,7 +548,8 @@ mod tests {
     fn test_apply_custom_words_ngram_two_words() {
         let text = "il cui nome è Charge B, che permette";
         let custom_words = vec!["ChargeBee".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("ChargeBee,"));
         assert!(!result.contains("Charge B"));
     }
@@ -521,7 +558,8 @@ mod tests {
     fn test_apply_custom_words_ngram_three_words() {
         let text = "use Chat G P T for this";
         let custom_words = vec!["ChatGPT".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("ChatGPT"));
     }
 
@@ -529,7 +567,8 @@ mod tests {
     fn test_apply_custom_words_prefers_longer_ngram() {
         let text = "Open AI GPT model";
         let custom_words = vec!["OpenAI".to_string(), "GPT".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert_eq!(result, "OpenAI GPT model");
     }
 
@@ -537,7 +576,8 @@ mod tests {
     fn test_apply_custom_words_ngram_preserves_case() {
         let text = "CHARGE B is great";
         let custom_words = vec!["ChargeBee".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("CHARGEBEE"));
     }
 
@@ -546,7 +586,8 @@ mod tests {
         // Custom word with space should also match against split words
         let text = "using Mac Book Pro";
         let custom_words = vec!["MacBook Pro".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("MacBook"));
     }
 
@@ -556,7 +597,8 @@ mod tests {
         // between build_ngram stripping them and extract_punctuation capturing them
         let text = "use GPT4 for this";
         let custom_words = vec!["GPT-4".to_string()];
-        let result = apply_custom_words(text, &custom_words, 0.5);
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         // Should NOT produce "GPT-44" (double-counting the trailing 4)
         assert!(
             !result.contains("GPT-44"),

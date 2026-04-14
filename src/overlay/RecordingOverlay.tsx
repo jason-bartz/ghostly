@@ -10,6 +10,37 @@ import logoSrc from "@/assets/ghostly_logo.svg";
 
 type OverlayState = "recording" | "transcribing" | "processing";
 
+type IdeHint = {
+  id: string;
+  name: string;
+  autoSubmit: boolean;
+  commands: Array<{
+    phrase: string;
+    aliases: string[];
+    keystroke: string;
+    description: string;
+  }>;
+};
+
+const HINT_DURATION_MS = 4500;
+
+function formatKeystroke(ks: string): string {
+  return ks
+    .split("+")
+    .map((t) => {
+      const s = t.trim().toLowerCase();
+      if (s === "enter" || s === "return") return "↵";
+      if (s === "escape" || s === "esc") return "⎋";
+      if (s === "tab") return "⇥";
+      if (s === "shift") return "⇧";
+      if (s === "cmd" || s === "meta") return "⌘";
+      if (s === "ctrl" || s === "control") return "⌃";
+      if (s === "alt" || s === "option") return "⌥";
+      return t;
+    })
+    .join("");
+}
+
 const GhostIcon: React.FC = () => (
   <img src={logoSrc} width="22" height="22" className="ghost-icon" alt="" />
 );
@@ -22,6 +53,8 @@ const RecordingOverlay: React.FC = () => {
   const smoothedLevelsRef = useRef<number[]>(Array(16).fill(0));
   const [peakLevel, setPeakLevel] = useState<number>(0);
   const [previewText, setPreviewText] = useState<string>("");
+  const [hint, setHint] = useState<IdeHint | null>(null);
+  const hintTimerRef = useRef<number | null>(null);
   const direction = getLanguageDirection(i18n.language);
 
   useEffect(() => {
@@ -79,12 +112,29 @@ const RecordingOverlay: React.FC = () => {
         },
       );
 
+      // One-time IDE hint: show for a few seconds, then mark as seen so it
+      // doesn't appear again for this preset.
+      const unlistenHint = await listen<IdeHint>("ide-hint", (event) => {
+        const payload = event.payload;
+        setHint(payload);
+        if (hintTimerRef.current) {
+          window.clearTimeout(hintTimerRef.current);
+        }
+        hintTimerRef.current = window.setTimeout(() => {
+          setHint(null);
+        }, HINT_DURATION_MS);
+        commands.markIdeHintSeen(payload.id).catch(() => {
+          // Non-fatal: worst case the hint shows again next session.
+        });
+      });
+
       // Cleanup function
       return () => {
         unlistenShow();
         unlistenHide();
         unlistenLevel();
         unlistenPreview();
+        unlistenHint();
       };
     };
 
@@ -117,7 +167,25 @@ const RecordingOverlay: React.FC = () => {
       <div className="overlay-left">{getIcon()}</div>
 
       <div className="overlay-middle">
-        {state === "recording" && (
+        {state === "recording" && hint && (
+          <div
+            className="ide-hint state-fade"
+            title={`${hint.name} voice commands`}
+          >
+            <span className="ide-hint-name">{hint.name}</span>
+            <span className="ide-hint-sep">·</span>
+            {hint.commands.slice(0, 2).map((c, i) => (
+              <React.Fragment key={c.phrase}>
+                {i > 0 && <span className="ide-hint-dot"> / </span>}
+                <span className="ide-hint-phrase">"{c.phrase}"</span>
+                <span className="ide-hint-key">
+                  {formatKeystroke(c.keystroke)}
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+        {state === "recording" && !hint && (
           <div className="bars-container state-fade">
             {levels.map((v, i) => (
               <div
