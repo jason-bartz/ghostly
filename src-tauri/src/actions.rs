@@ -505,7 +505,6 @@ async fn maybe_convert_chinese_variant(
     settings: &AppSettings,
     transcription: &str,
 ) -> Option<String> {
-    // Check if language is set to Simplified or Traditional Chinese
     let is_simplified = settings.selected_language == "zh-Hans";
     let is_traditional = settings.selected_language == "zh-Hant";
 

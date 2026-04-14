@@ -174,7 +174,7 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
 
 ## CLI Parameters
 
-Ghostly supports command-line parameters on all platforms for integration with scripts, window managers, and autostart configurations.
+Ghostly supports command-line parameters for integration with scripts and autostart configurations.
 
 **Implementation:** `cli.rs` (definitions), `main.rs` (parsing), `lib.rs` (applying), `signal_handle.rs` (shared logic)
 
@@ -195,13 +195,11 @@ Ghostly supports command-line parameters on all platforms for integration with s
 
 ## Debug Mode
 
-Access debug features: `Cmd+Shift+D` (macOS) or `Ctrl+Shift+D` (Windows/Linux)
+Access debug features: `Cmd+Shift+D`
 
 ## Platform Notes
 
-- **macOS**: Metal acceleration, accessibility permissions required for keyboard shortcuts
-- **Windows**: Vulkan acceleration, code signing
-- **Linux**: OpenBLAS + Vulkan, limited Wayland support, overlay uses GTK layer shell (disable with `GHOSTLY_NO_GTK_LAYER_SHELL=1`)
+Ghostly is macOS-only. Metal acceleration, accessibility permissions required for keyboard shortcuts. Minimum macOS 10.15.
 
 ## Troubleshooting
 

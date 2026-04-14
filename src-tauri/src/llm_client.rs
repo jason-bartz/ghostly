@@ -61,11 +61,9 @@ struct ChatMessageResponse {
     content: Option<String>,
 }
 
-/// Build headers for API requests based on provider type
 fn build_headers(provider: &PostProcessProvider, api_key: &str) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
 
-    // Common headers
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
         REFERER,
@@ -77,7 +75,6 @@ fn build_headers(provider: &PostProcessProvider, api_key: &str) -> Result<Header
     );
     headers.insert("X-Title", HeaderValue::from_static("Ghostly"));
 
-    // Provider-specific auth headers
     if !api_key.is_empty() {
         if provider.id == "anthropic" {
             headers.insert(
@@ -114,7 +111,6 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
     status.as_u16() == 429 || status.is_server_error()
 }
 
-/// Create an HTTP client with provider-specific headers
 fn create_client(provider: &PostProcessProvider, api_key: &str) -> Result<reqwest::Client, String> {
     let headers = build_headers(provider, api_key)?;
     reqwest::Client::builder()
@@ -124,9 +120,6 @@ fn create_client(provider: &PostProcessProvider, api_key: &str) -> Result<reqwes
         .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
 
-/// Send a chat completion request to an OpenAI-compatible API
-/// Returns Ok(Some(content)) on success, Ok(None) if response has no content,
-/// or Err on actual errors (HTTP, parsing, etc.)
 pub async fn send_chat_completion(
     provider: &PostProcessProvider,
     api_key: String,
@@ -148,11 +141,8 @@ pub async fn send_chat_completion(
     .await
 }
 
-/// Send a chat completion request with structured output support
-/// When json_schema is provided, uses structured outputs mode
-/// system_prompt is used as the system message when provided
-/// reasoning_effort sets the OpenAI-style top-level field (e.g., "none", "low", "medium", "high")
-/// reasoning sets the OpenRouter-style nested object (effort + exclude)
+/// `reasoning_effort` is the OpenAI top-level field; `reasoning` is the
+/// OpenRouter-style nested object. Providers accept one or the other.
 pub async fn send_chat_completion_with_schema(
     provider: &PostProcessProvider,
     api_key: String,
@@ -170,24 +160,18 @@ pub async fn send_chat_completion_with_schema(
 
     let client = create_client(provider, &api_key)?;
 
-    // Build messages vector
     let mut messages = Vec::new();
-
-    // Add system prompt if provided
     if let Some(system) = system_prompt {
         messages.push(ChatMessage {
             role: "system".to_string(),
             content: Value::String(system),
         });
     }
-
-    // Add user message
     messages.push(ChatMessage {
         role: "user".to_string(),
         content: Value::String(user_content),
     });
 
-    // Build response_format if schema is provided
     let response_format = json_schema.map(|schema| ResponseFormat {
         format_type: "json_schema".to_string(),
         json_schema: JsonSchema {
@@ -352,8 +336,6 @@ pub async fn send_chat_completion_with_image(
         .and_then(|choice| choice.message.content.clone()))
 }
 
-/// Fetch available models from an OpenAI-compatible API
-/// Returns a list of model IDs
 pub async fn fetch_models(
     provider: &PostProcessProvider,
     api_key: String,
