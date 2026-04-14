@@ -668,27 +668,39 @@ pub fn change_autostart_setting(app: AppHandle, enabled: bool) -> Result<(), Str
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_update_checks_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
-    settings.update_checks_enabled = enabled;
+    // Drop phonetic entries for words that were removed so the map doesn't
+    // grow unbounded as users churn through vocabulary.
+    let keep: std::collections::HashSet<String> = words.iter().map(|w| w.to_lowercase()).collect();
+    settings
+        .custom_word_phonetics
+        .retain(|k, _| keep.contains(k));
+    settings.custom_words = words;
     settings::write_settings(&app, settings);
-
-    let _ = app.emit(
-        "settings-changed",
-        serde_json::json!({
-            "setting": "update_checks_enabled",
-            "value": enabled
-        }),
-    );
-
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), String> {
+pub fn update_custom_word_phonetics(
+    app: AppHandle,
+    phonetics: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
-    settings.custom_words = words;
+    // Normalize keys to lowercase and drop empty values.
+    let normalized: std::collections::HashMap<String, String> = phonetics
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let v = v.trim().to_string();
+            if v.is_empty() {
+                None
+            } else {
+                Some((k.to_lowercase(), v))
+            }
+        })
+        .collect();
+    settings.custom_word_phonetics = normalized;
     settings::write_settings(&app, settings);
     Ok(())
 }

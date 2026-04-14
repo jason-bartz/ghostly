@@ -6,11 +6,23 @@ import { SettingContainer } from "../../ui/SettingContainer";
 import { AppDataDirectory } from "../AppDataDirectory";
 import { AppLanguageSelector } from "../AppLanguageSelector";
 import { LogDirectory } from "../debug";
-import { UpdateChecksToggle } from "../UpdateChecksToggle";
+import { LegalViewer } from "./LegalViewer";
+import { commands } from "@/bindings";
+
+type ViewerKind = "eula" | "notices" | null;
+
+const unwrap = async <T,>(
+  p: Promise<{ status: string; data?: T; error?: unknown }>,
+): Promise<T> => {
+  const r = await p;
+  if (r.status === "ok" && r.data !== undefined) return r.data;
+  throw new Error(String(r.error ?? "unknown error"));
+};
 
 export const AboutSettings: React.FC = () => {
   const { t } = useTranslation();
   const [version, setVersion] = useState("");
+  const [viewer, setViewer] = useState<ViewerKind>(null);
 
   useEffect(() => {
     const fetchVersion = async () => {
@@ -42,27 +54,52 @@ export const AboutSettings: React.FC = () => {
         <LogDirectory grouped={true} />
       </SettingsGroup>
 
-      <SettingsGroup title={t("settings.about.updateGroup")}>
-        <UpdateChecksToggle descriptionMode="tooltip" grouped={true} />
-      </SettingsGroup>
-
       <SettingsGroup title={t("settings.about.acknowledgments.title")}>
+        <SettingContainer
+          title={t("settings.about.acknowledgments.eula.title")}
+          description={t("settings.about.acknowledgments.eula.description")}
+          grouped={true}
+          layout="stacked"
+        >
+          <button
+            onClick={() => setViewer("eula")}
+            className="text-sm text-mid-gray underline hover:text-text text-left"
+          >
+            {t("settings.about.acknowledgments.eula.link")}
+          </button>
+        </SettingContainer>
         <SettingContainer
           title={t("settings.about.acknowledgments.notices.title")}
           description={t("settings.about.acknowledgments.notices.description")}
           grouped={true}
           layout="stacked"
         >
-          <a
-            href="https://github.com/jason-bartz/ghostly/blob/main/NOTICE.md"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-mid-gray underline"
+          <button
+            onClick={() => setViewer("notices")}
+            className="text-sm text-mid-gray underline hover:text-text text-left"
           >
             {t("settings.about.acknowledgments.notices.link")}
-          </a>
+          </button>
         </SettingContainer>
       </SettingsGroup>
+
+      {viewer === "eula" && (
+        <LegalViewer
+          title={t("settings.about.acknowledgments.eula.title")}
+          load={async () => {
+            const [text] = await unwrap(commands.getEula());
+            return text;
+          }}
+          onClose={() => setViewer(null)}
+        />
+      )}
+      {viewer === "notices" && (
+        <LegalViewer
+          title={t("settings.about.acknowledgments.notices.title")}
+          load={() => unwrap(commands.getThirdPartyNotices())}
+          onClose={() => setViewer(null)}
+        />
+      )}
     </div>
   );
 };

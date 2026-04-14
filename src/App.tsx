@@ -10,6 +10,8 @@ import {
 import { ModelStateEvent, RecordingErrorEvent } from "./lib/types/events";
 import "./App.css";
 import AccessibilityPermissions from "./components/AccessibilityPermissions";
+import { EulaGate } from "./components/EulaGate";
+import { PaywallModal } from "./components/PaywallModal";
 import Footer from "./components/footer";
 import Onboarding, { AccessibilityOnboarding } from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
@@ -31,6 +33,8 @@ function App() {
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(
     null,
   );
+  // null = still resolving, true = gate active, false = accepted (or skipped)
+  const [eulaRequired, setEulaRequired] = useState<boolean | null>(null);
   // Track if this is a returning user who just needs to grant permissions
   // (vs a new user who needs full onboarding including model selection)
   const [isReturningUser, setIsReturningUser] = useState(false);
@@ -48,6 +52,28 @@ function App() {
 
   useEffect(() => {
     checkOnboardingStatus();
+  }, []);
+
+  // Resolve EULA gate state on mount. Show the gate if the accepted version
+  // on disk doesn't match the current EULA version shipped in this build.
+  useEffect(() => {
+    (async () => {
+      try {
+        const [settingsRes, eulaRes] = await Promise.all([
+          commands.getAppSettings(),
+          commands.getEula(),
+        ]);
+        if (settingsRes.status !== "ok" || eulaRes.status !== "ok") {
+          setEulaRequired(true);
+          return;
+        }
+        const accepted = settingsRes.data.eula_accepted_version;
+        const current = eulaRes.data[1];
+        setEulaRequired(accepted !== current);
+      } catch {
+        setEulaRequired(true);
+      }
+    })();
   }, []);
 
   // Initialize RTL direction when language changes
@@ -154,6 +180,19 @@ function App() {
     };
   }, [t]);
 
+  // Soft warning when free-tier users cross 80% of their weekly cap. Emitted
+  // once per week by the backend, so a single toast is enough.
+  useEffect(() => {
+    const unlisten = listen("usage-warning", () => {
+      toast.warning(t("usage.warningToast.title"), {
+        description: t("usage.warningToast.description"),
+      });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
   // Listen for model loading failures and show a toast
   useEffect(() => {
     const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {
@@ -251,9 +290,14 @@ function App() {
     setOnboardingStep("done");
   };
 
-  // Still checking onboarding status
-  if (onboardingStep === null) {
+  // Still resolving either check
+  if (onboardingStep === null || eulaRequired === null) {
     return null;
+  }
+
+  // Block on EULA before any onboarding or main UI
+  if (eulaRequired) {
+    return <EulaGate onAccepted={() => setEulaRequired(false)} />;
   }
 
   if (onboardingStep === "accessibility") {
@@ -299,6 +343,7 @@ function App() {
       </div>
       {/* Fixed footer at bottom */}
       <Footer />
+      <PaywallModal />
     </div>
   );
 }

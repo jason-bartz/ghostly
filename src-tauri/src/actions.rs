@@ -8,6 +8,7 @@ use crate::frontmost;
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
+use crate::managers::usage::{LimitCheck, UsageManager};
 use crate::profiles::{self, ResolvedOverrides};
 use crate::screenshot;
 use crate::session::{self, SessionBuffer, SessionEntry};
@@ -871,6 +872,25 @@ impl ShortcutAction for TranscribeAction {
         let start_time = Instant::now();
         debug!("TranscribeAction::start called for binding: {}", binding_id);
 
+        // Free-tier weekly cap: block the start path before we flip any UI
+        // state or touch the microphone. `check_limit` also emits the soft
+        // 80% warning on first crossing.
+        let settings_for_limit = get_settings(app);
+        let is_pro = settings_for_limit.effective_is_pro();
+        if let Some(um) = app.try_state::<Arc<UsageManager>>() {
+            match um.check_limit(is_pro) {
+                LimitCheck::OverLimit => {
+                    debug!("Free-tier weekly limit reached; blocking recording start");
+                    let _ = app.emit("usage-limit-reached", ());
+                    return;
+                }
+                LimitCheck::FirstWarning => {
+                    let _ = app.emit("usage-warning", ());
+                }
+                LimitCheck::Allowed => {}
+            }
+        }
+
         // Clear any stale cancellation state from a previous operation so the
         // paste path at the end doesn't mistakenly skip output.
         if let Some(sc) = app.try_state::<Arc<crate::stream_cancel::StreamCancellation>>() {
@@ -893,6 +913,27 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string();
         change_tray_icon(app, TrayIconState::Recording);
         show_recording_overlay(app);
+
+        // Emit one-time IDE hint chip if the frontmost app matches a known preset.
+        // Skip when the overlay is disabled — the hint has nowhere to render.
+        {
+            let settings_for_hint = get_settings(app);
+            if settings_for_hint.ide_presets_enabled
+                && settings_for_hint.overlay_position != crate::settings::OverlayPosition::None
+            {
+                if let Ok(Some(ctx)) = crate::frontmost::current() {
+                    if let Some(preset) = crate::ide_presets::detect(&ctx) {
+                        if !settings_for_hint
+                            .seen_ide_hints
+                            .iter()
+                            .any(|id| id == &preset.id)
+                        {
+                            crate::overlay::emit_ide_hint(app, &preset);
+                        }
+                    }
+                }
+            }
+        }
 
         // Capture screenshot synchronously before recording begins so the image
         // reflects the screen state at the moment the user triggered the shortcut.
@@ -1090,6 +1131,18 @@ impl ShortcutAction for TranscribeAction {
                                 transcription
                             );
 
+                            // Record this session's audio duration against the
+                            // weekly usage counter. Pro users are recorded too
+                            // (for vanity stats); only the cap check differs.
+                            // Empty transcriptions still cost microphone time,
+                            // but we only charge on the Ok path to match the
+                            // "only successful transcriptions" rule.
+                            if let Some(um) = ah.try_state::<Arc<UsageManager>>() {
+                                let duration_secs = (sample_count as u64)
+                                    / (crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE as u64);
+                                um.record(duration_secs);
+                            }
+
                             // Show the transcription text in the overlay immediately so the user
                             // can see what was captured before it's pasted.
                             if !transcription.is_empty() {
@@ -1132,10 +1185,19 @@ impl ShortcutAction for TranscribeAction {
                             // said "scratch that" (or any configured phrase) mid-speech,
                             // discard everything up to and including the last occurrence
                             // so only what follows gets pasted.
+                            debug!(
+                                "Correction phrases: enabled={}, phrases={:?}",
+                                settings_snapshot.correction_phrases_enabled,
+                                settings_snapshot.correction_phrases
+                            );
                             let transcription = if settings_snapshot.correction_phrases_enabled {
                                 let corrected = edit_intent::apply_correction_phrases(
                                     &transcription,
                                     &settings_snapshot.correction_phrases,
+                                );
+                                debug!(
+                                    "Correction phrases: before={:?} after={:?}",
+                                    transcription, corrected
                                 );
                                 if corrected != transcription {
                                     // Update the overlay so the user sees what will
@@ -1171,10 +1233,19 @@ impl ShortcutAction for TranscribeAction {
                                 if !settings_snapshot.voice_commands_enabled {
                                     warn!("Voice command shortcut pressed but voice_commands_enabled is false");
                                 }
-                                let matched = voice_commands::find_match(
-                                    &transcription,
-                                    &settings_snapshot.voice_commands,
-                                );
+                                // Merge the user's configured commands with the detected
+                                // IDE preset's command pack (if any) so built-in presets
+                                // work out of the box without requiring user setup.
+                                let mut merged_commands = settings_snapshot.voice_commands.clone();
+                                if settings_snapshot.ide_presets_enabled {
+                                    if let Ok(Some(ctx)) = crate::frontmost::current() {
+                                        if let Some(preset) = crate::ide_presets::detect(&ctx) {
+                                            merged_commands.extend(preset.to_voice_commands());
+                                        }
+                                    }
+                                }
+                                let matched =
+                                    voice_commands::find_match(&transcription, &merged_commands);
                                 match matched {
                                     Some(cmd) => {
                                         debug!(

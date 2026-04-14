@@ -694,6 +694,7 @@ impl TranscriptionManager {
             apply_custom_words(
                 &result.text,
                 &settings.custom_words,
+                &settings.custom_word_phonetics,
                 settings.word_correction_threshold,
             )
         } else {

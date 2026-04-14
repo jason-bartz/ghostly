@@ -22,7 +22,6 @@ import { ModelSelect } from "../PostProcessingSettingsApi/ModelSelect";
 import { usePostProcessProviderState } from "../PostProcessingSettingsApi/usePostProcessProviderState";
 import { ShortcutInput } from "../ShortcutInput";
 import { VoiceEditing } from "../VoiceEditing";
-import { CorrectionPhrases } from "../CorrectionPhrases";
 import { PromptShortcutInput } from "../PromptShortcutInput";
 import { PostProcessingToggle } from "../PostProcessingToggle";
 import { useSettings } from "../../../hooks/useSettings";
@@ -588,11 +587,6 @@ export const PostProcessingSettings: React.FC = () => {
           </details>
         </>
       )}
-
-      {/* ── Correction phrases — no LLM required, always visible ── */}
-      <SettingsGroup title={t("settings.correctionPhrases.title")}>
-        <CorrectionPhrases />
-      </SettingsGroup>
     </div>
   );
 };

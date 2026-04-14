@@ -42,7 +42,6 @@ tauri-plugin-store = "2.4.1"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-macos-permissions = "2.3.0"
-tauri-plugin-process = "2.3.1"
 rusqlite_migration = "2.3"
 tauri-plugin-fs = "2.4.4"
 serde = { version = "1", features = ["derive"] }
@@ -85,6 +84,7 @@ active-win-pos-rs = "0.8"
 xcap = "0.9"
 base64 = "0.22"
 keyring = "2"
+unicode-segmentation = "1.12"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"

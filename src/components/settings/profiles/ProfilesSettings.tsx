@@ -19,9 +19,8 @@ export const ProfilesSettings: React.FC = () => {
   const { getSetting, updateSetting, isUpdating, refreshSettings } =
     useSettings();
 
-  const enabled = (getSetting("profiles_enabled" as any) as boolean) ?? false;
-  const profiles =
-    (getSetting("profiles" as any) as ProfileLike[] | undefined) ?? [];
+  const enabled = getSetting("profiles_enabled") ?? false;
+  const profiles = (getSetting("profiles") as ProfileLike[] | undefined) ?? [];
 
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -39,7 +38,8 @@ export const ProfilesSettings: React.FC = () => {
       rules.push({ kind: "process_name", value: ctx.processName });
     }
     return {
-      name: ctx.bundleId || ctx.processName || "New profile",
+      name:
+        ctx.bundleId || ctx.processName || t("settings.profiles.newProfile"),
       match_rules: rules,
     };
   };
@@ -48,7 +48,7 @@ export const ProfilesSettings: React.FC = () => {
     const draft = await handleDetect();
     const profile: ProfileLike = {
       id: newId(),
-      name: draft?.name || "New profile",
+      name: draft?.name || t("settings.profiles.newProfile"),
       enabled: true,
       match_rules: draft?.match_rules ?? [],
       prompt_id: null,
@@ -57,7 +57,7 @@ export const ProfilesSettings: React.FC = () => {
       append_trailing_space: null,
       provider_override: null,
     };
-    const res = await commands.addProfile(profile as any);
+    const res = await commands.addProfile(profile);
     if (res.status === "error") {
       toast.error(res.error);
       return;
@@ -67,7 +67,7 @@ export const ProfilesSettings: React.FC = () => {
   };
 
   const handleSave = async (p: ProfileLike) => {
-    const res = await commands.updateProfile(p as any);
+    const res = await commands.updateProfile(p);
     if (res.status === "error") {
       toast.error(res.error);
       return;
@@ -93,7 +93,7 @@ export const ProfilesSettings: React.FC = () => {
           label={t("settings.profiles.enable.title")}
           description={t("settings.profiles.enable.description")}
           checked={enabled}
-          onChange={(v) => updateSetting("profiles_enabled" as any, v as any)}
+          onChange={(v) => updateSetting("profiles_enabled", v)}
           isUpdating={isUpdating("profiles_enabled")}
           descriptionMode="inline"
           grouped={true}
@@ -106,7 +106,7 @@ export const ProfilesSettings: React.FC = () => {
             <div className="text-sm text-text/70">
               {profiles.length === 0
                 ? t("settings.profiles.empty")
-                : `${profiles.length} ${profiles.length === 1 ? "profile" : "profiles"}`}
+                : t("settings.profiles.count", { count: profiles.length })}
             </div>
             <Button variant="primary" size="sm" onClick={handleAdd}>
               <Plus className="w-4 h-4" />
@@ -152,8 +152,9 @@ const ProfileRow: React.FC<ProfileRowProps> = ({
   onDelete,
   onToggleEnabled,
 }) => {
+  const { t } = useTranslation();
   const summary = profile.match_rules
-    .map((r) => `${ruleKindLabel(r.kind)}: ${r.value}`)
+    .map((r) => `${t(ruleKindLabelKey(r.kind))}: ${r.value}`)
     .join(" · ");
   return (
     <div className="flex items-center gap-3">
@@ -177,18 +178,18 @@ const ProfileRow: React.FC<ProfileRowProps> = ({
   );
 };
 
-function ruleKindLabel(kind: MatchRuleLike["kind"]): string {
+function ruleKindLabelKey(kind: MatchRuleLike["kind"]): string {
   switch (kind) {
     case "bundle_id":
-      return "bundle";
+      return "settings.profiles.rule.bundleId";
     case "process_name":
-      return "proc";
+      return "settings.profiles.rule.processName";
     case "window_class":
-      return "wm_class";
+      return "settings.profiles.rule.windowClass";
     case "exe_path_contains":
-      return "exe~";
+      return "settings.profiles.rule.exePathContains";
     case "window_title_contains":
-      return "title~";
+      return "settings.profiles.rule.windowTitleContains";
     default:
       return kind;
   }

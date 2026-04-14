@@ -393,6 +393,15 @@ pub fn emit_transcription_preview(app_handle: &AppHandle, text: &str) {
     }
 }
 
+/// Emits a one-time IDE-command hint payload to the overlay so the user
+/// learns which voice commands are available in the currently detected IDE.
+/// The overlay decides rendering (chip, auto-dismiss timing).
+pub fn emit_ide_hint(app_handle: &AppHandle, preset: &crate::ide_presets::IdePreset) {
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        let _ = overlay_window.emit("ide-hint", preset);
+    }
+}
+
 pub fn emit_levels(app_handle: &AppHandle, levels: &Vec<f32>) {
     // emit levels to main app
     let _ = app_handle.emit("mic-level", levels);

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Datelike, Local, Utc};
 use log::{debug, error, info};
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -66,6 +66,12 @@ static MIGRATIONS: &[M] = &[
         );",
     ),
     M::up("ALTER TABLE transcription_history ADD COLUMN user_title TEXT;"),
+    M::up("ALTER TABLE transcription_history ADD COLUMN audio_duration_ms INTEGER;"),
+    // Word count is denormalised so `compute_stats` can rely on SQL aggregates
+    // (SUM/MAX) instead of loading every `transcription_text` into memory on
+    // each refresh. Populated at save time and backfilled lazily for legacy
+    // rows; see `backfill_word_counts`.
+    M::up("ALTER TABLE transcription_history ADD COLUMN word_count INTEGER;"),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -99,6 +105,49 @@ pub struct HistoryEntry {
     pub post_processed_text: Option<String>,
     pub post_process_prompt: Option<String>,
     pub post_process_requested: bool,
+}
+
+/// Authoritative list of achievement badge identifiers. Serialised as
+/// snake_case strings so the wire format stays stable across refactors and
+/// is human-readable in logs; specta exports this as a TypeScript
+/// string-literal union, letting both sides share a single source of truth
+/// and giving the compiler an early warning if the two catalogs ever drift.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BadgeId {
+    FirstWords,
+    GettingStarted,
+    Regular,
+    Devoted,
+    Paragraph,
+    Marathon,
+    OneHourClub,
+    TenHourClub,
+    PostProcessor,
+    Collector,
+    Lexicographer,
+    EarlyBird,
+    NightOwl,
+    LunchBreak,
+    EveryDayOfTheWeek,
+    Sprint,
+    Questioner,
+    Exclaimer,
+}
+
+/// Aggregate usage statistics derived from the transcription history table.
+/// All fields are lifetime totals across non-empty entries. Rows missing an
+/// `audio_duration_ms` value (migrated from before the column existed) are
+/// counted toward word/count totals but contribute zero to duration.
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct TranscriptionStats {
+    pub total_words: u64,
+    pub total_duration_ms: u64,
+    pub transcription_count: u64,
+    pub longest_transcription_words: u64,
+    pub first_transcription_timestamp: Option<i64>,
+    pub latest_transcription_timestamp: Option<i64>,
+    pub earned_badge_ids: Vec<BadgeId>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -164,6 +213,14 @@ impl HistoryManager {
 
         // Apply any pending migrations
         migrations.to_latest(&mut conn)?;
+
+        // Lazily backfill word_count for rows that pre-date the column. Runs
+        // at most once per install; subsequent opens short-circuit via the
+        // `word_count IS NULL` filter. Errors here are non-fatal — the stats
+        // query tolerates NULLs and the user can always reopen the app.
+        if let Err(e) = backfill_word_counts(&conn) {
+            log::warn!("word_count backfill skipped: {}", e);
+        }
 
         // Get version after migration
         let version_after: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -272,6 +329,8 @@ impl HistoryManager {
     ) -> Result<HistoryEntry> {
         let timestamp = Utc::now().timestamp();
         let title = self.format_timestamp_title(timestamp);
+        let audio_duration_ms = self.read_wav_duration_ms(&file_name);
+        let word_count = count_words(&transcription_text) as i64;
 
         let conn = self.get_connection()?;
         conn.execute(
@@ -283,8 +342,10 @@ impl HistoryManager {
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
-                post_process_requested
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                post_process_requested,
+                audio_duration_ms,
+                word_count
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 &file_name,
                 timestamp,
@@ -294,6 +355,8 @@ impl HistoryManager {
                 &post_processed_text,
                 &post_process_prompt,
                 post_process_requested,
+                audio_duration_ms,
+                word_count,
             ],
         )?;
 
@@ -334,17 +397,20 @@ impl HistoryManager {
         post_processed_text: Option<String>,
         post_process_prompt: Option<String>,
     ) -> Result<HistoryEntry> {
+        let word_count = count_words(&transcription_text) as i64;
         let conn = self.get_connection()?;
         let updated = conn.execute(
             "UPDATE transcription_history
              SET transcription_text = ?1,
                  post_processed_text = ?2,
-                 post_process_prompt = ?3
-             WHERE id = ?4",
+                 post_process_prompt = ?3,
+                 word_count = ?4
+             WHERE id = ?5",
             params![
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
+                word_count,
                 id
             ],
         )?;
@@ -850,6 +916,31 @@ impl HistoryManager {
         Ok(entries)
     }
 
+    /// Read the duration of a WAV file in the recordings directory without
+    /// decoding samples. Returns `None` if the file is missing or unreadable,
+    /// which is expected when the caller saves an empty/failed entry before a
+    /// WAV was written.
+    fn read_wav_duration_ms(&self, file_name: &str) -> Option<i64> {
+        let path = self.recordings_dir.join(file_name);
+        let reader = hound::WavReader::open(&path).ok()?;
+        let spec = reader.spec();
+        let sample_rate = spec.sample_rate as u64;
+        if sample_rate == 0 {
+            return None;
+        }
+        let frames = reader.duration() as u64;
+        Some(((frames * 1000) / sample_rate) as i64)
+    }
+
+    /// Compute lifetime transcription statistics and the set of earned badge
+    /// identifiers. Delegates to the free [`compute_stats`] function so the
+    /// derivation logic can be exercised against an in-memory `Connection`
+    /// in unit tests without constructing a full `HistoryManager`.
+    pub fn get_stats(&self) -> Result<TranscriptionStats> {
+        let conn = self.get_connection()?;
+        compute_stats(&conn)
+    }
+
     fn format_timestamp_title(&self, timestamp: i64) -> String {
         if let Some(utc_datetime) = DateTime::from_timestamp(timestamp, 0) {
             // Convert UTC to local timezone
@@ -859,6 +950,260 @@ impl HistoryManager {
             format!("Recording {}", timestamp)
         }
     }
+}
+
+/// Count words using Unicode Standard Annex #29 word boundaries. Unlike
+/// `split_whitespace`, `unicode_words()` segments scripts that do not delimit
+/// words with spaces (Chinese, Japanese, Thai, etc.), so CJK transcriptions
+/// are counted in line with their actual content rather than as a single
+/// token. It also strips punctuation, giving identical results to
+/// whitespace splitting for punctuated English text.
+fn count_words(text: &str) -> u64 {
+    use unicode_segmentation::UnicodeSegmentation;
+    text.unicode_words().count() as u64
+}
+
+/// Core derivation routine behind [`HistoryManager::get_stats`]. Takes a bare
+/// rusqlite `Connection` so the logic can be unit-tested against an in-memory
+/// database without dragging in Tauri app state.
+///
+/// The implementation favours SQL aggregates (SUM/MAX/COUNT) for everything
+/// that can be reduced in the database, and only streams the minimal set of
+/// per-row signals (timestamp + two boolean predicates) needed for badges
+/// that depend on temporal clustering. This keeps the query cost proportional
+/// to *the size of the ids table index*, not to the size of
+/// `transcription_text` — important for users with large histories.
+pub(crate) fn compute_stats(conn: &Connection) -> Result<TranscriptionStats> {
+    use chrono::Timelike;
+
+    // Aggregates computed entirely in SQLite. The `word_count` column is
+    // populated at save time and backfilled at startup (`backfill_word_counts`)
+    // so `SUM(word_count)` is exact for all rows created after the migration.
+    let (
+        count,
+        total_words,
+        longest_words,
+        total_duration_ms,
+        post_processed_count,
+        saved_count,
+        first_ts,
+        latest_ts,
+    ): (u64, u64, u64, u64, u64, u64, Option<i64>, Option<i64>) = conn.query_row(
+        "SELECT
+            COUNT(*) AS cnt,
+            COALESCE(SUM(word_count), 0) AS total_words,
+            COALESCE(MAX(word_count), 0) AS longest,
+            COALESCE(SUM(audio_duration_ms), 0) AS total_dur,
+            COALESCE(SUM(CASE WHEN post_process_requested THEN 1 ELSE 0 END), 0) AS pp_cnt,
+            COALESCE(SUM(CASE WHEN saved THEN 1 ELSE 0 END), 0) AS saved_cnt,
+            MIN(timestamp) AS first_ts,
+            MAX(timestamp) AS latest_ts
+         FROM transcription_history
+         WHERE transcription_text != ''",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)? as u64,
+                row.get::<_, i64>(1)? as u64,
+                row.get::<_, i64>(2)? as u64,
+                row.get::<_, i64>(3)? as u64,
+                row.get::<_, i64>(4)? as u64,
+                row.get::<_, i64>(5)? as u64,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+            ))
+        },
+    )?;
+
+    // Per-row signals for temporal badges. Note that the suffix predicates
+    // are evaluated in SQL — only `timestamp` and two booleans cross the
+    // rusqlite boundary, regardless of how long the transcription is.
+    let mut stmt = conn.prepare(
+        "SELECT
+            timestamp,
+            CASE WHEN rtrim(transcription_text) LIKE '%?' THEN 1 ELSE 0 END AS ends_q,
+            CASE WHEN instr(transcription_text, '!') > 0 THEN 1 ELSE 0 END AS has_ex
+         FROM transcription_history
+         WHERE transcription_text != ''
+         ORDER BY timestamp ASC",
+    )?;
+
+    let mut ends_with_question: u64 = 0;
+    let mut contains_exclamation: u64 = 0;
+    let mut hours_seen: u32 = 0; // bitmask of local hours observed
+    let mut weekdays_seen: u8 = 0; // bitmask of weekdays observed (Mon=bit 0 … Sun=bit 6)
+    let mut sorted_timestamps: Vec<i64> = Vec::new();
+
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)? != 0,
+            row.get::<_, i64>(2)? != 0,
+        ))
+    })?;
+    for row in rows {
+        let (ts, ends_q, has_ex) = row?;
+        if ends_q {
+            ends_with_question += 1;
+        }
+        if has_ex {
+            contains_exclamation += 1;
+        }
+        // Time-of-day and weekday use the viewer's current local timezone.
+        // A user who travels after recording may see retroactive changes;
+        // this matches the intuitive "what hour is this entry?" reading a
+        // user expects when inspecting history while abroad.
+        if let Some(dt) = DateTime::from_timestamp(ts, 0) {
+            let local = dt.with_timezone(&Local);
+            hours_seen |= 1u32 << local.hour();
+            weekdays_seen |= 1u8 << local.weekday().num_days_from_monday();
+        }
+        sorted_timestamps.push(ts);
+    }
+
+    // Timestamps already arrive sorted thanks to the ORDER BY clause.
+    let sprint = has_window(&sorted_timestamps, 60 * 60, 10);
+
+    let word_correction_count: u64 = conn
+        .query_row("SELECT COUNT(*) FROM word_corrections", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap_or(0)
+        .max(0) as u64;
+
+    let mut badges: Vec<BadgeId> = Vec::new();
+    if count >= 1 {
+        badges.push(BadgeId::FirstWords);
+    }
+    if count >= 10 {
+        badges.push(BadgeId::GettingStarted);
+    }
+    if count >= 100 {
+        badges.push(BadgeId::Regular);
+    }
+    if count >= 1_000 {
+        badges.push(BadgeId::Devoted);
+    }
+    if longest_words >= 250 {
+        badges.push(BadgeId::Paragraph);
+    }
+    if longest_words >= 2_000 {
+        badges.push(BadgeId::Marathon);
+    }
+    if total_duration_ms >= 60 * 60 * 1_000 {
+        badges.push(BadgeId::OneHourClub);
+    }
+    if total_duration_ms >= 10 * 60 * 60 * 1_000 {
+        badges.push(BadgeId::TenHourClub);
+    }
+    if post_processed_count >= 10 {
+        badges.push(BadgeId::PostProcessor);
+    }
+    if saved_count >= 10 {
+        badges.push(BadgeId::Collector);
+    }
+    if word_correction_count >= 5 {
+        badges.push(BadgeId::Lexicographer);
+    }
+    let any_hour_in =
+        |range: std::ops::Range<u32>| range.into_iter().any(|h| (hours_seen >> h) & 1 == 1);
+    if any_hour_in(5..7) {
+        badges.push(BadgeId::EarlyBird);
+    }
+    if any_hour_in(22..24) || any_hour_in(0..4) {
+        badges.push(BadgeId::NightOwl);
+    }
+    if any_hour_in(12..13) {
+        badges.push(BadgeId::LunchBreak);
+    }
+    if weekdays_seen == 0b0111_1111 {
+        badges.push(BadgeId::EveryDayOfTheWeek);
+    }
+    if sprint {
+        badges.push(BadgeId::Sprint);
+    }
+    if ends_with_question >= 50 {
+        badges.push(BadgeId::Questioner);
+    }
+    if contains_exclamation >= 50 {
+        badges.push(BadgeId::Exclaimer);
+    }
+
+    Ok(TranscriptionStats {
+        total_words,
+        total_duration_ms,
+        transcription_count: count,
+        longest_transcription_words: longest_words,
+        first_transcription_timestamp: first_ts,
+        latest_transcription_timestamp: latest_ts,
+        earned_badge_ids: badges,
+    })
+}
+
+/// One-time backfill of the `word_count` column for rows that pre-date its
+/// introduction. Idempotent: only touches rows where `word_count IS NULL`, so
+/// subsequent calls are essentially free once the backfill has completed.
+///
+/// Runs inside a single transaction so a mid-flight crash leaves the table in
+/// a consistent state — either every row is populated or the work rolls back.
+pub(crate) fn backfill_word_counts(conn: &Connection) -> Result<()> {
+    let pending: Vec<(i64, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, transcription_text FROM transcription_history WHERE word_count IS NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
+    if pending.is_empty() {
+        return Ok(());
+    }
+
+    log::info!(
+        "Backfilling word_count for {} legacy history rows",
+        pending.len()
+    );
+
+    conn.execute("BEGIN", [])?;
+    let result: Result<()> = (|| {
+        let mut stmt =
+            conn.prepare("UPDATE transcription_history SET word_count = ?1 WHERE id = ?2")?;
+        for (id, text) in &pending {
+            stmt.execute(params![count_words(text) as i64, id])?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            conn.execute("COMMIT", [])?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+/// Returns true if `sorted_ts` contains at least `min_count` entries falling
+/// within any sliding window of `window_secs` seconds. Expects the slice to be
+/// sorted in ascending order.
+fn has_window(sorted_ts: &[i64], window_secs: i64, min_count: usize) -> bool {
+    if sorted_ts.len() < min_count || min_count == 0 {
+        return false;
+    }
+    let mut left = 0usize;
+    for right in 0..sorted_ts.len() {
+        while sorted_ts[right] - sorted_ts[left] > window_secs {
+            left += 1;
+        }
+        if right - left + 1 >= min_count {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -879,14 +1224,39 @@ mod tests {
                 transcription_text TEXT NOT NULL,
                 post_processed_text TEXT,
                 post_process_prompt TEXT,
-                post_process_requested BOOLEAN NOT NULL DEFAULT 0
+                post_process_requested BOOLEAN NOT NULL DEFAULT 0,
+                audio_duration_ms INTEGER,
+                word_count INTEGER
+            );
+            CREATE TABLE word_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wrong TEXT NOT NULL UNIQUE,
+                correct TEXT NOT NULL,
+                enabled BOOLEAN NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL
             );",
         )
-        .expect("create transcription_history table");
+        .expect("create test tables");
         conn
     }
 
     fn insert_entry(conn: &Connection, timestamp: i64, text: &str, post_processed: Option<&str>) {
+        insert_full_entry(conn, timestamp, text, post_processed, None, false, false);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert_full_entry(
+        conn: &Connection,
+        timestamp: i64,
+        text: &str,
+        post_processed: Option<&str>,
+        audio_duration_ms: Option<i64>,
+        post_process_requested: bool,
+        saved: bool,
+    ) {
+        // Mirror the production path: populate `word_count` at insert so
+        // the SQL aggregates in `compute_stats` exercise the happy path.
+        let word_count = count_words(text) as i64;
         conn.execute(
             "INSERT INTO transcription_history (
                 file_name,
@@ -896,20 +1266,46 @@ mod tests {
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
-                post_process_requested
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                post_process_requested,
+                audio_duration_ms,
+                word_count
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 format!("ghostly-{}.wav", timestamp),
                 timestamp,
-                false,
+                saved,
                 format!("Recording {}", timestamp),
                 text,
                 post_processed,
                 Option::<String>::None,
-                false,
+                post_process_requested,
+                audio_duration_ms,
+                word_count,
             ],
         )
         .expect("insert history entry");
+    }
+
+    /// Insert a row with `word_count` deliberately left NULL, matching
+    /// pre-migration rows. Used by backfill tests.
+    fn insert_legacy_entry(conn: &Connection, timestamp: i64, text: &str) {
+        conn.execute(
+            "INSERT INTO transcription_history (
+                file_name,
+                timestamp,
+                saved,
+                title,
+                transcription_text,
+                post_process_requested
+            ) VALUES (?1, ?2, 0, ?3, ?4, 0)",
+            params![
+                format!("ghostly-{}.wav", timestamp),
+                timestamp,
+                format!("Recording {}", timestamp),
+                text,
+            ],
+        )
+        .expect("insert legacy history entry");
     }
 
     #[test]
@@ -946,5 +1342,347 @@ mod tests {
 
         assert_eq!(entry.timestamp, 100);
         assert_eq!(entry.transcription_text, "completed");
+    }
+
+    // ----------------------------------------------------------------------
+    // Stats derivation
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn count_words_handles_edge_cases() {
+        assert_eq!(count_words(""), 0);
+        assert_eq!(count_words("   \t\n "), 0);
+        assert_eq!(count_words("hello"), 1);
+        assert_eq!(count_words("  hello  world  "), 2);
+        assert_eq!(count_words("one two three four"), 4);
+        assert_eq!(count_words("hello, world!"), 2);
+        assert_eq!(count_words("uno\u{00A0}dos\u{00A0}tres"), 3);
+        // Contractions are a single word under UAX #29 word segmentation.
+        assert_eq!(count_words("don't stop"), 2);
+        // Numbers and alphanumerics count as words.
+        assert_eq!(count_words("room 42 is open"), 4);
+    }
+
+    #[test]
+    fn count_words_counts_cjk_transcriptions_as_nonzero() {
+        // UAX #29 segmentation produces at least one word for any non-empty
+        // CJK string — the precise count depends on script-specific rules we
+        // deliberately don't pin here, since the important property for the
+        // achievements surface is simply "doesn't under-count to zero."
+        assert!(count_words("你好世界") >= 2);
+        assert!(count_words("今日はいい天気ですね") >= 2);
+        // Mixed Latin + Han: contributes at least the English word count.
+        assert!(count_words("hello 你好 world 世界") >= 3);
+    }
+
+    #[test]
+    fn has_window_rejects_too_few_entries() {
+        assert!(!has_window(&[], 60, 1));
+        assert!(!has_window(&[1, 2, 3], 60, 4));
+        // min_count == 0 is treated as a degenerate query: never matches.
+        assert!(!has_window(&[1, 2, 3], 60, 0));
+    }
+
+    #[test]
+    fn has_window_detects_cluster_inside_window() {
+        // 10 entries within 50 minutes → qualifies for a 60-minute Sprint.
+        let ts: Vec<i64> = (0..10).map(|i| i * 5 * 60).collect();
+        assert!(has_window(&ts, 60 * 60, 10));
+    }
+
+    #[test]
+    fn has_window_rejects_spread_entries() {
+        // 10 entries spaced 10 minutes apart span 90 minutes total →
+        // no 60-minute window contains all 10.
+        let ts: Vec<i64> = (0..10).map(|i| i * 10 * 60).collect();
+        assert!(!has_window(&ts, 60 * 60, 10));
+    }
+
+    #[test]
+    fn has_window_slides_to_find_cluster() {
+        // A cold-start burst (9 isolated entries) followed by a dense cluster
+        // of 10 entries should still match; we must slide past the early ones.
+        let mut ts: Vec<i64> = (0..9).map(|i| i * 86_400).collect(); // 9 days apart
+        let base = 100 * 86_400;
+        ts.extend((0..10).map(|i| base + i * 30)); // 10 entries in 5 minutes
+        ts.sort_unstable();
+        assert!(has_window(&ts, 60 * 60, 10));
+    }
+
+    // Build a stable epoch timestamp for `day` (0-based, Monday = 0) at
+    // `hour:minute` UTC. Using UTC-only fixtures keeps the test independent of
+    // whatever timezone the host machine happens to be in when CI runs.
+    fn utc_ts(day: u32, hour: u32, minute: u32) -> i64 {
+        use chrono::{NaiveDate, NaiveDateTime, TimeZone};
+        // 2026-04-06 is a Monday in the Gregorian calendar, giving us a fixed
+        // anchor so the weekday-bit assertions below don't drift.
+        let anchor = NaiveDate::from_ymd_opt(2026, 4, 6).unwrap();
+        let date = anchor + chrono::Duration::days(day as i64);
+        let dt = NaiveDateTime::new(
+            date,
+            chrono::NaiveTime::from_hms_opt(hour, minute, 0).unwrap(),
+        );
+        chrono::Utc.from_utc_datetime(&dt).timestamp()
+    }
+
+    #[test]
+    fn compute_stats_is_empty_for_empty_db() {
+        let conn = setup_conn();
+        let stats = compute_stats(&conn).expect("compute_stats succeeds on empty db");
+        assert_eq!(stats.total_words, 0);
+        assert_eq!(stats.total_duration_ms, 0);
+        assert_eq!(stats.transcription_count, 0);
+        assert_eq!(stats.longest_transcription_words, 0);
+        assert_eq!(stats.first_transcription_timestamp, None);
+        assert_eq!(stats.latest_transcription_timestamp, None);
+        assert!(stats.earned_badge_ids.is_empty());
+    }
+
+    #[test]
+    fn compute_stats_skips_empty_transcriptions() {
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "", None);
+        insert_entry(&conn, 200, "hello world", None);
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert_eq!(stats.transcription_count, 1);
+        assert_eq!(stats.total_words, 2);
+    }
+
+    #[test]
+    fn compute_stats_aggregates_counts_and_duration() {
+        let conn = setup_conn();
+        insert_full_entry(&conn, 100, "one two three", None, Some(1_500), false, false);
+        insert_full_entry(&conn, 200, "four five", None, Some(2_500), false, false);
+        insert_full_entry(&conn, 300, "six", None, None, false, false);
+
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert_eq!(stats.transcription_count, 3);
+        assert_eq!(stats.total_words, 6);
+        assert_eq!(stats.longest_transcription_words, 3);
+        // Rows with NULL duration contribute 0, not an error.
+        assert_eq!(stats.total_duration_ms, 4_000);
+        assert_eq!(stats.first_transcription_timestamp, Some(100));
+        assert_eq!(stats.latest_transcription_timestamp, Some(300));
+    }
+
+    #[test]
+    fn compute_stats_awards_first_words_and_getting_started() {
+        let conn = setup_conn();
+        for i in 0..10 {
+            insert_entry(&conn, 100 + i, "hello", None);
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::FirstWords));
+        assert!(stats.earned_badge_ids.contains(&BadgeId::GettingStarted));
+        assert!(!stats.earned_badge_ids.contains(&BadgeId::Regular));
+    }
+
+    #[test]
+    fn compute_stats_awards_marathon_on_single_long_transcription() {
+        let conn = setup_conn();
+        let long: String = std::iter::repeat("word")
+            .take(2_100)
+            .collect::<Vec<_>>()
+            .join(" ");
+        insert_entry(&conn, 100, &long, None);
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Paragraph));
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Marathon));
+    }
+
+    #[test]
+    fn compute_stats_awards_one_hour_club_only_after_threshold() {
+        let conn = setup_conn();
+        // 30 minutes of audio: below the one-hour threshold.
+        insert_full_entry(
+            &conn,
+            100,
+            "hello",
+            None,
+            Some(30 * 60 * 1_000),
+            false,
+            false,
+        );
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(!stats.earned_badge_ids.contains(&BadgeId::OneHourClub));
+
+        // Push to exactly one hour: threshold is inclusive.
+        insert_full_entry(
+            &conn,
+            200,
+            "hello",
+            None,
+            Some(30 * 60 * 1_000),
+            false,
+            false,
+        );
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::OneHourClub));
+        assert!(!stats.earned_badge_ids.contains(&BadgeId::TenHourClub));
+    }
+
+    #[test]
+    fn compute_stats_awards_post_processor_and_collector() {
+        let conn = setup_conn();
+        for i in 0..10 {
+            insert_full_entry(&conn, 100 + i, "hello", None, None, true, false);
+        }
+        for i in 0..10 {
+            insert_full_entry(&conn, 500 + i, "hello", None, None, false, true);
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::PostProcessor));
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Collector));
+    }
+
+    #[test]
+    fn compute_stats_awards_lexicographer_from_word_corrections() {
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "hello", None);
+        for (i, (wrong, correct)) in [
+            ("teh", "the"),
+            ("recieve", "receive"),
+            ("seperate", "separate"),
+            ("occured", "occurred"),
+            ("definately", "definitely"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            conn.execute(
+                "INSERT INTO word_corrections (wrong, correct, enabled, created_at) VALUES (?1, ?2, 1, ?3)",
+                params![wrong, correct, 1000 + i as i64],
+            )
+            .expect("insert word correction");
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Lexicographer));
+    }
+
+    #[test]
+    fn compute_stats_awards_sprint_on_dense_cluster() {
+        let conn = setup_conn();
+        // 10 entries within 5 minutes (base timestamp picked so we also
+        // incidentally exercise the weekday bitmask path).
+        let base = utc_ts(0, 14, 0);
+        for i in 0..10 {
+            insert_entry(&conn, base + i * 30, "hello", None);
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Sprint));
+    }
+
+    #[test]
+    fn compute_stats_does_not_award_sprint_when_spaced_out() {
+        let conn = setup_conn();
+        // 10 entries, each 10 minutes apart — spans 90 minutes, exceeds
+        // the 60-minute window, so no Sprint badge.
+        let base = utc_ts(0, 14, 0);
+        for i in 0..10 {
+            insert_entry(&conn, base + i * 10 * 60, "hello", None);
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(!stats.earned_badge_ids.contains(&BadgeId::Sprint));
+    }
+
+    #[test]
+    fn compute_stats_awards_every_day_only_when_all_seven_seen() {
+        let conn = setup_conn();
+        // Six days: should not earn the badge yet.
+        for day in 0..6 {
+            insert_entry(&conn, utc_ts(day, 12, 0), "hello", None);
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(!stats.earned_badge_ids.contains(&BadgeId::EveryDayOfTheWeek));
+
+        // Adding the seventh distinct weekday should unlock it.
+        insert_entry(&conn, utc_ts(6, 12, 0), "hello", None);
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::EveryDayOfTheWeek));
+    }
+
+    #[test]
+    fn compute_stats_awards_question_and_exclamation_badges_at_threshold() {
+        let conn = setup_conn();
+        // 50 question-ending entries → Questioner.
+        for i in 0..50 {
+            insert_entry(&conn, 1_000 + i, "are we there yet?", None);
+        }
+        // 50 exclamation entries → Exclaimer.
+        for i in 0..50 {
+            insert_entry(&conn, 2_000 + i, "wow amazing work!", None);
+        }
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Questioner));
+        assert!(stats.earned_badge_ids.contains(&BadgeId::Exclaimer));
+    }
+
+    #[test]
+    fn backfill_populates_null_word_counts_and_is_idempotent() {
+        let conn = setup_conn();
+        insert_legacy_entry(&conn, 100, "hello world");
+        insert_legacy_entry(&conn, 200, "one two three four");
+        insert_full_entry(&conn, 300, "existing", None, None, false, false);
+
+        // Before backfill, legacy rows have NULL word_count.
+        let null_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM transcription_history WHERE word_count IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(null_count, 2);
+
+        backfill_word_counts(&conn).expect("backfill succeeds");
+
+        let null_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM transcription_history WHERE word_count IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(null_count, 0);
+
+        let stats = compute_stats(&conn).expect("compute_stats succeeds");
+        assert_eq!(stats.total_words, 2 + 4 + 1);
+        assert_eq!(stats.longest_transcription_words, 4);
+
+        // Second invocation is a no-op but must not error.
+        backfill_word_counts(&conn).expect("idempotent backfill");
+    }
+
+    /// A static guard against badge-catalog drift: if a new variant is added
+    /// to [`BadgeId`], this test fails until the corresponding snake_case
+    /// identifier is added to the assertion list, forcing the reviewer to
+    /// also update the frontend `BADGES` list that renders labels and icons.
+    #[test]
+    fn badge_id_wire_format_is_stable() {
+        // Every variant → expected snake_case serialization.
+        let cases = [
+            (BadgeId::FirstWords, "first_words"),
+            (BadgeId::GettingStarted, "getting_started"),
+            (BadgeId::Regular, "regular"),
+            (BadgeId::Devoted, "devoted"),
+            (BadgeId::Paragraph, "paragraph"),
+            (BadgeId::Marathon, "marathon"),
+            (BadgeId::OneHourClub, "one_hour_club"),
+            (BadgeId::TenHourClub, "ten_hour_club"),
+            (BadgeId::PostProcessor, "post_processor"),
+            (BadgeId::Collector, "collector"),
+            (BadgeId::Lexicographer, "lexicographer"),
+            (BadgeId::EarlyBird, "early_bird"),
+            (BadgeId::NightOwl, "night_owl"),
+            (BadgeId::LunchBreak, "lunch_break"),
+            (BadgeId::EveryDayOfTheWeek, "every_day_of_the_week"),
+            (BadgeId::Sprint, "sprint"),
+            (BadgeId::Questioner, "questioner"),
+            (BadgeId::Exclaimer, "exclaimer"),
+        ];
+        for (variant, expected) in cases {
+            let json = serde_json::to_string(&variant).expect("serde");
+            assert_eq!(json, format!("\"{}\"", expected));
+        }
     }
 }

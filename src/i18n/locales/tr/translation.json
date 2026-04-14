@@ -20,7 +20,8 @@
     "dictionary": "Dictionary",
     "restApi": "Automation",
     "debug": "Hata Ayıklama",
-    "about": "Hakkında"
+    "about": "Hakkında",
+    "achievements": "Achievements"
   },
   "onboarding": {
     "title": "Welcome to Ghostly",
@@ -802,5 +803,144 @@
   "overlay": {
     "transcribing": "Transkribe ediliyor...",
     "processing": "İşleniyor..."
+  },
+  "achievements": {
+    "loadError": "Unable to load statistics.",
+    "ladder": {
+      "totalWords": "Lifetime words transcribed",
+      "currentTier": "Currently at the length of {{title}}",
+      "notYetReached": "On your way to the first milestone",
+      "toNext": "{{words}} words to {{title}}",
+      "maxReached": "You've reached the final milestone — {{title}}",
+      "progressLabel": "Progress toward {{title}}",
+      "progressValueText": "{{percent}} percent of the way to {{title}}",
+      "progressValueTextMax": "Final milestone reached — {{title}}"
+    },
+    "stats": {
+      "title": "Lifetime statistics",
+      "transcriptions": "Transcriptions",
+      "audio": "Audio captured",
+      "longest": "Longest transcription",
+      "words": "Total words",
+      "wordsValue": "{{value}}"
+    },
+    "duration": {
+      "seconds_one": "{{count}} second",
+      "seconds_other": "{{count}} seconds",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "hoursMinutes": "{{hours}}h {{minutes}}m",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "daysHours": "{{days}}d {{hours}}h"
+    },
+    "milestones": {
+      "blogPost": "a blog post",
+      "oldManSea": "The Old Man and the Sea",
+      "animalFarm": "Animal Farm",
+      "greatGatsby": "The Great Gatsby",
+      "frankenstein": "Frankenstein",
+      "prideAndPrejudice": "Pride and Prejudice",
+      "nineteenEightyFour": "Nineteen Eighty-Four",
+      "mobyDick": "Moby-Dick",
+      "englishDictionary": "an English dictionary",
+      "ulysses": "Ulysses",
+      "warAndPeace": "War and Peace",
+      "shakespeareComplete": "the complete works of Shakespeare"
+    },
+    "authors": {
+      "hemingway": "Hemingway",
+      "orwell": "Orwell",
+      "fitzgerald": "Fitzgerald",
+      "shelley": "Shelley",
+      "austen": "Austen",
+      "melville": "Melville",
+      "joyce": "Joyce",
+      "tolstoy": "Tolstoy"
+    },
+    "badges": {
+      "title": "Badges",
+      "subtitle": "Earn badges as you use Ghostly. Locked badges are hidden until the underlying criterion is met.",
+      "emptyState": "Record your first transcription to begin earning badges.",
+      "lockedDescription": "Locked — {{description}}",
+      "status": {
+        "earned": "earned",
+        "locked": "locked"
+      },
+      "firstWords": {
+        "title": "First Words",
+        "description": "Complete your first transcription."
+      },
+      "gettingStarted": {
+        "title": "Getting Started",
+        "description": "Complete ten transcriptions."
+      },
+      "regular": {
+        "title": "Regular",
+        "description": "Complete one hundred transcriptions."
+      },
+      "devoted": {
+        "title": "Devoted",
+        "description": "Complete one thousand transcriptions."
+      },
+      "paragraph": {
+        "title": "Paragraph",
+        "description": "Capture a single transcription of at least 250 words."
+      },
+      "marathon": {
+        "title": "Marathon",
+        "description": "Capture a single transcription of at least 2,000 words."
+      },
+      "oneHourClub": {
+        "title": "One-Hour Club",
+        "description": "Accumulate one hour of transcribed audio."
+      },
+      "tenHourClub": {
+        "title": "Ten-Hour Club",
+        "description": "Accumulate ten hours of transcribed audio."
+      },
+      "postProcessor": {
+        "title": "Post-Processor",
+        "description": "Refine ten transcriptions with AI post-processing."
+      },
+      "collector": {
+        "title": "Collector",
+        "description": "Mark ten transcriptions as saved."
+      },
+      "lexicographer": {
+        "title": "Lexicographer",
+        "description": "Add five entries to your dictionary corrections."
+      },
+      "earlyBird": {
+        "title": "Early Bird",
+        "description": "Transcribe between 5 and 7 in the morning."
+      },
+      "nightOwl": {
+        "title": "Night Owl",
+        "description": "Transcribe between 10 at night and 4 in the morning."
+      },
+      "lunchBreak": {
+        "title": "Lunch Break",
+        "description": "Transcribe between noon and one in the afternoon."
+      },
+      "everyDayOfTheWeek": {
+        "title": "Every Day of the Week",
+        "description": "Transcribe on each of the seven weekdays, at any time."
+      },
+      "sprint": {
+        "title": "Sprint",
+        "description": "Complete ten transcriptions within a single hour."
+      },
+      "questioner": {
+        "title": "Questioner",
+        "description": "Complete fifty transcriptions that end in a question mark."
+      },
+      "exclaimer": {
+        "title": "Exclaimer",
+        "description": "Complete fifty transcriptions that contain an exclamation."
+      }
+    }
   }
 }

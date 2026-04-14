@@ -1,7 +1,6 @@
 {
   "tray": {
     "settings": "Settings...",
-    "checkUpdates": "Check for Updates...",
     "copyLastTranscript": "Copy Last Transcript",
     "unloadModel": "Unload Model",
     "model": "Model",
@@ -17,10 +16,19 @@
     "postProcessing": "AI Refinement",
     "profiles": "Profiles",
     "history": "History",
+    "usage": "Usage",
+    "achievements": "Achievements",
     "dictionary": "Dictionary",
-    "restApi": "Automation",
+    "developer": "Vibe Coding",
     "debug": "Debug",
-    "about": "About"
+    "about": "About",
+    "settings": "Settings",
+    "back": "Back",
+    "groups": {
+      "preferences": "Preferences",
+      "developer": "Developer",
+      "about": "About"
+    }
   },
   "onboarding": {
     "title": "Welcome to Ghostly",
@@ -521,10 +529,6 @@
         "title": "Log Level",
         "description": "Verbosity of log output. Info is recommended for normal use; Trace captures everything."
       },
-      "updateChecks": {
-        "label": "Automatic Updates",
-        "description": "Check for new versions of Ghostly in the background and show a notice when one is available."
-      },
       "soundTheme": {
         "label": "Sound Theme",
         "description": "The sound played when recording starts and stops."
@@ -613,9 +617,17 @@
         "notices": {
           "title": "Third-party notices",
           "description": "Open-source licenses and attributions.",
-          "link": "View NOTICE.md"
+          "link": "View notices"
+        },
+        "eula": {
+          "title": "End User License Agreement",
+          "description": "The terms you accepted when installing Ghostly.",
+          "link": "View EULA"
         }
       }
+    },
+    "eula": {
+      "viewerClose": "Close"
     },
     "profiles": {
       "title": "Per-App Profiles",
@@ -624,6 +636,9 @@
         "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
       },
       "empty": "No profiles yet.",
+      "newProfile": "New profile",
+      "count_one": "{{count}} profile",
+      "count_other": "{{count}} profiles",
       "add": "Add profile",
       "detectCurrent": "Detect current app",
       "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
@@ -667,8 +682,44 @@
         "windowTitleContains": "Window title contains"
       }
     },
+    "developer": {
+      "intro": "Tools for vibe-coding with AI IDEs and agents. Ghostly can auto-submit your dictated prompts, recognize \"approve\"/\"reject\" voice commands, and expose a local HTTP API for scripts."
+    },
+    "idePresets": {
+      "title": "IDE presets",
+      "enable": {
+        "title": "Enable IDE presets",
+        "description": "Detect supported IDEs and agent CLIs (Cursor, Claude Code, Windsurf, VS Code, Replit) and surface context-aware voice commands."
+      },
+      "autoSubmit": {
+        "title": "Auto-submit in detected IDEs",
+        "description": "In chat-like IDEs, press Enter after pasting so your dictated prompt is sent automatically. VS Code is excluded by default since the editor is not a chat surface."
+      },
+      "detect": {
+        "title": "Detect current app",
+        "description": "Check which preset (if any) matches the app you're currently focused on.",
+        "button": "Detect",
+        "matched": "Matched: {{name}}",
+        "none": "No preset matched the frontmost app."
+      },
+      "list": {
+        "title": "Preset packs",
+        "description": "Phrases are merged into voice-command matching automatically when the matching app is focused."
+      },
+      "badges": {
+        "autoSubmit": "Auto-submit",
+        "seen": "Hint shown"
+      },
+      "resetHints": {
+        "title": "Reset onscreen hints",
+        "description": "Show the one-time command hint again the next time you record in each IDE.",
+        "button": "Reset hints"
+      },
+      "hintsReset": "Hints reset. They'll show again on your next recording in each IDE.",
+      "detectFailed": "Couldn't detect the frontmost app. Grant Accessibility permissions if needed."
+    },
     "voiceCommands": {
-      "title": "Voice Commands",
+      "title": "Voice commands",
       "enable": {
         "title": "Enable voice commands",
         "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
@@ -718,6 +769,24 @@
       "clearSession": "Clear session",
       "sessionCleared": "Session cleared."
     },
+    "dictionary": {
+      "vocabulary": {
+        "title": "Vocabulary",
+        "addTitle": "Words to recognize",
+        "addDescription": "Unique words Ghostly should learn — proper nouns, brand names, acronyms, jargon. No spaces; one word per entry.",
+        "phoneticPlaceholder": "Pronounced like (optional)",
+        "showPhonetic": "Add pronunciation hint",
+        "hidePhonetic": "Hide pronunciation field",
+        "soundsLike": "sounds like"
+      },
+      "csv": {
+        "button": "Upload CSV",
+        "empty": "No valid words found in that file.",
+        "nothingNew": "All words in that file are already in your vocabulary.",
+        "imported": "Imported {{count}} new word(s) ({{total}} in file).",
+        "failed": "Couldn't read that file."
+      }
+    },
     "correctionPhrases": {
       "title": "Correction Phrases",
       "enable": {
@@ -734,20 +803,7 @@
   },
   "footer": {
     "downloadingModel": "Downloading {{model}}...",
-    "checkingUpdates": "Checking for updates...",
-    "updateAvailable": "Update available: {{version}}",
-    "updateAvailableShort": "Update available",
-    "upToDate": "Up to date",
-    "downloadUpdate": "Download Update",
-    "restart": "Restart",
-    "updateCheckingDisabled": "Update Checking Disabled",
-    "downloading": "Downloading... {{progress}}%",
-    "installing": "Installing...",
-    "preparing": "Preparing...",
-    "checkForUpdates": "Check for updates",
-    "portableUpdateTitle": "Manual update required",
-    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
-    "portableUpdateButton": "Open GitHub Releases"
+    "downloadLatest": "Download latest"
   },
   "common": {
     "loading": "Loading...",
@@ -802,5 +858,195 @@
   "overlay": {
     "transcribing": "Transcribing...",
     "processing": "Processing..."
+  },
+  "eula": {
+    "title": "Welcome to Ghostly",
+    "intro": "Please read and accept the license agreement to continue.",
+    "scrollHint": "Scroll to the bottom to continue.",
+    "scrolledPrompt": "You've reached the end — accept to start using Ghostly.",
+    "mustReadHint": "Please read the agreement to the end before accepting.",
+    "accept": "Accept & Continue",
+    "decline": "Decline & Quit",
+    "loadError": "Failed to load the license agreement.",
+    "version": "Version {{version}}"
+  },
+  "usage": {
+    "loadError": "Unable to load usage statistics.",
+    "thisWeek": {
+      "title": "This week",
+      "usedOfLimit": "{{used}} of {{limit}} used",
+      "usedFree": "{{used}} used",
+      "resetsIn": "Resets in {{time}}",
+      "resetsMonday": "Resets Monday",
+      "overLimit": "Weekly limit reached — upgrade to keep going"
+    },
+    "pro": {
+      "badge": "Pro",
+      "unlimited": "Unlimited",
+      "subtitle": "No weekly cap — transcribe as much as you like"
+    },
+    "history": {
+      "title": "Last {{count}} weeks",
+      "empty": "No prior weeks yet — come back next Monday",
+      "hitLimit": "limit reached"
+    },
+    "lifetime": {
+      "title": "Lifetime audio",
+      "value": "{{value}} transcribed"
+    },
+    "upgrade": {
+      "cta": "Upgrade to Pro",
+      "learnMore": "Learn more"
+    },
+    "warningToast": {
+      "title": "Getting close to your weekly limit",
+      "description": "You've used 80% of your free weekly minutes."
+    }
+  },
+  "paywall": {
+    "title": "You've hit your weekly limit",
+    "body": "Free accounts can transcribe {{minutes}} minutes per week. Upgrade to Ghostly Pro for unlimited transcription — one-time purchase, no subscription.",
+    "upgrade": "Upgrade to Pro",
+    "dismiss": "Maybe later",
+    "resetsIn": "Your free minutes reset {{when}}"
+  },
+  "achievements": {
+    "loadError": "Unable to load statistics.",
+    "ladder": {
+      "totalWords": "Lifetime words transcribed",
+      "currentTier": "Currently at the length of {{title}}",
+      "notYetReached": "On your way to the first milestone",
+      "toNext": "{{words}} words to {{title}}",
+      "maxReached": "You've reached the final milestone — {{title}}",
+      "progressLabel": "Progress toward {{title}}",
+      "progressValueText": "{{percent}} percent of the way to {{title}}",
+      "progressValueTextMax": "Final milestone reached — {{title}}"
+    },
+    "stats": {
+      "title": "Lifetime statistics",
+      "transcriptions": "Transcriptions",
+      "audio": "Audio captured",
+      "longest": "Longest transcription",
+      "words": "Total words",
+      "wordsValue": "{{value}}"
+    },
+    "duration": {
+      "seconds_one": "{{count}} second",
+      "seconds_other": "{{count}} seconds",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "hoursMinutes": "{{hours}}h {{minutes}}m",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "daysHours": "{{days}}d {{hours}}h"
+    },
+    "milestones": {
+      "blogPost": "a blog post",
+      "oldManSea": "The Old Man and the Sea",
+      "animalFarm": "Animal Farm",
+      "greatGatsby": "The Great Gatsby",
+      "frankenstein": "Frankenstein",
+      "prideAndPrejudice": "Pride and Prejudice",
+      "nineteenEightyFour": "Nineteen Eighty-Four",
+      "mobyDick": "Moby-Dick",
+      "englishDictionary": "an English dictionary",
+      "ulysses": "Ulysses",
+      "warAndPeace": "War and Peace",
+      "shakespeareComplete": "the complete works of Shakespeare"
+    },
+    "authors": {
+      "hemingway": "Hemingway",
+      "orwell": "Orwell",
+      "fitzgerald": "Fitzgerald",
+      "shelley": "Shelley",
+      "austen": "Austen",
+      "melville": "Melville",
+      "joyce": "Joyce",
+      "tolstoy": "Tolstoy"
+    },
+    "badges": {
+      "title": "Badges",
+      "subtitle": "Earn badges as you use Ghostly. Locked badges are hidden until the underlying criterion is met.",
+      "emptyState": "Record your first transcription to begin earning badges.",
+      "lockedDescription": "Locked — {{description}}",
+      "status": {
+        "earned": "earned",
+        "locked": "locked"
+      },
+      "firstWords": {
+        "title": "First Words",
+        "description": "Complete your first transcription."
+      },
+      "gettingStarted": {
+        "title": "Getting Started",
+        "description": "Complete ten transcriptions."
+      },
+      "regular": {
+        "title": "Regular",
+        "description": "Complete one hundred transcriptions."
+      },
+      "devoted": {
+        "title": "Devoted",
+        "description": "Complete one thousand transcriptions."
+      },
+      "paragraph": {
+        "title": "Paragraph",
+        "description": "Capture a single transcription of at least 250 words."
+      },
+      "marathon": {
+        "title": "Marathon",
+        "description": "Capture a single transcription of at least 2,000 words."
+      },
+      "oneHourClub": {
+        "title": "One-Hour Club",
+        "description": "Accumulate one hour of transcribed audio."
+      },
+      "tenHourClub": {
+        "title": "Ten-Hour Club",
+        "description": "Accumulate ten hours of transcribed audio."
+      },
+      "postProcessor": {
+        "title": "Post-Processor",
+        "description": "Refine ten transcriptions with AI post-processing."
+      },
+      "collector": {
+        "title": "Collector",
+        "description": "Mark ten transcriptions as saved."
+      },
+      "lexicographer": {
+        "title": "Lexicographer",
+        "description": "Add five entries to your dictionary corrections."
+      },
+      "earlyBird": {
+        "title": "Early Bird",
+        "description": "Transcribe between 5 and 7 in the morning."
+      },
+      "nightOwl": {
+        "title": "Night Owl",
+        "description": "Transcribe between 10 at night and 4 in the morning."
+      },
+      "lunchBreak": {
+        "title": "Lunch Break",
+        "description": "Transcribe between noon and one in the afternoon."
+      },
+      "everyDayOfTheWeek": {
+        "title": "Every Day of the Week",
+        "description": "Transcribe on each of the seven weekdays, at any time."
+      },
+      "sprint": {
+        "title": "Sprint",
+        "description": "Complete ten transcriptions within a single hour."
+      },
+      "questioner": {
+        "title": "Questioner",
+        "description": "Complete fifty transcriptions that end in a question mark."
+      },
+      "exclaimer": {
+        "title": "Exclaimer",
+        "description": "Complete fifty transcriptions that contain an exclamation."
+      }
+    }
   }
 }

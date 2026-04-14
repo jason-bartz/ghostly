@@ -118,14 +118,6 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
         settings_accelerator,
     )
     .expect("failed to create settings item");
-    let check_updates_i = MenuItem::with_id(
-        app,
-        "check_updates",
-        &strings.check_updates,
-        settings.update_checks_enabled,
-        None::<&str>,
-    )
-    .expect("failed to create check updates item");
     let copy_last_transcript_i = MenuItem::with_id(
         app,
         "copy_last_transcript",
@@ -231,7 +223,6 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
                     &copy_last_transcript_i,
                     &separator(),
                     &settings_i,
-                    &check_updates_i,
                     &separator(),
                     &quit_i,
                 ],
@@ -251,7 +242,6 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
                 &mic_submenu,
                 &separator(),
                 &settings_i,
-                &check_updates_i,
                 &separator(),
                 &quit_i,
             ],

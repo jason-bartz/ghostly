@@ -372,8 +372,6 @@ pub struct AppSettings {
     pub start_hidden: bool,
     #[serde(default = "default_autostart_enabled")]
     pub autostart_enabled: bool,
-    #[serde(default = "default_update_checks_enabled")]
-    pub update_checks_enabled: bool,
     #[serde(default = "default_model")]
     pub selected_model: String,
     #[serde(default = "default_always_on_microphone")]
@@ -396,6 +394,12 @@ pub struct AppSettings {
     pub log_level: LogLevel,
     #[serde(default)]
     pub custom_words: Vec<String>,
+    /// Optional phonetic ("sounds like") hints keyed by the lowercased custom
+    /// word. Used as a Soundex override so users can nudge fuzzy-match for
+    /// proper nouns whose spelling diverges from pronunciation
+    /// (e.g. "Siobhan" -> "shavawn"). Not sent to Whisper as initial_prompt.
+    #[serde(default)]
+    pub custom_word_phonetics: HashMap<String, String>,
     #[serde(default)]
     pub model_unload_timeout: ModelUnloadTimeout,
     #[serde(default = "default_word_correction_threshold")]
@@ -490,14 +494,54 @@ pub struct AppSettings {
     #[serde(default = "default_voice_commands")]
     pub voice_commands: Vec<VoiceCommand>,
 
+    // --- IDE presets (one-time hint + contextual auto-submit) ---
+    /// When true, Ghostly detects supported IDEs/agent CLIs (Cursor, Claude
+    /// Code, Windsurf, VS Code, Replit) and surfaces a one-time hint chip in
+    /// the overlay plus context-aware voice-command matching.
+    #[serde(default = "default_true")]
+    pub ide_presets_enabled: bool,
+    /// Preset IDs the user has already been shown the hint for. Used to make
+    /// the onscreen hint strictly one-time per app.
+    #[serde(default)]
+    pub seen_ide_hints: Vec<String>,
+    /// When true, dictation into a detected IDE with `auto_submit: true`
+    /// presses Enter after paste regardless of the global `auto_submit`
+    /// setting. This is what makes "auto populate AND auto send" work.
+    #[serde(default = "default_true")]
+    pub ide_auto_submit: bool,
+
     // --- Correction phrases (Feature D) ---
     /// When true, speaking a correction phrase deletes the last transcription.
-    #[serde(default)]
+    /// No AI required — pure regex word-boundary replacement.
+    #[serde(default = "default_correction_phrases_enabled")]
     pub correction_phrases_enabled: bool,
     /// Phrases that trigger deletion of the last pasted transcription.
     #[serde(default = "default_correction_phrases")]
     pub correction_phrases: Vec<String>,
+
+    /// Version string of the EULA the user has accepted. `None` means the
+    /// user has not yet accepted any EULA — app must show the click-through
+    /// modal before allowing use. When `CURRENT_EULA_VERSION` bumps, the
+    /// stored value will not match and the user re-accepts.
+    #[serde(default)]
+    pub eula_accepted_version: Option<String>,
+
+    /// True when the user has a valid Pro license. Bypasses the weekly
+    /// usage cap. Populated later by the license module; stub default is false.
+    #[serde(default)]
+    pub is_pro: bool,
+
+    /// Debug-only override that forces the free-tier code path regardless of
+    /// `is_pro`. Only settable from the Debug settings pane; not exposed in
+    /// the normal UI. Lets us test the paywall flow on a Pro build.
+    #[serde(default)]
+    pub dev_force_free_tier: bool,
 }
+
+/// Bump this string when the EULA text changes in a way that requires users
+/// to re-accept. Format: `YYYY-MM-DD` matching the "Last updated" date at the
+/// top of `EULA.md`.
+pub const CURRENT_EULA_VERSION: &str = "2026-04-14";
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
@@ -544,10 +588,6 @@ fn default_autostart_enabled() -> bool {
     true
 }
 
-fn default_update_checks_enabled() -> bool {
-    true
-}
-
 fn default_selected_language() -> String {
     "auto".to_string()
 }
@@ -571,6 +611,10 @@ fn default_word_correction_threshold() -> f64 {
     0.18
 }
 
+fn default_correction_phrases_enabled() -> bool {
+    true
+}
+
 fn default_paste_delay_ms() -> u64 {
     60
 }
@@ -592,7 +636,7 @@ fn default_audio_feedback() -> bool {
 }
 
 fn default_audio_feedback_volume() -> f32 {
-    1.0
+    0.6
 }
 
 fn default_sound_theme() -> SoundTheme {
@@ -1025,7 +1069,6 @@ pub fn get_default_settings() -> AppSettings {
         sound_theme: default_sound_theme(),
         start_hidden: default_start_hidden(),
         autostart_enabled: default_autostart_enabled(),
-        update_checks_enabled: default_update_checks_enabled(),
         selected_model: "".to_string(),
         always_on_microphone: false,
         selected_microphone: None,
@@ -1037,6 +1080,7 @@ pub fn get_default_settings() -> AppSettings {
         debug_mode: false,
         log_level: default_log_level(),
         custom_words: Vec::new(),
+        custom_word_phonetics: HashMap::new(),
         model_unload_timeout: ModelUnloadTimeout::default(),
         word_correction_threshold: default_word_correction_threshold(),
         history_limit: default_history_limit(),
@@ -1079,12 +1123,24 @@ pub fn get_default_settings() -> AppSettings {
         rest_api_port: default_rest_api_port(),
         voice_commands_enabled: false,
         voice_commands: default_voice_commands(),
-        correction_phrases_enabled: false,
+        ide_presets_enabled: true,
+        seen_ide_hints: Vec::new(),
+        ide_auto_submit: true,
+        correction_phrases_enabled: true,
         correction_phrases: default_correction_phrases(),
+        eula_accepted_version: None,
+        is_pro: false,
+        dev_force_free_tier: false,
     }
 }
 
 impl AppSettings {
+    /// Effective Pro status after applying the debug override. Free-tier code
+    /// paths (usage cap, paywall) gate on this.
+    pub fn effective_is_pro(&self) -> bool {
+        self.is_pro && !self.dev_force_free_tier
+    }
+
     pub fn active_post_process_provider(&self) -> Option<&PostProcessProvider> {
         self.post_process_providers
             .iter()
