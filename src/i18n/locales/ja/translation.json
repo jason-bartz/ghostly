@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "謝辞",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "OpenAIのWhisper自動音声認識モデルの高性能推論",
-          "details": "Ghostlyは高速でローカルな音声からテキストへの変換にWhisper.cppを使用しています。Georgi Gerganov氏と貢献者の皆様の素晴らしい仕事に感謝します。"
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "サードパーティ通知",
+          "description": "オープンソースライセンスと帰属情報。",
+          "link": "NOTICE.md を表示"
         }
       }
     },

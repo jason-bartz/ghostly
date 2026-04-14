@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "Remerciements",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "Inférence haute performance du modèle de reconnaissance vocale automatique Whisper d'OpenAI",
-          "details": "Ghostly utilise Whisper.cpp pour un traitement rapide et local de la parole en texte. Merci au travail incroyable de Georgi Gerganov et des contributeurs."
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "Mentions de tiers",
+          "description": "Licences open source et attributions.",
+          "link": "Voir NOTICE.md"
         }
       }
     },

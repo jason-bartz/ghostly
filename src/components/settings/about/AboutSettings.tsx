@@ -48,24 +48,19 @@ export const AboutSettings: React.FC = () => {
 
       <SettingsGroup title={t("settings.about.acknowledgments.title")}>
         <SettingContainer
-          title={t("settings.about.acknowledgments.whisper.title")}
-          description={t("settings.about.acknowledgments.whisper.description")}
+          title={t("settings.about.acknowledgments.notices.title")}
+          description={t("settings.about.acknowledgments.notices.description")}
           grouped={true}
           layout="stacked"
         >
-          <div className="text-sm text-mid-gray">
-            {t("settings.about.acknowledgments.whisper.details")}
-          </div>
-        </SettingContainer>
-        <SettingContainer
-          title={t("settings.about.acknowledgments.handy.title")}
-          description={t("settings.about.acknowledgments.handy.description")}
-          grouped={true}
-          layout="stacked"
-        >
-          <div className="text-sm text-mid-gray">
-            {t("settings.about.acknowledgments.handy.details")}
-          </div>
+          <a
+            href="https://github.com/jason-bartz/ghostly/blob/main/NOTICE.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-mid-gray underline"
+          >
+            {t("settings.about.acknowledgments.notices.link")}
+          </a>
         </SettingContainer>
       </SettingsGroup>
     </div>

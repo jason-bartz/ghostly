@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "תודות",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "הסקה מהירה לביצועים גבוהים עבור מודל זיהוי הדיבור Whisper של OpenAI",
-          "details": "Ghostly משתמש ב-Whisper.cpp לתמלול מהיר ומקומי. תודה לעבודה המדהימה של Georgi Gerganov וכל התורמים."
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "הודעות צד שלישי",
+          "description": "רישיונות קוד פתוח וייחוסים.",
+          "link": "צפה ב-NOTICE.md"
         }
       }
     },

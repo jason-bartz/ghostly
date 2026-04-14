@@ -610,15 +610,10 @@
       },
       "acknowledgments": {
         "title": "شكر وتقدير",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "استنتاج عالي الأداء لنموذج التعرف التلقائي على الكلام Whisper من OpenAI",
-          "details": ".يستخدم Ghostly برنامج Whisper.cpp لمعالجة سريعة ومحلية لتحويل الكلام إلى نص. شكراً للعمل الرائع الذي قام به Georgi Gerganov والمساهمون"
-        },
-        "handy": {
-          "title": "Handy",
-          "description": "Ghostly is based on Handy by CJ Pais.",
-          "details": "Copyright (c) 2025 CJ Pais — MIT License. github.com/cjpais/Handy"
+        "notices": {
+          "title": "إشعارات الطرف الثالث",
+          "description": "تراخيص مفتوحة المصدر ونسب الحقوق.",
+          "link": "عرض NOTICE.md"
         }
       }
     },
