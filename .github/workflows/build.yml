@@ -178,6 +178,27 @@ jobs:
             fi
           done
 
+      - name: Upload DMG to Cloudflare R2
+        if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin' && inputs.release-id
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          DMG=$(find src-tauri/target -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG" ]; then
+            echo "No DMG found to upload"
+            exit 1
+          fi
+          echo "Uploading $DMG to r2://$R2_BUCKET/Ghostly-latest.dmg"
+          aws s3 cp "$DMG" "s3://$R2_BUCKET/Ghostly-latest.dmg" \
+            --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
+            --content-type "application/x-apple-diskimage" \
+            --cache-control "public, max-age=300"
+
       - name: Upload artifacts
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
