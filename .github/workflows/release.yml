@@ -46,12 +46,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-26" # for Arm based macs (M1 and above). Uses macOS 26 for Apple Intelligence SDK.
+          - platform: "macos-26" # Apple Silicon (M1+). Uses macOS 26 for Apple Intelligence SDK.
             args: "--target aarch64-apple-darwin"
             target: "aarch64-apple-darwin"
-          - platform: "macos-latest" # for Intel based macs.
-            args: "--target x86_64-apple-darwin"
-            target: "x86_64-apple-darwin"
 
     uses: ./.github/workflows/build.yml
     with:
