@@ -851,15 +851,6 @@ pub fn change_auto_submit_key_setting(app: AppHandle, key: String) -> Result<(),
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_post_process_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.post_process_enabled = enabled;
-    settings::write_settings(&app, settings);
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
 pub fn change_experimental_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.experimental_enabled = enabled;
@@ -1226,6 +1217,91 @@ pub fn change_lazy_stream_close_setting(app: AppHandle, enabled: bool) -> Result
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_continuous_dictation_enabled_setting(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_dictation_enabled = enabled;
+    settings::write_settings(&app, settings);
+    // Turning the master toggle off also disarms, so a hot mic doesn't linger.
+    if !enabled {
+        if let Some(cm) = app
+            .try_state::<std::sync::Arc<crate::managers::continuous::ContinuousDictationManager>>()
+        {
+            cm.disarm();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_continuous_silence_ms_setting(app: AppHandle, ms: u32) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_silence_ms = ms.clamp(200, 5000);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_continuous_max_segment_ms_setting(app: AppHandle, ms: u32) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_max_segment_ms = ms.clamp(3000, 120_000);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_continuous_min_segment_ms_setting(app: AppHandle, ms: u32) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_min_segment_ms = ms.clamp(0, 5000);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_continuous_submit_phrase_enabled_setting(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_submit_phrase_enabled = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_continuous_submit_phrase_setting(
+    app: AppHandle,
+    phrase: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_submit_phrase = phrase.trim().to_string();
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_continuous_submit_key_setting(app: AppHandle, key: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.continuous_submit_key = match key.as_str() {
+        "enter" => crate::settings::AutoSubmitKey::Enter,
+        "ctrl_enter" => crate::settings::AutoSubmitKey::CtrlEnter,
+        "cmd_enter" => crate::settings::AutoSubmitKey::CmdEnter,
+        other => return Err(format!("Invalid submit key: {}", other)),
+    };
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.app_language = language.clone();
@@ -1242,12 +1318,50 @@ pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(
 pub fn change_show_tray_icon_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.show_tray_icon = enabled;
-    settings::write_settings(&app, settings);
+    // Guard: don't let the user hide both tray and dock — force the dock back on.
+    if !enabled && !settings.show_dock_icon {
+        settings.show_dock_icon = true;
+    }
+    settings::write_settings(&app, settings.clone());
 
     // Apply change immediately
     tray::set_tray_visibility(&app, enabled);
 
+    #[cfg(target_os = "macos")]
+    apply_dock_visibility(&app, &settings);
+
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_show_dock_icon_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.show_dock_icon = enabled;
+    // Guard: don't let the user hide both dock and tray — force the tray back on.
+    if !enabled && !settings.show_tray_icon {
+        settings.show_tray_icon = true;
+        tray::set_tray_visibility(&app, true);
+    }
+    settings::write_settings(&app, settings.clone());
+
+    #[cfg(target_os = "macos")]
+    apply_dock_visibility(&app, &settings);
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn apply_dock_visibility(app: &AppHandle, settings: &settings::AppSettings) {
+    // Accessory hides the dock icon; only safe when the tray is available.
+    let policy = if settings.show_dock_icon || !settings.show_tray_icon {
+        tauri::ActivationPolicy::Regular
+    } else {
+        tauri::ActivationPolicy::Accessory
+    };
+    if let Err(e) = app.set_activation_policy(policy) {
+        log::error!("Failed to set activation policy: {}", e);
+    }
 }
 
 /// Save accelerator settings, re-apply globals, and unload the model so it

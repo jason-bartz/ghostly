@@ -77,3 +77,34 @@ pub fn current() -> Result<Option<AppContext>, String> {
 pub fn detect_frontmost_app() -> Result<Option<AppContext>, String> {
     current()
 }
+
+/// Returns the id of the built-in profile that matches the frontmost app,
+/// or `None` if no built-in matches. Lets the Vibe Coding tab show "this
+/// app has voice commands available" without re-implementing the Rust
+/// detection heuristics in TypeScript.
+#[tauri::command]
+#[specta::specta]
+pub fn detect_builtin_profile_id() -> Result<Option<String>, String> {
+    let ctx = current()?;
+    Ok(ctx.and_then(|c| crate::profiles::match_builtin_profile(&c).map(|p| p.id)))
+}
+
+/// Return a short, user-facing name for an app context (for the Notes "captured
+/// in" chip). Prefers the macOS bundle's human display name; falls back to
+/// stripping `.app` from a process name, then to the bundle id's last segment.
+pub fn display_name(ctx: &AppContext) -> Option<String> {
+    if let Some(name) = ctx.process_name.as_deref() {
+        let trimmed = name.trim_end_matches(".app").trim_end_matches(".exe");
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    if let Some(bundle) = ctx.bundle_id.as_deref() {
+        // `com.apple.Messages` → "Messages"
+        let last = bundle.rsplit('.').next().unwrap_or(bundle);
+        if !last.is_empty() {
+            return Some(last.to_string());
+        }
+    }
+    None
+}

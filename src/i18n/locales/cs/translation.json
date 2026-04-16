@@ -557,10 +557,6 @@
         "title": "Mikrofon při zavřeném víku",
         "description": "Mikrofon, který se použije při zavřeném víku notebooku"
       },
-      "postProcessingToggle": {
-        "label": "Následné zpracování",
-        "description": "Povolit AI vylepšení textu po přepisu"
-      },
       "muteWhileRecording": {
         "label": "Ztlumit při nahrávání",
         "description": "Ztlumit systémový zvuk během nahrávání"

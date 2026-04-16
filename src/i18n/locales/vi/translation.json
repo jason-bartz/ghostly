@@ -557,10 +557,6 @@
         "title": "Micrô chế độ gập",
         "description": "Micrô sử dụng khi nắp laptop được đóng"
       },
-      "postProcessingToggle": {
-        "label": "Xử lý sau",
-        "description": "Bật tinh chỉnh văn bản bằng AI sau khi chuyển đổi"
-      },
       "muteWhileRecording": {
         "label": "Tắt tiếng khi ghi âm",
         "description": "Tắt tiếng âm thanh hệ thống trong khi ghi âm"

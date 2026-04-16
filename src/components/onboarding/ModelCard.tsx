@@ -80,22 +80,22 @@ const ModelCard: React.FC<ModelCardProps> = ({
   const displayDescription = getTranslatedModelDescription(model, t);
 
   const baseClasses =
-    "flex flex-col rounded-xl px-4 py-3 gap-2 text-left transition-all duration-200";
+    "flex flex-col rounded-xl px-4 py-3.5 gap-2 text-left transition-all duration-200";
 
   const getVariantClasses = () => {
     if (status === "active") {
-      return "border-2 border-logo-primary/50 bg-logo-primary/10";
+      return "border border-accent/50 bg-accent/[0.08] shadow-[0_0_0_1px_rgba(167,139,250,0.25),0_20px_40px_-20px_rgba(124,58,237,0.4)]";
     }
     if (isFeatured) {
-      return "border-2 border-logo-primary/25 bg-logo-primary/5";
+      return "border border-accent/30 bg-accent/[0.04]";
     }
-    return "border-2 border-mid-gray/20";
+    return "surface-card";
   };
 
   const getInteractiveClasses = () => {
     if (!isClickable) return "";
-    if (disabled) return "opacity-50 cursor-not-allowed";
-    return "cursor-pointer hover:border-logo-primary/50 hover:bg-logo-primary/5 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] group";
+    if (disabled) return "opacity-60 cursor-not-allowed";
+    return "cursor-pointer hover:border-accent/50 hover:bg-accent/[0.05] hover:shadow-[0_12px_28px_-12px_rgba(124,58,237,0.4)] active:scale-[0.995] group";
   };
 
   const handleClick = () => {
@@ -134,7 +134,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
         <div className="flex flex-col items-start flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h3
-              className={`text-base font-semibold text-text ${isClickable ? "group-hover:text-logo-primary" : ""} transition-colors`}
+              className={`text-[15px] font-display tracking-tight text-text ${isClickable ? "group-hover:text-accent-bright" : ""} transition-colors`}
             >
               {displayName}
             </h3>
@@ -157,7 +157,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
               </Badge>
             )}
           </div>
-          <p className="text-text/60 text-sm leading-relaxed">
+          <p className="text-text-muted text-[12.5px] leading-snug">
             {displayDescription}
           </p>
         </div>
@@ -165,23 +165,23 @@ const ModelCard: React.FC<ModelCardProps> = ({
           <div className="hidden sm:flex items-center ms-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <p className="text-xs text-text/60 w-24 text-end">
+                <p className="text-[10.5px] uppercase tracking-[0.08em] text-text-faint w-24 text-end">
                   {t("onboarding.modelCard.accuracy")}
                 </p>
-                <div className="w-16 h-1.5 bg-mid-gray/20 rounded-full overflow-hidden">
+                <div className="w-16 h-1 bg-white/[0.08] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-logo-primary rounded-full"
+                    className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full"
                     style={{ width: `${model.accuracy_score * 100}%` }}
                   />
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <p className="text-xs text-text/60 w-24 text-end">
+                <p className="text-[10.5px] uppercase tracking-[0.08em] text-text-faint w-24 text-end">
                   {t("onboarding.modelCard.speed")}
                 </p>
-                <div className="w-16 h-1.5 bg-mid-gray/20 rounded-full overflow-hidden">
+                <div className="w-16 h-1 bg-white/[0.08] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-logo-primary rounded-full"
+                    className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full"
                     style={{ width: `${model.speed_score * 100}%` }}
                   />
                 </div>
@@ -191,7 +191,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
         )}
       </div>
 
-      <hr className="w-full border-mid-gray/20" />
+      <hr className="w-full border-hairline" />
 
       {/* Bottom row: tags + action buttons (full width) */}
       <div className="flex items-center gap-3 w-full -mb-0.5 mt-0.5 h-5">
@@ -240,9 +240,9 @@ const ModelCard: React.FC<ModelCardProps> = ({
       {/* Download/extract progress */}
       {status === "downloading" && downloadProgress !== undefined && (
         <div className="w-full mt-3">
-          <div className="w-full h-1.5 bg-mid-gray/20 rounded-full overflow-hidden">
+          <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
             <div
-              className="h-full bg-logo-primary rounded-full transition-all duration-300"
+              className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full transition-all duration-300"
               style={{ width: `${downloadProgress}%` }}
             />
           </div>
@@ -280,8 +280,8 @@ const ModelCard: React.FC<ModelCardProps> = ({
       )}
       {status === "verifying" && (
         <div className="w-full mt-3">
-          <div className="w-full h-1.5 bg-mid-gray/20 rounded-full overflow-hidden">
-            <div className="h-full bg-logo-primary rounded-full animate-pulse w-full" />
+          <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full animate-pulse w-full" />
           </div>
           <p className="text-xs text-text/50 mt-1">
             {t("modelSelector.verifyingGeneric")}
@@ -290,8 +290,8 @@ const ModelCard: React.FC<ModelCardProps> = ({
       )}
       {status === "extracting" && (
         <div className="w-full mt-3">
-          <div className="w-full h-1.5 bg-mid-gray/20 rounded-full overflow-hidden">
-            <div className="h-full bg-logo-primary rounded-full animate-pulse w-full" />
+          <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full animate-pulse w-full" />
           </div>
           <p className="text-xs text-text/50 mt-1">
             {t("modelSelector.extractingGeneric")}

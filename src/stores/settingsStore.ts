@@ -129,8 +129,6 @@ const settingUpdaters: {
   auto_submit_key: (value) =>
     commands.changeAutoSubmitKeySetting(value as string),
   history_limit: (value) => commands.updateHistoryLimit(value as number),
-  post_process_enabled: (value) =>
-    commands.changePostProcessEnabledSetting(value as boolean),
   post_process_selected_prompt_id: (value) =>
     commands.setPostProcessSelectedPrompt(value as string),
   mute_while_recording: (value) =>
@@ -143,8 +141,24 @@ const settingUpdaters: {
     commands.changeExperimentalEnabledSetting(value as boolean),
   lazy_stream_close: (value) =>
     commands.changeLazyStreamCloseSetting(value as boolean),
+  continuous_dictation_enabled: (value) =>
+    commands.changeContinuousDictationEnabledSetting(value as boolean),
+  continuous_silence_ms: (value) =>
+    commands.changeContinuousSilenceMsSetting(value as number),
+  continuous_max_segment_ms: (value) =>
+    commands.changeContinuousMaxSegmentMsSetting(value as number),
+  continuous_min_segment_ms: (value) =>
+    commands.changeContinuousMinSegmentMsSetting(value as number),
+  continuous_submit_phrase_enabled: (value) =>
+    commands.changeContinuousSubmitPhraseEnabledSetting(value as boolean),
+  continuous_submit_phrase: (value) =>
+    commands.changeContinuousSubmitPhraseSetting(value as string),
+  continuous_submit_key: (value) =>
+    commands.changeContinuousSubmitKeySetting(value as string),
   show_tray_icon: (value) =>
     commands.changeShowTrayIconSetting(value as boolean),
+  show_dock_icon: (value) =>
+    commands.changeShowDockIconSetting(value as boolean),
   whisper_accelerator: (value) =>
     commands.changeWhisperAcceleratorSetting(
       value as WhisperAcceleratorSetting,

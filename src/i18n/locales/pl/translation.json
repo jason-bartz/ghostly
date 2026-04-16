@@ -557,10 +557,6 @@
         "title": "Mikrofon przy zamkniętej pokrywie",
         "description": "Mikrofon używany, gdy pokrywa laptopa jest zamknięta"
       },
-      "postProcessingToggle": {
-        "label": "Postprocess",
-        "description": "Włącz AI do ulepszania tekstu po transkrypcji"
-      },
       "muteWhileRecording": {
         "label": "Wycisz podczas nagrywania",
         "description": "Wycisz dźwięk systemu podczas nagrywania"

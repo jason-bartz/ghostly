@@ -121,3 +121,51 @@ pub fn paste_text_direct(enigo: &mut Enigo, text: &str) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Sends Cmd+A (Ctrl+A on non-macOS) to the focused application using
+/// platform virtual key codes so it works regardless of keyboard layout.
+/// Used by the "click an edit chip to rewrite the focused field" flow.
+pub fn send_select_all(enigo: &mut Enigo) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let (modifier_key, a_key_code) = (Key::Meta, Key::Other(0)); // kVK_ANSI_A
+    #[cfg(target_os = "windows")]
+    let (modifier_key, a_key_code) = (Key::Control, Key::Other(0x41)); // VK_A
+    #[cfg(target_os = "linux")]
+    let (modifier_key, a_key_code) = (Key::Control, Key::Unicode('a'));
+
+    enigo
+        .key(modifier_key, enigo::Direction::Press)
+        .map_err(|e| format!("Failed to press modifier for select-all: {}", e))?;
+    enigo
+        .key(a_key_code, enigo::Direction::Click)
+        .map_err(|e| format!("Failed to click A for select-all: {}", e))?;
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    enigo
+        .key(modifier_key, enigo::Direction::Release)
+        .map_err(|e| format!("Failed to release modifier after select-all: {}", e))?;
+    Ok(())
+}
+
+/// Sends Cmd+C (Ctrl+C on non-macOS) to the focused application.
+/// Companion to `send_select_all`; used to copy the selected text into the
+/// clipboard so Rust can read it back.
+pub fn send_copy(enigo: &mut Enigo) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let (modifier_key, c_key_code) = (Key::Meta, Key::Other(8)); // kVK_ANSI_C
+    #[cfg(target_os = "windows")]
+    let (modifier_key, c_key_code) = (Key::Control, Key::Other(0x43)); // VK_C
+    #[cfg(target_os = "linux")]
+    let (modifier_key, c_key_code) = (Key::Control, Key::Unicode('c'));
+
+    enigo
+        .key(modifier_key, enigo::Direction::Press)
+        .map_err(|e| format!("Failed to press modifier for copy: {}", e))?;
+    enigo
+        .key(c_key_code, enigo::Direction::Click)
+        .map_err(|e| format!("Failed to click C for copy: {}", e))?;
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    enigo
+        .key(modifier_key, enigo::Direction::Release)
+        .map_err(|e| format!("Failed to release modifier after copy: {}", e))?;
+    Ok(())
+}

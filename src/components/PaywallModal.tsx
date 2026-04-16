@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { commands } from "@/bindings";
-
-const PRICING_URL = "https://try-ghostly.com/pricing";
 
 export const PaywallModal: React.FC = () => {
   const { t } = useTranslation();
@@ -28,47 +25,63 @@ export const PaywallModal: React.FC = () => {
 
   if (!open) return null;
 
-  const handleUpgrade = async () => {
+  const handleBuy = async () => {
     try {
-      await openUrl(PRICING_URL);
+      await commands.openPaymentLink();
     } catch (e) {
-      console.warn("Failed to open pricing page:", e);
+      console.warn("Failed to open payment link:", e);
     }
     setOpen(false);
   };
 
+  const handleHaveKey = () => {
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent("ghostly-navigate-to-license"));
+  };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
       onClick={() => setOpen(false)}
     >
       <div
-        className="bg-background border border-mid-gray/20 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 space-y-4"
+        className="surface-card-inlay !rounded-2xl max-w-md w-full mx-4 p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold">{t("paywall.title")}</h2>
-        <p className="text-sm text-mid-gray leading-relaxed">
+        <div>
+          <span className="tag-pill mb-3">{t("sidebar.usage")}</span>
+          <h2 className="text-xl font-display tracking-tight text-text mt-2">
+            {t("paywall.title")}
+          </h2>
+        </div>
+        <p className="text-[13px] text-text-muted leading-relaxed">
           {t("paywall.body", { minutes: limitMinutes })}
         </p>
         {resetsAtUnix !== null && (
-          <p className="text-xs text-mid-gray">
+          <p className="text-xs text-text-faint">
             {t("paywall.resetsIn", {
               when: formatResetsWhen(resetsAtUnix),
             })}
           </p>
         )}
-        <div className="flex gap-2 justify-end pt-2">
+        <div className="flex gap-2 justify-end pt-2 flex-wrap">
           <button
-            className="px-3 py-1.5 text-sm rounded-md hover:bg-mid-gray/10 transition-colors"
+            className="px-3.5 py-1.5 text-xs font-medium rounded-full text-text-muted hover:text-text hover:bg-white/[0.04] transition-colors"
             onClick={() => setOpen(false)}
           >
             {t("paywall.dismiss")}
           </button>
           <button
-            className="px-3 py-1.5 text-sm rounded-md bg-logo-primary text-white hover:opacity-90 transition-opacity"
-            onClick={handleUpgrade}
+            className="px-3.5 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] transition-colors"
+            onClick={handleHaveKey}
           >
-            {t("paywall.upgrade")}
+            {t("paywall.haveKey")}
+          </button>
+          <button
+            className="px-4 py-1.5 text-xs font-medium rounded-full bg-accent-deep hover:bg-background-ui-hover text-white transition-colors btn-glow"
+            onClick={handleBuy}
+          >
+            {t("paywall.buyButton")}
           </button>
         </div>
       </div>

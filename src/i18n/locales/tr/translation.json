@@ -557,10 +557,6 @@
         "title": "Kapalı Kapak Mikrofonu",
         "description": "Dizüstü bilgisayar kapağı kapalıyken kullanılacak mikrofon"
       },
-      "postProcessingToggle": {
-        "label": "Son İşlem",
-        "description": "Transkripsiyon sonrası yapay zekâ destekli metin iyileştirmeyi etkinleştirir"
-      },
       "muteWhileRecording": {
         "label": "Kayıt Sırasında Sessize Al",
         "description": "Kayıt sırasında sistem sesini kapatır"

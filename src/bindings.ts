@@ -176,14 +176,6 @@ async changeAutoSubmitKeySetting(key: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async changePostProcessEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_post_process_enabled_setting", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async changeExperimentalEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_experimental_enabled_setting", { enabled }) };
@@ -350,6 +342,62 @@ async changeLazyStreamCloseSetting(enabled: boolean) : Promise<Result<null, stri
     else return { status: "error", error: e  as any };
 }
 },
+async changeContinuousDictationEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_dictation_enabled_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeContinuousSilenceMsSetting(ms: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_silence_ms_setting", { ms }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeContinuousMaxSegmentMsSetting(ms: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_max_segment_ms_setting", { ms }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeContinuousMinSegmentMsSetting(ms: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_min_segment_ms_setting", { ms }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeContinuousSubmitPhraseEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_submit_phrase_enabled_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeContinuousSubmitPhraseSetting(phrase: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_submit_phrase_setting", { phrase }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeContinuousSubmitKeySetting(key: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_continuous_submit_key_setting", { key }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeAppLanguageSetting(language: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_app_language_setting", { language }) };
@@ -381,6 +429,14 @@ async getKeyboardImplementation() : Promise<string> {
 async changeShowTrayIconSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_show_tray_icon_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeShowDockIconSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_show_dock_icon_setting", { enabled }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -453,6 +509,13 @@ async showMainWindowCommand() : Promise<Result<null, string>> {
 },
 async cancelOperation() : Promise<void> {
     await TAURI_INVOKE("cancel_operation");
+},
+/**
+ * Clears a staged screenshot capture (invoked from the staged overlay's
+ * Cancel button). Also hides the overlay so the user sees immediate feedback.
+ */
+async cancelStagedCapture() : Promise<void> {
+    await TAURI_INVOKE("cancel_staged_capture");
 },
 async isPortable() : Promise<boolean> {
     return await TAURI_INVOKE("is_portable");
@@ -657,6 +720,17 @@ async getMicrophoneMode() : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async setContinuousDictationArmed(armed: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_continuous_dictation_armed", { armed }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async isContinuousDictationArmed() : Promise<boolean> {
+    return await TAURI_INVOKE("is_continuous_dictation_armed");
+},
 async getWindowsMicrophonePermissionStatus() : Promise<WindowsMicrophonePermissionStatus> {
     return await TAURI_INVOKE("get_windows_microphone_permission_status");
 },
@@ -814,6 +888,14 @@ async deleteHistoryEntry(id: number) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async bulkDeleteHistoryEntries(ids: number[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bulk_delete_history_entries", { ids }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async retryHistoryEntryTranscription(id: number) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("retry_history_entry_transcription", { id }) };
@@ -838,9 +920,9 @@ async updateRecordingRetentionPeriod(period: string) : Promise<Result<null, stri
     else return { status: "error", error: e  as any };
 }
 },
-async searchHistoryEntries(query: string, limit: number | null) : Promise<Result<HistoryEntry[], string>> {
+async searchHistoryEntries(query: string, limit: number | null, startTs: number | null, endTs: number | null) : Promise<Result<HistoryEntry[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("search_history_entries", { query, limit }) };
+    return { status: "ok", data: await TAURI_INVOKE("search_history_entries", { query, limit, startTs, endTs }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -910,6 +992,53 @@ async getTranscriptionStats() : Promise<Result<TranscriptionStats, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async addHistoryTag(id: number, name: string) : Promise<Result<HistoryTag, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_history_tag", { id, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeHistoryTag(id: number, name: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_history_tag", { id, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listAllHistoryTags() : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_all_history_tags") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async filterHistoryEntries(query: string | null, tagNames: string[], limit: number | null, startTs: number | null, endTs: number | null) : Promise<Result<HistoryEntry[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("filter_history_entries", { query, tagNames, limit, startTs, endTs }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Generate a title and tags for an entry using the configured LLM provider,
+ * apply them (sets `user_title`, inserts tags as `auto = true`), and return
+ * the updated entry. Existing tags are preserved — AI-suggested tags that
+ * already exist are deduped by the unique index. User-set title is replaced
+ * only when the caller explicitly chose to regenerate.
+ */
+async generateHistoryMetadata(id: number) : Promise<Result<HistoryEntry, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("generate_history_metadata", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
@@ -946,6 +1075,18 @@ async setRestApiPort(port: number) : Promise<Result<null, string>> {
 async detectFrontmostApp() : Promise<Result<AppContext | null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("detect_frontmost_app") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Returns the id of the built-in profile matching the frontmost app, or
+ * null when nothing matches.
+ */
+async detectBuiltinProfileId() : Promise<Result<string | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("detect_builtin_profile_id") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1063,6 +1204,81 @@ async clearVoiceEditSession() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async setStyleEnabled(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_style_enabled", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getCategoryStyles() : Promise<Result<CategoryStyle[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_category_styles") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setCategoryStyle(category: CategoryId, style: StyleId) : Promise<Result<CategoryStyle[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_category_style", { category, style }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setCategoryCustomPrompt(category: CategoryId, prompt: string | null) : Promise<Result<CategoryStyle[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_category_custom_prompt", { category, prompt }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setCategoryCustomStyleName(category: CategoryId, name: string | null) : Promise<Result<CategoryStyle[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_category_custom_style_name", { category, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setCategoryVocab(category: CategoryId, words: string[]) : Promise<Result<CategoryStyle[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_category_vocab", { category, words }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setAutoCleanupLevel(level: AutoCleanupLevel) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_auto_cleanup_level", { level }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Update the per-word category tags. Passing an empty `categories` vector
+ * removes the entry (word applies globally).
+ */
+async setCustomWordCategories(word: string, categories: CategoryId[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_custom_word_categories", { word, categories }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Returns the list of built-in macOS bundle IDs for each Category. Used by
+ * the frontend to render the "applies in" app-icon strip per category.
+ */
+async getCategoryApps(category: CategoryId) : Promise<string[]> {
+    return await TAURI_INVOKE("get_category_apps", { category });
+},
 /**
  * Return the bundled EULA text and the current EULA version string. The
  * frontend compares the version against `eula_accepted_version` in settings
@@ -1133,12 +1349,70 @@ async setDevIsPro(enabled: boolean) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async activateLicense(key: string) : Promise<Result<LicenseState, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("activate_license", { key }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deactivateLicense() : Promise<Result<null, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("deactivate_license") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deactivateRemoteDevice(machineId: string) : Promise<Result<null, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("deactivate_remote_device", { machineId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
- * Return the built-in IDE preset packs (Cursor, Claude Code, Windsurf, VS
- * Code, Replit). Used by settings UI to render the preset list.
+ * Refresh the stored token via the worker. On explicit revoke/invalid the
+ * local credentials are cleared and `is_pro` is flipped off. On network
+ * errors we preserve state as long as the existing token is within the
+ * absolute grace window.
  */
-async getIdePresets() : Promise<IdePreset[]> {
-    return await TAURI_INVOKE("get_ide_presets");
+async revalidateLicense() : Promise<Result<LicenseState, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("revalidate_license") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getLicenseState() : Promise<LicenseState> {
+    return await TAURI_INVOKE("get_license_state");
+},
+async getDeviceList() : Promise<Result<StatusResponse, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_device_list") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async activateFromSession(sessionId: string) : Promise<Result<LicenseState, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("activate_from_session", { sessionId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async openPaymentLink() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_payment_link") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 /**
  * Mark the one-time IDE hint as seen for the given preset id. Idempotent.
@@ -1174,6 +1448,14 @@ async resetSeenIdeHints() : Promise<Result<null, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async applyEditChip(chipId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("apply_edit_chip", { chipId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -1192,6 +1474,7 @@ historyUpdatePayload: "history-update-payload"
 
 /** user-defined types **/
 
+export type ActiveDevice = { machine_id: string | null; machine_name?: string | null; activated_at: number | null; last_validated_at: number | null }
 export type AppContext = { bundleId: string | null; processName: string | null; windowClass: string | null; exePath: string | null; windowTitle: string | null }
 export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
 /**
@@ -1200,11 +1483,64 @@ export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding
  * proper nouns whose spelling diverges from pronunciation
  * (e.g. "Siobhan" -> "shavawn"). Not sent to Whisper as initial_prompt.
  */
-custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path: string | null; custom_filler_words?: string[] | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; extra_recording_buffer_ms?: number; profiles_enabled?: boolean; profiles?: Profile[]; 
+custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
+/**
+ * Enables the hands-free continuous dictation mode. Dev-mode gated in UI.
+ * When true, an additional shortcut arms/disarms a VAD-driven loop that
+ * transcribes each utterance on silence without any key press.
+ */
+continuous_dictation_enabled?: boolean; 
+/**
+ * Milliseconds of trailing silence that closes a segment.
+ */
+continuous_silence_ms?: number; 
+/**
+ * Hard ceiling on a single segment before force-flushing.
+ */
+continuous_max_segment_ms?: number; 
+/**
+ * Segments shorter than this are dropped (cough/click suppression).
+ */
+continuous_min_segment_ms?: number; 
+/**
+ * When true, ending a continuous-dictation segment with the configured
+ * submit phrase strips the phrase and sends the submit keystroke after
+ * pasting. Lets the user finish a thought with "...send it" to fire off
+ * a chat message hands-free.
+ */
+continuous_submit_phrase_enabled?: boolean; 
+/**
+ * Phrase that triggers the submit keystroke when it appears at the end of
+ * a segment. Matched case-insensitively with word boundaries.
+ */
+continuous_submit_phrase?: string; 
+/**
+ * Which key to send when the submit phrase fires. Reuses `AutoSubmitKey`
+ * but the UI exposes only Enter and Cmd+Enter — Ctrl+Enter is uncommon
+ * for chat submit on macOS.
+ */
+continuous_submit_key?: AutoSubmitKey; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; show_dock_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path: string | null; custom_filler_words?: string[] | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; extra_recording_buffer_ms?: number; profiles_enabled?: boolean; profiles?: Profile[]; 
 /**
  * When true, built-in app-category profiles auto-activate for common apps.
  */
-builtin_profiles_enabled?: boolean; voice_editing_enabled?: boolean; session_buffer_size?: number; session_idle_timeout_secs?: number; voice_edit_replace_strategy?: VoiceEditReplaceStrategy; 
+builtin_profiles_enabled?: boolean; 
+/**
+ * Master switch for the Style system. When on, the resolver picks a
+ * Category for the frontmost app and applies the configured style and
+ * cleanup level. Defaults on.
+ */
+style_enabled?: boolean; 
+/**
+ * Per-category style configuration. Always contains 4 entries (one per
+ * CategoryId) — `ensure_category_style_defaults` keeps this invariant.
+ */
+category_styles?: CategoryStyle[]; auto_cleanup_level?: AutoCleanupLevel; 
+/**
+ * Per-word category tags for Dictionary entries, keyed by the
+ * lowercased word. Empty / missing = applies globally. When set,
+ * the word only feeds Whisper's prompt in matching categories.
+ */
+custom_word_categories?: Partial<{ [key in string]: CategoryId[] }>; voice_editing_enabled?: boolean; session_buffer_size?: number; session_idle_timeout_secs?: number; voice_edit_replace_strategy?: VoiceEditReplaceStrategy; 
 /**
  * Opt-in experimental: regex prefix detection in addition to the shortcut.
  */
@@ -1254,6 +1590,7 @@ is_pro?: boolean;
  */
 dev_force_free_tier?: boolean }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
+export type AutoCleanupLevel = "none" | "light" | "medium" | "high"
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }
 /**
@@ -1265,37 +1602,34 @@ export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devi
  */
 export type BadgeId = "first_words" | "getting_started" | "regular" | "devoted" | "paragraph" | "marathon" | "one_hour_club" | "ten_hour_club" | "post_processor" | "collector" | "lexicographer" | "early_bird" | "night_owl" | "lunch_break" | "every_day_of_the_week" | "sprint" | "questioner" | "exclaimer"
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
+export type CategoryId = "personal_messages" | "work_messages" | "email" | "coding" | "other"
+/**
+ * Per-category user configuration.
+ */
+export type CategoryStyle = { category_id: CategoryId; selected_style?: StyleId; 
+/**
+ * Category-level vocabulary merged at transcribe time when this category
+ * matches. Separate from the global Dictionary.
+ */
+custom_vocab?: string[]; 
+/**
+ * When `selected_style == Custom`, the user-authored prompt that replaces
+ * the style body. `None` otherwise.
+ */
+custom_style_prompt?: string | null; custom_style_name?: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
+/**
+ * A badge the user has earned, together with the unix timestamp (seconds)
+ * at which it was first recorded. The unlock time is persisted in the
+ * `badge_unlocks` table so the UI can display dates and "new" indicators.
+ */
+export type EarnedBadge = { id: BadgeId; unlocked_at: number }
 export type EngineType = "Whisper" | "Parakeet" | "Moonshine" | "MoonshineStreaming" | "SenseVoice" | "GigaAM" | "Canary" | "Cohere"
 export type GpuDeviceOption = { id: number; name: string; total_vram_mb: number }
-export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; user_title: string | null; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean }
+export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; user_title: string | null; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean; source_app?: string | null; tags?: HistoryTag[] }
+export type HistoryTag = { name: string; auto: boolean }
 export type HistoryUpdatePayload = { action: "added"; entry: HistoryEntry } | { action: "updated"; entry: HistoryEntry } | { action: "deleted"; id: number } | { action: "toggled"; id: number }
-/**
- * Single voice command exposed by a preset. Separate from `VoiceCommand`
- * because we want a user-readable `description` for the hint chip.
- */
-export type IdeCommand = { 
-/**
- * Spoken phrase, lowercase. Additional synonyms live in `aliases`.
- */
-phrase: string; aliases?: string[]; 
-/**
- * Keystroke in `voice_commands` format: "enter", "escape", "cmd+enter", ...
- */
-keystroke: string; 
-/**
- * Short description for the one-time overlay hint.
- */
-description: string }
-/**
- * Preset pack for one IDE / agent UI.
- */
-export type IdePreset = { id: string; name: string; 
-/**
- * When true, a normal dictation into this app is auto-submitted (paste + Enter).
- */
-autoSubmit: boolean; commands: IdeCommand[] }
 /**
  * Result of changing keyboard implementation
  */
@@ -1311,6 +1645,8 @@ export type LLMPrompt = { id: string; name: string; prompt: string;
  * When set, pressing this shortcut triggers a transcription using this prompt.
  */
 shortcut?: string | null }
+export type LicenseError = { code: "invalid_key" } | { code: "revoked" } | { code: "device_limit_reached"; limit: number; active_devices: ActiveDevice[] } | { code: "not_activated" } | { code: "network_error"; message: string } | { code: "invalid_token" } | { code: "not_ready" }
+export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 export type MatchRule = 
 /**
@@ -1364,31 +1700,57 @@ custom_vocab?: string[];
 /**
  * Override trailing-space setting. `None` = inherit.
  */
-append_trailing_space?: boolean | null; 
+append_trailing_space?: boolean | null;
 /**
  * Override post-process provider id (e.g. switch to Apple Intelligence for Slack).
  * `None` = inherit.
  */
-provider_override?: string | null }
+provider_override?: string | null;
+/**
+ * Voice phrase → keystroke bindings merged into the global command pool
+ * when this profile is active.
+ */
+keystroke_commands?: KeystrokeCommand[];
+/**
+ * Some(true) forces auto-submit, Some(false) explicitly suppresses, None
+ * inherits the global setting.
+ */
+auto_submit?: boolean | null;
+/**
+ * When true, image paste requires Shift+Cmd+V instead of Cmd+V.
+ */
+image_paste_uses_shift?: boolean }
+/**
+ * Spoken phrase → keystroke binding, scoped to an individual Profile.
+ */
+export type KeystrokeCommand = { phrase: string; aliases?: string[]; keystroke: string; description: string }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
 export type SecretMap = Partial<{ [key in string]: string }>
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
 export type SoundTheme = "subtle" | "marimba" | "pop" | "custom"
+export type StatusResponse = { email: string; created_at: number | null; revoked: boolean; active_devices: ActiveDevice[] }
+export type StyleId = "formal" | "casual" | "excited" | "custom"
 /**
  * Aggregate usage statistics derived from the transcription history table.
  * All fields are lifetime totals across non-empty entries. Rows missing an
  * `audio_duration_ms` value (migrated from before the column existed) are
  * counted toward word/count totals but contribute zero to duration.
  */
-export type TranscriptionStats = { total_words: number; total_duration_ms: number; transcription_count: number; longest_transcription_words: number; first_transcription_timestamp: number | null; latest_transcription_timestamp: number | null; earned_badge_ids: BadgeId[] }
+export type TranscriptionStats = { total_words: number; total_duration_ms: number; transcription_count: number; longest_transcription_words: number; first_transcription_timestamp: number | null; latest_transcription_timestamp: number | null; earned_badges: EarnedBadge[] }
 export type TypingTool = "auto" | "wtype" | "kwtype" | "dotool" | "ydotool" | "xdotool"
 export type UsageStats = { week_start_iso: string; seconds_used: number; weekly_limit_secs: number; is_pro: boolean; is_over_limit: boolean; is_at_warning: boolean; 
 /**
  * Unix timestamp (seconds) when the current week resets (next Monday
  * 00:00 local). Frontend computes "time remaining" from this.
  */
-resets_at_unix: number; lifetime_seconds: number; history: UsageWeek[] }
-export type UsageWeek = { week_start_iso: string; seconds: number; hit_limit: boolean }
+resets_at_unix: number; lifetime_seconds: number; words_this_week: number; lifetime_words: number; 
+/**
+ * Estimated seconds saved vs. typing at TYPING_WPM_BASELINE. Clamped at 0
+ * when audio duration exceeded the hypothetical typing time (e.g. mostly
+ * silence).
+ */
+time_saved_secs_this_week: number; time_saved_secs_lifetime: number; history: UsageWeek[] }
+export type UsageWeek = { week_start_iso: string; seconds: number; words: number; hit_limit: boolean }
 export type VoiceCommand = { 
 /**
  * Display label for settings UI.

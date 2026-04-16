@@ -1,5 +1,7 @@
 pub mod audio;
+pub mod edit_chip;
 pub mod history;
+pub mod license;
 pub mod models;
 pub mod profiles;
 pub mod transcription;
@@ -14,6 +16,19 @@ use tauri_plugin_opener::OpenerExt;
 #[specta::specta]
 pub fn cancel_operation(app: AppHandle) {
     cancel_current_operation(&app);
+}
+
+/// Clears a staged screenshot capture (invoked from the staged overlay's
+/// Cancel button). Also hides the overlay so the user sees immediate feedback.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_staged_capture(app: AppHandle) {
+    if let Some(state) =
+        app.try_state::<std::sync::Arc<crate::staged_capture::StagedCaptureState>>()
+    {
+        state.clear();
+    }
+    crate::utils::hide_recording_overlay(&app);
 }
 
 #[tauri::command]
@@ -246,14 +261,6 @@ pub fn get_third_party_notices(app: AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Failed to resolve notices path: {}", e))?;
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read notices at {:?}: {}", path, e))
-}
-
-/// Return the built-in IDE preset packs (Cursor, Claude Code, Windsurf, VS
-/// Code, Replit). Used by settings UI to render the preset list.
-#[tauri::command]
-#[specta::specta]
-pub fn get_ide_presets() -> Vec<crate::ide_presets::IdePreset> {
-    crate::ide_presets::all_presets()
 }
 
 /// Mark the one-time IDE hint as seen for the given preset id. Idempotent.

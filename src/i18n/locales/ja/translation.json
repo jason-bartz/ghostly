@@ -557,10 +557,6 @@
         "title": "クラムシェルマイク",
         "description": "ノートパソコンの蓋を閉じたときに使用するマイク"
       },
-      "postProcessingToggle": {
-        "label": "後処理",
-        "description": "文字起こし後のAIによるテキスト改善を有効化"
-      },
       "muteWhileRecording": {
         "label": "録音中にミュート",
         "description": "録音中にシステムオーディオをミュート"

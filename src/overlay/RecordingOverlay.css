@@ -5,12 +5,15 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   padding: 8px 10px;
-  background: #0a0a14e6;
+  background: rgba(10, 10, 16, 0.92);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
   border-radius: 22px;
-  border: 1px solid #a78bfa22;
+  border: 1px solid rgba(167, 139, 250, 0.18);
   box-shadow:
-    0 0 20px #7c3aed30,
-    0 4px 24px #00000080;
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 0 22px rgba(124, 58, 237, 0.22),
+    0 8px 28px rgba(0, 0, 0, 0.55);
   opacity: 0;
   transform: translateY(4px) scale(0.98);
   transition:
@@ -184,6 +187,152 @@
   transform: scale(1.05);
 }
 
+/* Edit-mode chip strip — rendered when the edit shortcut fires. Clicking a
+   chip rewrites the focused field's text via the AI provider. */
+.recording-overlay-wide {
+  width: 380px;
+}
+
+.edit-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.edit-chip {
+  appearance: none;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: rgba(167, 139, 250, 0.1);
+  color: #e9d5ff;
+  font-size: 11px;
+  font-weight: 500;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 4px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 140ms ease-out,
+    border-color 140ms ease-out,
+    transform 90ms ease-out,
+    opacity 140ms ease-out;
+}
+
+.edit-chip:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.5);
+  transform: translateY(-1px);
+}
+
+.edit-chip:active:not(:disabled) {
+  transform: translateY(0);
+  background: rgba(167, 139, 250, 0.3);
+}
+
+.edit-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.edit-chip-pending {
+  background: rgba(167, 139, 250, 0.35);
+  border-color: rgba(167, 139, 250, 0.65);
+  color: #fff;
+  animation: chip-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes chip-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .cancel-button:active {
   transform: scale(0.95);
+}
+
+/* Staged screenshot capture layout — thumbnail + text + hint + cancel */
+.recording-overlay.staged-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 300px;
+  height: 124px;
+  padding: 10px 12px;
+  gap: 8px;
+  box-shadow:
+    0 0 18px #7c3aed30,
+    0 4px 24px #00000080;
+}
+
+.staged-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+}
+
+.staged-thumb {
+  width: 72px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #a78bfa33;
+  flex-shrink: 0;
+  background: #0a0a14;
+}
+
+.staged-text-block {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.staged-label {
+  color: #a78bfa;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.staged-text {
+  color: #e9d5ff;
+  font-size: 11px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.staged-hint {
+  color: #c4b5fd;
+  font-size: 10px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding-top: 6px;
+  border-top: 1px solid #a78bfa22;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staged-hint-key {
+  color: #ddd6fe;
+  font-weight: 700;
+  margin-left: 3px;
 }

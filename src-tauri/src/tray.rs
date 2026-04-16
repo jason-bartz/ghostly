@@ -2,6 +2,7 @@ use crate::audio_toolkit::list_input_devices;
 use crate::managers::history::{HistoryEntry, HistoryManager};
 use crate::managers::model::ModelManager;
 use crate::managers::transcription::TranscriptionManager;
+use crate::managers::usage::UsageManager;
 use crate::settings;
 use crate::tray_i18n::get_tray_translations;
 use log::{error, info, warn};
@@ -110,6 +111,9 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
     let version_label = version_label();
     let version_i = MenuItem::with_id(app, "version", &version_label, false, None::<&str>)
         .expect("failed to create version item");
+    let metrics_label = weekly_metrics_label(app);
+    let metrics_i = MenuItem::with_id(app, "metrics", &metrics_label, false, None::<&str>)
+        .expect("failed to create metrics item");
     let settings_i = MenuItem::with_id(
         app,
         "settings",
@@ -217,6 +221,7 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
                 app,
                 &[
                     &version_i,
+                    &metrics_i,
                     &separator(),
                     &cancel_i,
                     &separator(),
@@ -233,6 +238,7 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
             app,
             &[
                 &version_i,
+                &metrics_i,
                 &separator(),
                 &copy_last_transcript_i,
                 &separator(),
@@ -253,6 +259,38 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
     let _ = tray.set_menu(Some(menu));
     let _ = tray.set_icon_as_template(true);
     let _ = tray.set_tooltip(Some(version_label));
+}
+
+/// Short one-line summary of this week's vanity metrics for the tray menu.
+/// macOS tray menus can't render UI, so we pack into one line.
+fn weekly_metrics_label(app: &AppHandle) -> String {
+    let Some(um) = app.try_state::<Arc<UsageManager>>() else {
+        return "— this week".to_string();
+    };
+    let settings = settings::get_settings(app);
+    let stats = um.stats(settings.effective_is_pro());
+    let minutes_saved = stats.time_saved_secs_this_week / 60;
+    let words = format_thousands(stats.words_this_week);
+    if stats.words_this_week == 0 {
+        "No activity this week".to_string()
+    } else if minutes_saved == 0 {
+        format!("{} words this week", words)
+    } else {
+        format!("{} words · {} min saved this week", words, minutes_saved)
+    }
+}
+
+fn format_thousands(n: u64) -> String {
+    let s = n.to_string();
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 && (bytes.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(*b as char);
+    }
+    out
 }
 
 fn last_transcript_text(entry: &HistoryEntry) -> &str {
@@ -317,8 +355,10 @@ mod tests {
             user_title: None,
             transcription_text: transcription.to_string(),
             post_processed_text: post_processed.map(|text| text.to_string()),
+            tags: Vec::new(),
             post_process_prompt: None,
             post_process_requested: false,
+            source_app: None,
         }
     }
 

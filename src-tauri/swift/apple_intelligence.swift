@@ -83,10 +83,15 @@ public func processTextWithSystemPrompt(
     Task.detached(priority: .userInitiated) {
         defer { semaphore.signal() }
         do {
-            let session = LanguageModelSession(
-                model: model,
-                instructions: swiftSystemPrompt
-            )
+            // When the caller passes an empty system prompt, construct a
+            // session WITHOUT `instructions:`. The cleanup rules are bundled
+            // into the user message instead. This avoids a class of
+            // hallucinations where the on-device model treats a standalone
+            // user turn as a conversational query and answers the question
+            // in the transcript rather than cleaning it.
+            let session: LanguageModelSession = swiftSystemPrompt.isEmpty
+                ? LanguageModelSession(model: model)
+                : LanguageModelSession(model: model, instructions: swiftSystemPrompt)
             // Use plain text generation. `@Generable` structured output on
             // macOS 26 occasionally places the schema description into the
             // generated field instead of the model's response, leaking text

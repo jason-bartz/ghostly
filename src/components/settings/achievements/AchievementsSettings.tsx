@@ -6,23 +6,20 @@ import React, {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, BookOpen } from "lucide-react";
 import {
   commands,
   events,
   type BadgeId,
+  type EarnedBadge,
   type TranscriptionStats,
 } from "@/bindings";
 
-/**
- * Window in milliseconds during which back-to-back history-update events
- * collapse into a single stats refetch. Picked to feel instant to a human
- * (well below the 100ms perceptual bound) while coalescing the typical
- * burst that fires when a recording is saved, post-processed, and written
- * in quick succession.
- */
 const STATS_REFRESH_DEBOUNCE_MS = 300;
-import { SettingsGroup } from "../../ui/SettingsGroup";
+
+/** Badges unlocked within this window (ms) show a "New" tag. */
+const NEW_BADGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 import { BADGES } from "./badges";
 import { computeMilestoneProgress, LITERARY_MILESTONES } from "./milestones";
 import { formatCount, formatDuration } from "./format";
@@ -31,8 +28,6 @@ export const AchievementsSettings: React.FC = () => {
   const { t, i18n } = useTranslation();
   const [stats, setStats] = useState<TranscriptionStats | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Flag for "the component is still mounted" so a late tauri event fired
-  // after unmount doesn't invoke setState on an unmounted tree.
   const mountedRef = useRef(true);
   const debounceHandleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -76,7 +71,7 @@ export const AchievementsSettings: React.FC = () => {
   if (error !== null) {
     return (
       <div className="max-w-3xl w-full mx-auto space-y-6">
-        <div className="px-4 py-3 text-sm text-mid-gray">
+        <div className="px-4 py-3 text-sm text-text-muted">
           {t("achievements.loadError")}
         </div>
       </div>
@@ -85,7 +80,7 @@ export const AchievementsSettings: React.FC = () => {
 
   if (stats === null) {
     return (
-      <div className="max-w-3xl w-full mx-auto flex items-center justify-center py-12 text-mid-gray">
+      <div className="max-w-3xl w-full mx-auto flex items-center justify-center py-12 text-accent-bright">
         <Loader2 className="w-5 h-5 animate-spin" />
       </div>
     );
@@ -104,26 +99,32 @@ const AchievementsContent: React.FC<AchievementsContentProps> = ({
   locale,
 }) => {
   const { t } = useTranslation();
-  const earned = useMemo<ReadonlySet<BadgeId>>(
-    () => new Set(stats.earned_badge_ids),
-    [stats.earned_badge_ids],
+  const earnedMap = useMemo<ReadonlyMap<BadgeId, EarnedBadge>>(
+    () => new Map(stats.earned_badges.map((b) => [b.id, b])),
+    [stats.earned_badges],
   );
   const empty = stats.transcription_count === 0;
+  const earnedCount = stats.earned_badges.length;
 
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-6">
+    <div className="max-w-3xl w-full mx-auto space-y-5 pb-6">
       <LiteraryLadderCard totalWords={stats.total_words} locale={locale} />
 
-      <SettingsGroup title={t("achievements.stats.title")}>
-        <StatsGrid stats={stats} locale={locale} />
-      </SettingsGroup>
+      <StatsGrid stats={stats} locale={locale} />
 
-      <SettingsGroup
-        title={t("achievements.badges.title")}
-        description={t("achievements.badges.subtitle")}
-      >
-        <BadgeWall earnedIds={earned} empty={empty} />
-      </SettingsGroup>
+      <div className="space-y-3">
+        <div className="flex items-baseline justify-between px-1">
+          <h2 className="text-[10px] font-semibold text-text-faint uppercase tracking-[0.08em]">
+            {t("achievements.badges.title")}
+          </h2>
+          {!empty && (
+            <span className="text-[11px] tabular-nums font-mono text-text-muted">
+              {earnedCount}/{BADGES.length}
+            </span>
+          )}
+        </div>
+        <BadgeWall earnedMap={earnedMap} empty={empty} locale={locale} />
+      </div>
     </div>
   );
 };
@@ -172,23 +173,43 @@ const LiteraryLadderCard: React.FC<LiteraryLadderCardProps> = ({
   return (
     <section
       aria-label={t("achievements.ladder.totalWords")}
-      className="bg-background border border-mid-gray/20 rounded-lg p-5 space-y-4"
+      className="relative overflow-hidden surface-card-raised rounded-2xl p-5 space-y-4"
     >
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <div>
-          <p className="text-xs font-medium text-mid-gray uppercase tracking-wide">
-            {t("achievements.ladder.totalWords")}
-          </p>
-          <p className="text-3xl font-semibold tabular-nums">
-            {formatCount(totalWords, locale)}
-          </p>
+      {/* Decorative accent */}
+      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-accent to-transparent opacity-80" />
+      <div
+        aria-hidden
+        className="absolute -top-20 -right-16 w-56 h-56 rounded-full pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(167, 139, 250, 0.18) 0%, transparent 60%)",
+          filter: "blur(20px)",
+        }}
+      />
+
+      <div className="relative flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 w-11 h-11 rounded-xl bg-accent/12 border border-accent/25 flex items-center justify-center shrink-0">
+            <BookOpen
+              className="w-5 h-5 text-accent-bright"
+              strokeWidth={1.75}
+            />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-text-faint uppercase tracking-[0.08em]">
+              {t("achievements.ladder.totalWords")}
+            </p>
+            <p className="text-3xl font-display tabular-nums tracking-tight text-text">
+              {formatCount(totalWords, locale)}
+            </p>
+          </div>
         </div>
-        <p className="text-sm text-mid-gray max-w-xs text-right">
+        <p className="text-[12.5px] text-text-muted max-w-[11rem] text-right leading-snug mt-1">
           {currentLabel}
         </p>
       </div>
 
-      <div>
+      <div className="relative">
         <div
           role="progressbar"
           aria-label={progressAriaLabel}
@@ -196,15 +217,15 @@ const LiteraryLadderCard: React.FC<LiteraryLadderCardProps> = ({
           aria-valuemax={100}
           aria-valuenow={percent}
           aria-valuetext={progressAriaValueText}
-          className="h-2 w-full rounded-full bg-mid-gray/10 overflow-hidden"
+          className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden"
         >
           <div
-            className="h-full bg-logo-primary rounded-full transition-all duration-500 ease-out"
+            className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full transition-all duration-700 ease-out shadow-[0_0_12px_rgba(167,139,250,0.5)]"
             style={{ width: `${percent}%` }}
             aria-hidden
           />
         </div>
-        <p className="mt-2 text-sm text-mid-gray">{supportingText}</p>
+        <p className="mt-2 text-[12.5px] text-text-muted">{supportingText}</p>
       </div>
     </section>
   );
@@ -245,14 +266,17 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats, locale }) => {
   return (
     <dl
       aria-label={t("achievements.stats.title")}
-      className="grid grid-cols-2 md:grid-cols-4 divide-x divide-mid-gray/20"
+      className="grid grid-cols-2 gap-2.5"
     >
       {tiles.map((tile) => (
-        <div key={tile.labelKey} className="px-4 py-4 text-center">
-          <dd className="text-2xl font-semibold tabular-nums leading-tight">
+        <div
+          key={tile.labelKey}
+          className="surface-card rounded-xl px-4 py-4 text-center"
+        >
+          <dd className="text-2xl font-display tabular-nums leading-none tracking-tight text-text">
             {tile.value}
           </dd>
-          <dt className="mt-1 text-xs font-medium text-mid-gray uppercase tracking-wide">
+          <dt className="mt-2 text-[10px] font-semibold text-text-faint uppercase tracking-[0.08em]">
             {t(tile.labelKey)}
           </dt>
         </div>
@@ -261,17 +285,49 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats, locale }) => {
   );
 };
 
-interface BadgeWallProps {
-  readonly earnedIds: ReadonlySet<BadgeId>;
-  readonly empty: boolean;
+/** Format a unix timestamp (seconds) as a short localized date. */
+function formatUnlockDate(ts: number, locale: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(ts * 1000));
+  } catch {
+    return new Date(ts * 1000).toLocaleDateString();
+  }
 }
 
-const BadgeWall: React.FC<BadgeWallProps> = ({ earnedIds, empty }) => {
+/** True if the badge was unlocked within the last `NEW_BADGE_WINDOW_MS`. */
+function isNewBadge(unlockedAt: number): boolean {
+  return Date.now() - unlockedAt * 1000 < NEW_BADGE_WINDOW_MS;
+}
+
+interface BadgeWallProps {
+  readonly earnedMap: ReadonlyMap<BadgeId, EarnedBadge>;
+  readonly empty: boolean;
+  readonly locale: string;
+}
+
+const BadgeWall: React.FC<BadgeWallProps> = ({ earnedMap, empty, locale }) => {
   const { t } = useTranslation();
+
+  // Sort: earned badges first (newest first), then locked
+  const sorted = useMemo(() => {
+    const earnedBadges = BADGES.filter((b) => earnedMap.has(b.id));
+    // Sort earned by unlock date descending (most recent first)
+    earnedBadges.sort((a, b) => {
+      const aTime = earnedMap.get(a.id)?.unlocked_at ?? 0;
+      const bTime = earnedMap.get(b.id)?.unlocked_at ?? 0;
+      return bTime - aTime;
+    });
+    const lockedBadges = BADGES.filter((b) => !earnedMap.has(b.id));
+    return [...earnedBadges, ...lockedBadges];
+  }, [earnedMap]);
 
   if (empty) {
     return (
-      <div className="px-4 py-6 text-sm text-mid-gray text-center">
+      <div className="px-4 py-8 text-sm text-text-muted text-center surface-card rounded-xl">
         {t("achievements.badges.emptyState")}
       </div>
     );
@@ -281,10 +337,12 @@ const BadgeWall: React.FC<BadgeWallProps> = ({ earnedIds, empty }) => {
     <ul
       role="list"
       aria-label={t("achievements.badges.title")}
-      className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-mid-gray/20"
+      className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
     >
-      {BADGES.map((badge) => {
-        const earned = earnedIds.has(badge.id);
+      {sorted.map((badge) => {
+        const earnedBadge = earnedMap.get(badge.id);
+        const earned = earnedBadge != null;
+        const isNew = earned && isNewBadge(earnedBadge.unlocked_at);
         const Icon = earned ? badge.icon : Lock;
         const title = t(badge.titleKey);
         const description = t(badge.descriptionKey);
@@ -296,27 +354,64 @@ const BadgeWall: React.FC<BadgeWallProps> = ({ earnedIds, empty }) => {
             key={badge.id}
             role="listitem"
             aria-label={`${title}, ${statusLabel}`}
-            className={`flex items-start gap-3 px-4 py-3 bg-background ${
-              earned ? "" : "opacity-60"
+            className={`relative flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-all duration-200 overflow-hidden ${
+              earned
+                ? "border-accent/30 bg-gradient-to-br from-accent/[0.08] via-accent/[0.03] to-transparent hover:border-accent/50 hover:from-accent/[0.12] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_16px_36px_-20px_rgba(124,58,237,0.55)]"
+                : "border-hairline bg-white/[0.02]"
             }`}
           >
+            {earned && (
+              <div
+                aria-hidden
+                className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
+                style={{
+                  background:
+                    "radial-gradient(circle, rgba(167, 139, 250, 0.18) 0%, transparent 60%)",
+                  filter: "blur(14px)",
+                }}
+              />
+            )}
             <div
-              className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${
+              className={`relative shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
                 earned
-                  ? "bg-logo-primary/15 text-logo-primary"
-                  : "bg-mid-gray/10 text-mid-gray"
+                  ? "bg-accent/15 border border-accent/30 text-accent-bright shadow-[0_0_14px_rgba(167,139,250,0.3)]"
+                  : "bg-white/[0.03] border border-hairline text-text-faint"
               }`}
               aria-hidden
             >
               <Icon width={18} height={18} strokeWidth={1.75} />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{title}</p>
-              <p className="text-xs text-mid-gray mt-0.5">
+            <div className="relative min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p
+                  className={`text-[13.5px] font-semibold truncate ${
+                    earned ? "text-text" : "text-text-muted"
+                  }`}
+                >
+                  {title}
+                </p>
+                {isNew && (
+                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.08em] bg-accent/20 text-accent-bright border border-accent/40 px-1.5 py-0.5 rounded-full">
+                    {t("achievements.badges.new")}
+                  </span>
+                )}
+              </div>
+              <p
+                className={`text-[12px] mt-1 leading-snug ${
+                  earned ? "text-text-muted" : "text-text-subtle"
+                }`}
+              >
                 {earned
                   ? description
                   : t("achievements.badges.lockedDescription", { description })}
               </p>
+              {earned && (
+                <p className="text-[10.5px] font-mono tabular-nums text-accent-bright/80 mt-1.5">
+                  {t("achievements.badges.unlocked", {
+                    date: formatUnlockDate(earnedBadge.unlocked_at, locale),
+                  })}
+                </p>
+              )}
             </div>
           </li>
         );

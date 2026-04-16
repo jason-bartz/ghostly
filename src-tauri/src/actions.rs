@@ -98,6 +98,15 @@ fn emit_post_process_failed(app: &AppHandle, message: impl Into<String>) {
     }
 }
 
+fn emit_screenshot_qa_failed(app: &AppHandle, message: impl Into<String>) {
+    let payload = PostProcessFailedEvent {
+        message: message.into(),
+    };
+    if let Err(e) = app.emit("screenshot-qa-failed", payload) {
+        warn!("Failed to emit screenshot-qa-failed event: {}", e);
+    }
+}
+
 /// Build a system prompt from the user's prompt template.
 /// Removes `${output}` placeholder since the transcription is sent as the user message.
 fn build_system_prompt(prompt_template: &str) -> String {
@@ -139,30 +148,46 @@ async fn post_process_transcription(
         return None;
     }
 
-    let selected_prompt_id = match overrides
-        .prompt_id
-        .clone()
-        .or_else(|| settings.post_process_selected_prompt_id.clone())
-    {
-        Some(id) => id,
-        None => {
-            debug!("Post-processing skipped because no prompt is selected");
-            return None;
+    // Prompt selection precedence:
+    //   1. Explicit `prompt_id` override (prompt shortcuts, advanced custom
+    //      rules) — lookup in `post_process_prompts`.
+    //   2. Style-system composed prompt (category + cleanup level).
+    //   3. Globally-selected prompt.
+    let prompt = if let Some(id) = overrides.prompt_id.clone() {
+        match settings.post_process_prompts.iter().find(|p| p.id == id) {
+            Some(p) => p.prompt.clone(),
+            None => {
+                debug!(
+                    "Post-processing skipped because prompt '{}' was not found",
+                    id
+                );
+                return None;
+            }
         }
-    };
+    } else if let Some(composed) = overrides.composed_prompt.clone() {
+        composed
+    } else {
+        let selected_prompt_id = match settings.post_process_selected_prompt_id.clone() {
+            Some(id) => id,
+            None => {
+                debug!("Post-processing skipped because no prompt is selected");
+                return None;
+            }
+        };
 
-    let prompt = match settings
-        .post_process_prompts
-        .iter()
-        .find(|prompt| prompt.id == selected_prompt_id)
-    {
-        Some(prompt) => prompt.prompt.clone(),
-        None => {
-            debug!(
-                "Post-processing skipped because prompt '{}' was not found",
-                selected_prompt_id
-            );
-            return None;
+        match settings
+            .post_process_prompts
+            .iter()
+            .find(|prompt| prompt.id == selected_prompt_id)
+        {
+            Some(prompt) => prompt.prompt.clone(),
+            None => {
+                debug!(
+                    "Post-processing skipped because prompt '{}' was not found",
+                    selected_prompt_id
+                );
+                return None;
+            }
         }
     };
 
@@ -213,55 +238,79 @@ async fn post_process_transcription(
         _ => (None, None),
     };
 
+    // Handle Apple Intelligence separately since it uses native Swift APIs.
+    // Unlike HTTP providers, we do NOT split the prompt into instructions + user
+    // content. Apple's on-device Foundation Model is small enough that when the
+    // user turn is a standalone conversational query (e.g. "how do I install
+    // TensorFlow"), it treats `instructions` as weak guidance and just answers
+    // the question. Bundling the full template — rules AND transcript — into
+    // one user message frames the transcription as data rather than bait.
+    if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            if !apple_intelligence::check_apple_intelligence_availability() {
+                debug!("Apple Intelligence selected but not currently available on this device");
+                return None;
+            }
+
+            let user_content = prompt.replace("${output}", transcription);
+            let token_limit = model.trim().parse::<i32>().unwrap_or(0);
+            return match apple_intelligence::process_text_with_system_prompt(
+                "",
+                &user_content,
+                token_limit,
+            ) {
+                Ok(result) => {
+                    if result.trim().is_empty() {
+                        debug!("Apple Intelligence returned an empty response");
+                        return None;
+                    }
+                    let result = strip_invisible_chars(&result);
+                    // Hallucination guard: on-device Apple Intelligence
+                    // occasionally answers the transcription as a question
+                    // instead of cleaning it, producing output many times
+                    // longer than the input (e.g. a TensorFlow tutorial in
+                    // response to "how do I install tensorflow"). Drop the
+                    // result and fall back to the raw transcript when output
+                    // dwarfs input.
+                    let input_len = transcription.chars().count();
+                    let output_len = result.chars().count();
+                    if output_len > input_len.saturating_mul(3) && output_len > input_len + 300 {
+                        warn!(
+                            "Apple Intelligence output looks like a hallucination ({} chars from {} chars input); falling back to raw transcript",
+                            output_len, input_len
+                        );
+                        emit_post_process_failed(
+                            app,
+                            "AI refinement produced an off-topic response. Pasted raw transcription instead.",
+                        );
+                        return None;
+                    }
+                    debug!(
+                        "Apple Intelligence post-processing succeeded. Output length: {} chars",
+                        result.len()
+                    );
+                    Some(result)
+                }
+                Err(err) => {
+                    error!("Apple Intelligence post-processing failed: {}", err);
+                    None
+                }
+            };
+        }
+
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            debug!("Apple Intelligence provider selected on unsupported platform");
+            return None;
+        }
+    }
+
     if provider.supports_structured_output {
         debug!("Using structured outputs for provider '{}'", provider.id);
 
         let system_prompt = build_system_prompt(&prompt);
         let user_content = transcription.to_string();
-
-        // Handle Apple Intelligence separately since it uses native Swift APIs
-        if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            {
-                if !apple_intelligence::check_apple_intelligence_availability() {
-                    debug!(
-                        "Apple Intelligence selected but not currently available on this device"
-                    );
-                    return None;
-                }
-
-                let token_limit = model.trim().parse::<i32>().unwrap_or(0);
-                return match apple_intelligence::process_text_with_system_prompt(
-                    &system_prompt,
-                    &user_content,
-                    token_limit,
-                ) {
-                    Ok(result) => {
-                        if result.trim().is_empty() {
-                            debug!("Apple Intelligence returned an empty response");
-                            None
-                        } else {
-                            let result = strip_invisible_chars(&result);
-                            debug!(
-                                "Apple Intelligence post-processing succeeded. Output length: {} chars",
-                                result.len()
-                            );
-                            Some(result)
-                        }
-                    }
-                    Err(err) => {
-                        error!("Apple Intelligence post-processing failed: {}", err);
-                        None
-                    }
-                };
-            }
-
-            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-            {
-                debug!("Apple Intelligence provider selected on unsupported platform");
-                return None;
-            }
-        }
 
         // Define JSON schema for transcription output
         let json_schema = serde_json::json!({
@@ -658,7 +707,7 @@ const VOICE_EDIT_SYSTEM_PROMPT: &str = "You are a text editor. The user will giv
 
 /// Run a voice-edit LLM call against the prior session entry's final text.
 /// Returns None if post-process isn't usable (no provider / no model / no key).
-async fn voice_edit_via_llm(
+pub(crate) async fn voice_edit_via_llm(
     settings: &AppSettings,
     prior_text: &str,
     instruction: &str,
@@ -689,22 +738,21 @@ async fn voice_edit_via_llm(
         prior_text, instruction
     );
 
-    // Apple Intelligence: native path, no HTTP.
+    // Apple Intelligence: native path, no HTTP. Bundle the system prompt into
+    // the user message so the on-device model treats the prior text + instruction
+    // as input to act on, not as a conversational turn to respond to freely.
     if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             if !apple_intelligence::check_apple_intelligence_availability() {
                 return None;
             }
+            let bundled = format!("{}\n\n{}", VOICE_EDIT_SYSTEM_PROMPT, user_content);
             let token_limit = model.trim().parse::<i32>().unwrap_or(0);
-            return apple_intelligence::process_text_with_system_prompt(
-                VOICE_EDIT_SYSTEM_PROMPT,
-                &user_content,
-                token_limit,
-            )
-            .ok()
-            .map(|s| strip_invisible_chars(&s))
-            .filter(|s| !s.trim().is_empty());
+            return apple_intelligence::process_text_with_system_prompt("", &bundled, token_limit)
+                .ok()
+                .map(|s| strip_invisible_chars(&s))
+                .filter(|s| !s.trim().is_empty());
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
@@ -782,10 +830,12 @@ async fn voice_edit_via_llm(
     }
 }
 
-/// Send the screenshot + dictated question to the selected vision-capable
-/// provider and return the LLM's answer. Uses the `builtin_screenshot_qa`
-/// prompt as the system prompt and the transcription as the user question.
+/// Legacy: send the screenshot + dictated question to a vision LLM.
+/// Kept for potential future use as an alternative mode; the default flow now
+/// pastes the image + transcribed text directly without an LLM round-trip.
+#[allow(dead_code)]
 async fn screenshot_qa_via_llm(
+    app: &AppHandle,
     settings: &AppSettings,
     transcription: &str,
     image_png: &[u8],
@@ -795,6 +845,10 @@ async fn screenshot_qa_via_llm(
         Some(p) => p,
         None => {
             error!("Screenshot Q&A: no provider selected");
+            emit_screenshot_qa_failed(
+                app,
+                "No AI provider selected. Configure one in Settings → AI Refinement.",
+            );
             return None;
         }
     };
@@ -803,6 +857,13 @@ async fn screenshot_qa_via_llm(
         error!(
             "Screenshot Q&A: provider '{}' does not support vision. Switch to OpenAI, OpenRouter, Z.AI, or Groq.",
             provider.id
+        );
+        emit_screenshot_qa_failed(
+            app,
+            format!(
+                "'{}' doesn't support vision. Switch to OpenAI, OpenRouter, Z.AI, or Groq.",
+                provider.label
+            ),
         );
         return None;
     }
@@ -816,6 +877,13 @@ async fn screenshot_qa_via_llm(
         error!(
             "Screenshot Q&A: provider '{}' has no model configured",
             provider.id
+        );
+        emit_screenshot_qa_failed(
+            app,
+            format!(
+                "No model selected for '{}'. Pick one in Settings → AI Refinement.",
+                provider.label
+            ),
         );
         return None;
     }
@@ -851,6 +919,11 @@ async fn screenshot_qa_via_llm(
         Ok(Some(content)) => {
             let cleaned = strip_invisible_chars(&content);
             if cleaned.trim().is_empty() {
+                error!("Screenshot Q&A: LLM returned empty content");
+                emit_screenshot_qa_failed(
+                    app,
+                    "The AI returned an empty response. Try asking again.",
+                );
                 None
             } else {
                 Some(cleaned)
@@ -858,10 +931,15 @@ async fn screenshot_qa_via_llm(
         }
         Ok(None) => {
             error!("Screenshot Q&A: LLM returned no content");
+            emit_screenshot_qa_failed(
+                app,
+                "The AI returned no response. Check your API key and model.",
+            );
             None
         }
         Err(e) => {
             error!("Screenshot Q&A LLM call failed: {}", e);
+            emit_screenshot_qa_failed(app, short_error_reason(&e));
             None
         }
     }
@@ -914,24 +992,37 @@ impl ShortcutAction for TranscribeAction {
         change_tray_icon(app, TrayIconState::Recording);
         show_recording_overlay(app);
 
-        // Emit one-time IDE hint chip if the frontmost app matches a known preset.
-        // Skip when the overlay is disabled — the hint has nowhere to render.
+        // Emit one-time IDE hint chip if the frontmost app matches a built-in
+        // profile that carries keystroke commands. Skip when the overlay is
+        // disabled — the hint has nowhere to render.
         {
             let settings_for_hint = get_settings(app);
             if settings_for_hint.ide_presets_enabled
                 && settings_for_hint.overlay_position != crate::settings::OverlayPosition::None
             {
                 if let Ok(Some(ctx)) = crate::frontmost::current() {
-                    if let Some(preset) = crate::ide_presets::detect(&ctx) {
-                        if !settings_for_hint
-                            .seen_ide_hints
-                            .iter()
-                            .any(|id| id == &preset.id)
+                    if let Some(profile) = crate::profiles::match_builtin_profile(&ctx) {
+                        if !profile.keystroke_commands.is_empty()
+                            && !settings_for_hint
+                                .seen_ide_hints
+                                .iter()
+                                .any(|id| id == &profile.id)
                         {
-                            crate::overlay::emit_ide_hint(app, &preset);
+                            crate::overlay::emit_ide_hint(app, &profile);
                         }
                     }
                 }
+            }
+        }
+
+        // When the dedicated edit shortcut is used, show a clickable chip
+        // strip (Shorten / Lengthen / Fix grammar / Rephrase). Clicking a chip
+        // rewrites the text currently in the focused field; speaking instead
+        // falls through to the normal voice-edit flow.
+        if self.force_voice_edit && binding_id == "edit_last_transcription" {
+            let settings = get_settings(app);
+            if settings.overlay_position != crate::settings::OverlayPosition::None {
+                crate::overlay::emit_edit_mode(app);
             }
         }
 
@@ -1058,7 +1149,7 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
                                                  // `post_process` on the action is now a "force on" signal. The actual
                                                  // runtime decision is made once `settings_snapshot` is available (see
-                                                 // below) and ORs this with has_working_llm() + post_process_enabled.
+                                                 // below) and ORs this with has_working_llm().
         let force_post_process = self.post_process;
         let force_voice_edit = self.force_voice_edit;
         let capture_screenshot = self.capture_screenshot;
@@ -1140,7 +1231,8 @@ impl ShortcutAction for TranscribeAction {
                             if let Some(um) = ah.try_state::<Arc<UsageManager>>() {
                                 let duration_secs = (sample_count as u64)
                                     / (crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE as u64);
-                                um.record(duration_secs);
+                                let word_count = transcription.split_whitespace().count() as u64;
+                                um.record(duration_secs, word_count);
                             }
 
                             // Show the transcription text in the overlay immediately so the user
@@ -1155,12 +1247,11 @@ impl ShortcutAction for TranscribeAction {
                             let settings_snapshot = get_settings(&ah);
                             // Runtime post-process decision: force-on from the
                             // action (e.g. edit_last_transcription), else auto —
-                            // on when LLM is connected, refinement is enabled,
-                            // and this isn't a voice-command or screenshot flow.
+                            // on whenever an LLM is connected and this isn't a
+                            // voice-command or screenshot flow.
                             let post_process = force_post_process
                                 || (!voice_command_mode
                                     && !capture_screenshot
-                                    && settings_snapshot.post_process_enabled
                                     && settings_snapshot.has_working_llm());
                             let app_ctx = frontmost::current().ok().flatten();
                             let mut overrides = profiles::resolve_with_builtins(
@@ -1213,9 +1304,15 @@ impl ShortcutAction for TranscribeAction {
                             // nothing to paste — save history and return.
                             if transcription.is_empty() {
                                 if wav_saved {
-                                    if let Err(err) =
-                                        hm.save_entry(file_name, String::new(), false, None, None)
-                                    {
+                                    let source_app = rm.take_source_app();
+                                    if let Err(err) = hm.save_entry(
+                                        file_name,
+                                        String::new(),
+                                        false,
+                                        None,
+                                        None,
+                                        source_app,
+                                    ) {
                                         error!(
                                             "Failed to save correction-consumed history: {}",
                                             err
@@ -1233,14 +1330,20 @@ impl ShortcutAction for TranscribeAction {
                                 if !settings_snapshot.voice_commands_enabled {
                                     warn!("Voice command shortcut pressed but voice_commands_enabled is false");
                                 }
-                                // Merge the user's configured commands with the detected
-                                // IDE preset's command pack (if any) so built-in presets
-                                // work out of the box without requiring user setup.
+                                // Merge the user's configured commands with the matched
+                                // built-in profile's keystroke commands (if any) so built-in
+                                // IDE automation works out of the box without user setup.
                                 let mut merged_commands = settings_snapshot.voice_commands.clone();
                                 if settings_snapshot.ide_presets_enabled {
                                     if let Ok(Some(ctx)) = crate::frontmost::current() {
-                                        if let Some(preset) = crate::ide_presets::detect(&ctx) {
-                                            merged_commands.extend(preset.to_voice_commands());
+                                        if let Some(profile) =
+                                            crate::profiles::match_builtin_profile(&ctx)
+                                        {
+                                            merged_commands.extend(
+                                                crate::profiles::keystroke_commands_to_voice_commands(
+                                                    &profile.keystroke_commands,
+                                                ),
+                                            );
                                         }
                                     }
                                 }
@@ -1275,80 +1378,72 @@ impl ShortcutAction for TranscribeAction {
                                 return;
                             }
 
-                            // Screenshot + dictate branch: if this shortcut captured an image,
-                            // route the transcription through a vision-capable LLM and paste the
-                            // answer. Skips voice-edit and session buffer entirely.
+                            // Screenshot + dictate branch: stage the capture and show the
+                            // staged overlay. The user focuses their target text field, then
+                            // presses the confirm shortcut to actually paste.
                             if capture_screenshot {
                                 let image =
                                     captured_image_slot.lock().ok().and_then(|mut s| s.take());
                                 match image {
                                     Some(png) => {
-                                        show_processing_overlay(&ah);
-                                        match screenshot_qa_via_llm(
-                                            &settings_snapshot,
-                                            &transcription,
-                                            &png,
-                                        )
-                                        .await
-                                        {
-                                            Some(answer) => {
-                                                if wav_saved {
-                                                    if let Err(err) = hm.save_entry(
-                                                        file_name,
-                                                        transcription.clone(),
-                                                        true,
-                                                        Some(answer.clone()),
-                                                        Some("Screenshot Q&A (vision)".to_string()),
-                                                    ) {
-                                                        error!(
-                                                            "Failed to save screenshot history: {}",
-                                                            err
-                                                        );
-                                                    }
-                                                }
-                                                let ah_clone = ah.clone();
-                                                let answer_for_paste = answer.clone();
-                                                let append_space_override =
-                                                    overrides.append_trailing_space;
-                                                let _ = ah.run_on_main_thread(move || {
-                                                    let opts = PasteOptions {
-                                                        append_trailing_space:
-                                                            append_space_override,
-                                                        replace_prior_chars: None,
-                                                        suppress_auto_submit: false,
-                                                    };
-                                                    if let Err(e) =
-                                                        crate::clipboard::paste_with_options(
-                                                            answer_for_paste,
-                                                            ah_clone.clone(),
-                                                            opts,
-                                                        )
-                                                    {
-                                                        error!("Screenshot paste failed: {}", e);
-                                                        let _ = ah_clone.emit("paste-error", ());
-                                                    }
-                                                    utils::hide_recording_overlay(&ah_clone);
-                                                    change_tray_icon(
-                                                        &ah_clone,
-                                                        TrayIconState::Idle,
-                                                    );
-                                                });
-                                                return;
-                                            }
-                                            None => {
-                                                warn!("Screenshot Q&A returned no content");
-                                                let _ = ah.emit("paste-error", ());
-                                                utils::hide_recording_overlay(&ah);
-                                                change_tray_icon(&ah, TrayIconState::Idle);
-                                                return;
+                                        // Save history entry with the transcription
+                                        if wav_saved {
+                                            let source_app = rm.take_source_app();
+                                            if let Err(err) = hm.save_entry(
+                                                file_name,
+                                                transcription.clone(),
+                                                true,
+                                                None,
+                                                Some("Screenshot + Dictate".to_string()),
+                                                source_app,
+                                            ) {
+                                                error!(
+                                                    "Failed to save screenshot history: {}",
+                                                    err
+                                                );
                                             }
                                         }
+
+                                        // Stage the capture for later confirm-paste
+                                        let staged = ah.state::<Arc<
+                                            crate::staged_capture::StagedCaptureState,
+                                        >>();
+                                        staged.set(png.clone(), transcription.clone());
+
+                                        // Look up the user's confirm shortcut so the overlay
+                                        // can display it as a hint.
+                                        let confirm_shortcut = settings_snapshot
+                                            .bindings
+                                            .get("confirm_screenshot_paste")
+                                            .map(|b| b.current_binding.clone())
+                                            .unwrap_or_default();
+
+                                        let ah_clone = ah.clone();
+                                        let png_for_overlay = png.clone();
+                                        let text_for_overlay = transcription.clone();
+                                        let _ = ah.run_on_main_thread(move || {
+                                            utils::show_staged_overlay(
+                                                &ah_clone,
+                                                &png_for_overlay,
+                                                &text_for_overlay,
+                                                if confirm_shortcut.is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(confirm_shortcut.as_str())
+                                                },
+                                            );
+                                            change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                        });
+                                        return;
                                     }
                                     None => {
                                         warn!(
                                             "Screenshot capture missing; aborting screenshot dictate"
                                         );
-                                        let _ = ah.emit("paste-error", ());
+                                        emit_screenshot_qa_failed(
+                                            &ah,
+                                            "Screenshot capture failed. Check that Screen Recording permission is granted in System Settings → Privacy & Security.",
+                                        );
                                         utils::hide_recording_overlay(&ah);
                                         change_tray_icon(&ah, TrayIconState::Idle);
                                         return;
@@ -1382,12 +1477,14 @@ impl ShortcutAction for TranscribeAction {
                                     Some(revised) => {
                                         if wav_saved {
                                             // Record the edit as a history entry so it's auditable.
+                                            let source_app = rm.take_source_app();
                                             if let Err(err) = hm.save_entry(
                                                 file_name,
                                                 transcription.clone(),
                                                 post_process,
                                                 Some(revised.clone()),
                                                 Some(VOICE_EDIT_SYSTEM_PROMPT.to_string()),
+                                                source_app,
                                             ) {
                                                 error!(
                                                     "Failed to save voice-edit history entry: {}",
@@ -1470,12 +1567,14 @@ impl ShortcutAction for TranscribeAction {
 
                             // Save to history if WAV was saved
                             if wav_saved {
+                                let source_app = rm.take_source_app();
                                 if let Err(err) = hm.save_entry(
                                     file_name,
                                     transcription.clone(),
                                     post_process,
                                     processed.post_processed_text.clone(),
                                     processed.post_process_prompt.clone(),
+                                    source_app,
                                 ) {
                                     error!("Failed to save history entry: {}", err);
                                 }
@@ -1566,12 +1665,14 @@ impl ShortcutAction for TranscribeAction {
                             // read settings), so fall back to the explicit
                             // force flag.
                             if wav_saved {
+                                let source_app = rm.take_source_app();
                                 if let Err(save_err) = hm.save_entry(
                                     file_name,
                                     String::new(),
                                     force_post_process,
                                     None,
                                     None,
+                                    source_app,
                                 ) {
                                     error!("Failed to save failed history entry: {}", save_err);
                                 }
@@ -1606,6 +1707,65 @@ impl ShortcutAction for CancelAction {
     fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
         // Nothing to do on stop for cancel
     }
+}
+
+// Confirm Screenshot Paste Action: triggered when the user focuses their
+// target text field and presses the confirm shortcut. Reads the staged capture,
+// pastes the image + text, and clears the state.
+#[cfg(target_os = "macos")]
+struct ConfirmScreenshotPasteAction;
+
+#[cfg(target_os = "macos")]
+impl ShortcutAction for ConfirmScreenshotPasteAction {
+    fn start(&self, app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+        let state = app.state::<Arc<crate::staged_capture::StagedCaptureState>>();
+        let capture = match state.take() {
+            Some(c) => c,
+            None => {
+                debug!("Confirm screenshot paste: no staged capture");
+                return;
+            }
+        };
+
+        // Reads the `image_paste_uses_shift` flag off the matched built-in
+        // profile, if any. VS Code is the only current case — Copilot Chat
+        // requires Shift+Cmd+V to attach images.
+        let use_shift = crate::frontmost::current()
+            .ok()
+            .flatten()
+            .and_then(|ctx| crate::profiles::match_builtin_profile(&ctx))
+            .map(|profile| profile.image_paste_uses_shift)
+            .unwrap_or(false);
+
+        let app_clone = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Err(e) = crate::clipboard_image::paste_image(&capture.png, &app_clone, use_shift)
+            {
+                error!("Image paste failed during confirm: {}", e);
+                let _ = app_clone.emit("paste-error", ());
+                utils::hide_recording_overlay(&app_clone);
+                return;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(300));
+
+            let opts = PasteOptions {
+                append_trailing_space: None,
+                replace_prior_chars: None,
+                suppress_auto_submit: false,
+            };
+            if let Err(e) =
+                crate::clipboard::paste_with_options(capture.text, app_clone.clone(), opts)
+            {
+                error!("Text paste during confirm failed: {}", e);
+                let _ = app_clone.emit("paste-error", ());
+            }
+
+            utils::hide_recording_overlay(&app_clone);
+        });
+    }
+
+    fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {}
 }
 
 // Test Action
@@ -1677,6 +1837,11 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     map.insert(
         "cancel".to_string(),
         Arc::new(CancelAction) as Arc<dyn ShortcutAction>,
+    );
+    #[cfg(target_os = "macos")]
+    map.insert(
+        "confirm_screenshot_paste".to_string(),
+        Arc::new(ConfirmScreenshotPasteAction) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "test".to_string(),

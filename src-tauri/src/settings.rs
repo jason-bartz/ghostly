@@ -416,8 +416,6 @@ pub struct AppSettings {
     pub auto_submit: bool,
     #[serde(default)]
     pub auto_submit_key: AutoSubmitKey,
-    #[serde(default = "default_post_process_enabled")]
-    pub post_process_enabled: bool,
     #[serde(default = "default_post_process_provider_id")]
     pub post_process_provider_id: String,
     #[serde(default = "default_post_process_providers")]
@@ -440,10 +438,41 @@ pub struct AppSettings {
     pub experimental_enabled: bool,
     #[serde(default)]
     pub lazy_stream_close: bool,
+    /// Enables the hands-free continuous dictation mode. Dev-mode gated in UI.
+    /// When true, an additional shortcut arms/disarms a VAD-driven loop that
+    /// transcribes each utterance on silence without any key press.
+    #[serde(default)]
+    pub continuous_dictation_enabled: bool,
+    /// Milliseconds of trailing silence that closes a segment.
+    #[serde(default = "default_continuous_silence_ms")]
+    pub continuous_silence_ms: u32,
+    /// Hard ceiling on a single segment before force-flushing.
+    #[serde(default = "default_continuous_max_segment_ms")]
+    pub continuous_max_segment_ms: u32,
+    /// Segments shorter than this are dropped (cough/click suppression).
+    #[serde(default = "default_continuous_min_segment_ms")]
+    pub continuous_min_segment_ms: u32,
+    /// When true, ending a continuous-dictation segment with the configured
+    /// submit phrase strips the phrase and sends the submit keystroke after
+    /// pasting. Lets the user finish a thought with "...send it" to fire off
+    /// a chat message hands-free.
+    #[serde(default)]
+    pub continuous_submit_phrase_enabled: bool,
+    /// Phrase that triggers the submit keystroke when it appears at the end of
+    /// a segment. Matched case-insensitively with word boundaries.
+    #[serde(default = "default_continuous_submit_phrase")]
+    pub continuous_submit_phrase: String,
+    /// Which key to send when the submit phrase fires. Reuses `AutoSubmitKey`
+    /// but the UI exposes only Enter and Cmd+Enter — Ctrl+Enter is uncommon
+    /// for chat submit on macOS.
+    #[serde(default)]
+    pub continuous_submit_key: AutoSubmitKey,
     #[serde(default)]
     pub keyboard_implementation: KeyboardImplementation,
     #[serde(default = "default_show_tray_icon")]
     pub show_tray_icon: bool,
+    #[serde(default = "default_show_dock_icon")]
+    pub show_dock_icon: bool,
     #[serde(default = "default_paste_delay_ms")]
     pub paste_delay_ms: u64,
     #[serde(default = "default_typing_tool")]
@@ -468,6 +497,24 @@ pub struct AppSettings {
     /// When true, built-in app-category profiles auto-activate for common apps.
     #[serde(default = "default_true")]
     pub builtin_profiles_enabled: bool,
+
+    // --- Style system (supersedes the flat profile list for most users) ---
+    /// Master switch for the Style system. When on, the resolver picks a
+    /// Category for the frontmost app and applies the configured style and
+    /// cleanup level. Defaults on.
+    #[serde(default = "default_true")]
+    pub style_enabled: bool,
+    /// Per-category style configuration. Always contains 4 entries (one per
+    /// CategoryId) — `ensure_category_style_defaults` keeps this invariant.
+    #[serde(default = "crate::profiles::default_category_styles")]
+    pub category_styles: Vec<crate::profiles::CategoryStyle>,
+    #[serde(default)]
+    pub auto_cleanup_level: crate::profiles::AutoCleanupLevel,
+    /// Per-word category tags for Dictionary entries, keyed by the
+    /// lowercased word. Empty / missing = applies globally. When set,
+    /// the word only feeds Whisper's prompt in matching categories.
+    #[serde(default)]
+    pub custom_word_categories: HashMap<String, Vec<crate::profiles::CategoryId>>,
 
     // --- Voice editing loop (Feature B) ---
     #[serde(default)]
@@ -576,6 +623,22 @@ fn default_always_on_microphone() -> bool {
     false
 }
 
+fn default_continuous_silence_ms() -> u32 {
+    900
+}
+
+fn default_continuous_max_segment_ms() -> u32 {
+    20_000
+}
+
+fn default_continuous_min_segment_ms() -> u32 {
+    400
+}
+
+fn default_continuous_submit_phrase() -> String {
+    "send it".to_string()
+}
+
 fn default_translate_to_english() -> bool {
     false
 }
@@ -643,12 +706,6 @@ fn default_sound_theme() -> SoundTheme {
     SoundTheme::Subtle
 }
 
-fn default_post_process_enabled() -> bool {
-    // Default-on: when an LLM is connected, the main transcribe shortcut
-    // auto-refines. When no LLM is configured, this is effectively a no-op.
-    true
-}
-
 fn default_app_language() -> String {
     tauri_plugin_os::locale()
         .map(|l| l.replace('_', "-"))
@@ -656,6 +713,10 @@ fn default_app_language() -> String {
 }
 
 fn default_show_tray_icon() -> bool {
+    true
+}
+
+fn default_show_dock_icon() -> bool {
     true
 }
 
@@ -1030,7 +1091,22 @@ pub fn get_default_settings() -> AppSettings {
             id: "transcribe_with_screenshot".to_string(),
             name: "Screenshot + Dictate".to_string(),
             description:
-                "Captures the screen, records your question, and sends both to a vision-capable LLM. Requires a vision provider."
+                "Captures the screen and records your question, then stages them. Focus a text field and trigger 'Paste Staged Capture' to drop the screenshot and text into the app."
+                    .to_string(),
+            default_binding: "".to_string(),
+            current_binding: "".to_string(),
+        },
+    );
+
+    // Confirm-paste shortcut for staged screenshot captures. Unbound by default
+    // so the user can pick a combo that doesn't conflict with their target apps.
+    bindings.insert(
+        "confirm_screenshot_paste".to_string(),
+        ShortcutBinding {
+            id: "confirm_screenshot_paste".to_string(),
+            name: "Paste Staged Capture".to_string(),
+            description:
+                "Pastes the staged screenshot + transcription into the focused text field. Trigger this after capturing with 'Screenshot + Dictate'."
                     .to_string(),
             default_binding: "".to_string(),
             current_binding: "".to_string(),
@@ -1047,17 +1123,34 @@ pub fn get_default_settings() -> AppSettings {
         },
     );
     // Voice-edit shortcut — unbound by default so users opt in explicitly.
-    // Empty current_binding means not registered until the user sets one.
+    // Arm/disarm for hands-free continuous dictation. Unbound by default;
+    // the feature is dev-mode gated and the user explicitly opts in.
+    bindings.insert(
+        "toggle_continuous_dictation".to_string(),
+        ShortcutBinding {
+            id: "toggle_continuous_dictation".to_string(),
+            name: "Toggle Continuous Dictation".to_string(),
+            description:
+                "Arms or disarms hands-free continuous dictation. When armed, the microphone stays hot and Ghostly transcribes each utterance automatically on silence."
+                    .to_string(),
+            default_binding: "".to_string(),
+            current_binding: "".to_string(),
+        },
+    );
+
+    // Default: fn+ctrl — sits right next to the transcribe key on a MacBook
+    // so the edit action feels like a natural sibling of the record action.
+    let default_edit_shortcut = "ctrl+fn";
     bindings.insert(
         "edit_last_transcription".to_string(),
         ShortcutBinding {
             id: "edit_last_transcription".to_string(),
             name: "Edit Last Transcription".to_string(),
             description:
-                "Records a short instruction and revises the previously pasted transcription via the post-process LLM."
+                "Records a short instruction and revises the previously pasted transcription via the post-process LLM. Also shows quick-action chips (Shorten, Lengthen, Fix grammar, Rephrase) you can click to edit whatever text is in the focused field."
                     .to_string(),
-            default_binding: "".to_string(),
-            current_binding: "".to_string(),
+            default_binding: default_edit_shortcut.to_string(),
+            current_binding: default_edit_shortcut.to_string(),
         },
     );
 
@@ -1089,7 +1182,6 @@ pub fn get_default_settings() -> AppSettings {
         clipboard_handling: ClipboardHandling::default(),
         auto_submit: default_auto_submit(),
         auto_submit_key: AutoSubmitKey::default(),
-        post_process_enabled: default_post_process_enabled(),
         post_process_provider_id: default_post_process_provider_id(),
         post_process_providers: default_post_process_providers(),
         post_process_api_keys: default_post_process_api_keys(),
@@ -1101,8 +1193,16 @@ pub fn get_default_settings() -> AppSettings {
         app_language: default_app_language(),
         experimental_enabled: false,
         lazy_stream_close: false,
+        continuous_dictation_enabled: false,
+        continuous_silence_ms: default_continuous_silence_ms(),
+        continuous_max_segment_ms: default_continuous_max_segment_ms(),
+        continuous_min_segment_ms: default_continuous_min_segment_ms(),
+        continuous_submit_phrase_enabled: false,
+        continuous_submit_phrase: default_continuous_submit_phrase(),
+        continuous_submit_key: AutoSubmitKey::default(),
         keyboard_implementation: KeyboardImplementation::default(),
         show_tray_icon: default_show_tray_icon(),
+        show_dock_icon: default_show_dock_icon(),
         paste_delay_ms: default_paste_delay_ms(),
         typing_tool: default_typing_tool(),
         external_script_path: None,
@@ -1114,6 +1214,10 @@ pub fn get_default_settings() -> AppSettings {
         profiles_enabled: false,
         profiles: Vec::new(),
         builtin_profiles_enabled: true,
+        style_enabled: true,
+        category_styles: crate::profiles::default_category_styles(),
+        auto_cleanup_level: crate::profiles::AutoCleanupLevel::default(),
+        custom_word_categories: HashMap::new(),
         voice_editing_enabled: false,
         session_buffer_size: default_session_buffer_size(),
         session_idle_timeout_secs: default_session_idle_timeout_secs(),
@@ -1250,6 +1354,8 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_builtin_prompts(&mut settings);
+    changed |= ensure_category_style_defaults(&mut settings);
+    changed |= migrate_seen_ide_hint_ids(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1259,6 +1365,50 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     }
 
     settings
+}
+
+/// Migrate legacy `seen_ide_hints` entries from the bare preset ids
+/// ("cursor", "claude_code", "windsurf", "vscode", "replit") to the
+/// `builtin_*` profile ids introduced when IDE presets folded into the
+/// profile system. Without this, existing users would see the one-time
+/// hint chip again after upgrading.
+fn migrate_seen_ide_hint_ids(settings: &mut AppSettings) -> bool {
+    let mut changed = false;
+    for id in settings.seen_ide_hints.iter_mut() {
+        let new_id = match id.as_str() {
+            "cursor" => Some("builtin_cursor"),
+            "claude_code" => Some("builtin_claude_code"),
+            "windsurf" => Some("builtin_windsurf"),
+            "vscode" => Some("builtin_vscode"),
+            "replit" => Some("builtin_replit"),
+            _ => None,
+        };
+        if let Some(next) = new_id {
+            *id = next.to_string();
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Backfill any missing category_styles entries so the Style system always
+/// has a row per CategoryId. Preserves the user's existing selections.
+fn ensure_category_style_defaults(settings: &mut AppSettings) -> bool {
+    let mut changed = false;
+    for cat in crate::profiles::CategoryId::all() {
+        if !settings
+            .category_styles
+            .iter()
+            .any(|cs| cs.category_id == cat)
+        {
+            let defaults = crate::profiles::default_category_styles();
+            if let Some(default) = defaults.into_iter().find(|cs| cs.category_id == cat) {
+                settings.category_styles.push(default);
+                changed = true;
+            }
+        }
+    }
+    changed
 }
 
 /// Hydrate API keys from the OS keychain into the in-memory settings.
@@ -1341,6 +1491,8 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
 
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_builtin_prompts(&mut settings);
+    changed |= ensure_category_style_defaults(&mut settings);
+    changed |= migrate_seen_ide_hint_ids(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(

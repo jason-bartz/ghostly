@@ -1,11 +1,16 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, X, Crosshair } from "lucide-react";
-import { Dropdown, SettingContainer } from "../../ui";
+import { Dropdown, SettingContainer, ToggleSwitch } from "../../ui";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { useSettings } from "../../../hooks/useSettings";
-import type { MatchRuleKind, MatchRuleLike, ProfileLike } from "./types";
+import type {
+  KeystrokeCommandLike,
+  MatchRuleKind,
+  MatchRuleLike,
+  ProfileLike,
+} from "./types";
 
 interface Props {
   profile: ProfileLike;
@@ -83,6 +88,24 @@ export const ProfileEditor: React.FC<Props> = ({
       "custom_vocab",
       draft.custom_vocab.filter((v) => v !== w),
     );
+
+  const addKeystroke = () =>
+    update("keystroke_commands", [
+      ...draft.keystroke_commands,
+      { phrase: "", aliases: [], keystroke: "", description: "" },
+    ]);
+
+  const updateKeystroke = (i: number, patch: Partial<KeystrokeCommandLike>) => {
+    const next = draft.keystroke_commands.slice();
+    next[i] = { ...next[i], ...patch };
+    update("keystroke_commands", next);
+  };
+
+  const removeKeystroke = (i: number) => {
+    const next = draft.keystroke_commands.slice();
+    next.splice(i, 1);
+    update("keystroke_commands", next);
+  };
 
   const handleDetect = async () => {
     const r = await onDetect();
@@ -324,6 +347,115 @@ export const ProfileEditor: React.FC<Props> = ({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Auto-submit tri-state */}
+      <SettingContainer
+        title={t("settings.profiles.fields.autoSubmit")}
+        description={t("settings.profiles.fields.autoSubmitHint")}
+        descriptionMode="inline"
+        layout="horizontal"
+        grouped={true}
+      >
+        <Dropdown
+          className="min-w-[180px]"
+          options={[
+            {
+              value: "inherit",
+              label: t("settings.profiles.fields.autoSubmitInherit"),
+            },
+            { value: "on", label: t("settings.profiles.fields.autoSubmitOn") },
+            {
+              value: "off",
+              label: t("settings.profiles.fields.autoSubmitOff"),
+            },
+          ]}
+          selectedValue={boolToTri(draft.auto_submit)}
+          onSelect={(v) => update("auto_submit", triToBool(v as TriState))}
+        />
+      </SettingContainer>
+
+      {/* Image paste uses Shift (for VS Code Copilot Chat and similar) */}
+      <ToggleSwitch
+        label={t("settings.profiles.fields.imagePasteShift")}
+        description={t("settings.profiles.fields.imagePasteShiftHint")}
+        checked={draft.image_paste_uses_shift}
+        onChange={(v) => update("image_paste_uses_shift", v)}
+        descriptionMode="inline"
+        grouped={true}
+      />
+
+      {/* Keystroke commands — voice phrase → keystroke bindings */}
+      <div className="flex flex-col gap-2 px-4 py-2">
+        <div>
+          <div className="text-sm font-medium">
+            {t("settings.profiles.fields.keystrokes")}
+          </div>
+          <div className="text-xs text-text/60">
+            {t("settings.profiles.fields.keystrokesHint")}
+          </div>
+        </div>
+        {draft.keystroke_commands.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {draft.keystroke_commands.map((k, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <Input
+                  type="text"
+                  value={k.phrase}
+                  onChange={(e) =>
+                    updateKeystroke(i, { phrase: e.target.value })
+                  }
+                  placeholder={t(
+                    "settings.profiles.fields.keystrokePhrasePlaceholder",
+                  )}
+                  variant="compact"
+                  className="flex-1 min-w-0"
+                />
+                <span className="text-xs text-text/50">→</span>
+                <Input
+                  type="text"
+                  value={k.keystroke}
+                  onChange={(e) =>
+                    updateKeystroke(i, { keystroke: e.target.value })
+                  }
+                  placeholder={t(
+                    "settings.profiles.fields.keystrokeBindingPlaceholder",
+                  )}
+                  variant="compact"
+                  className="w-32 shrink-0 font-mono text-xs"
+                />
+                <Input
+                  type="text"
+                  value={k.description}
+                  onChange={(e) =>
+                    updateKeystroke(i, { description: e.target.value })
+                  }
+                  placeholder={t(
+                    "settings.profiles.fields.keystrokeDescriptionPlaceholder",
+                  )}
+                  variant="compact"
+                  className="flex-1 min-w-0"
+                />
+                <Button
+                  variant="danger-ghost"
+                  size="sm"
+                  onClick={() => removeKeystroke(i)}
+                  aria-label={t("settings.profiles.fields.removeKeystroke")}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div>
+          <Button variant="secondary" size="sm" onClick={addKeystroke}>
+            <span className="inline-flex items-center gap-1">
+              <Plus className="w-4 h-4" />
+              <span>{t("settings.profiles.fields.addKeystroke")}</span>
+            </span>
+          </Button>
+        </div>
       </div>
 
       {/* Actions */}

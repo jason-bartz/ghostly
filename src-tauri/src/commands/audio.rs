@@ -178,6 +178,28 @@ pub fn get_microphone_mode(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 #[specta::specta]
+pub fn set_continuous_dictation_armed(app: AppHandle, armed: bool) -> Result<(), String> {
+    let cm = app
+        .try_state::<Arc<crate::managers::continuous::ContinuousDictationManager>>()
+        .ok_or_else(|| "Continuous dictation not initialized".to_string())?;
+    if armed {
+        cm.arm()
+    } else {
+        cm.disarm();
+        Ok(())
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn is_continuous_dictation_armed(app: AppHandle) -> bool {
+    app.try_state::<Arc<crate::managers::continuous::ContinuousDictationManager>>()
+        .map(|cm| cm.is_armed())
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn get_available_microphones() -> Result<Vec<AudioDevice>, String> {
     let devices =
         list_input_devices().map_err(|e| format!("Failed to list audio devices: {}", e))?;

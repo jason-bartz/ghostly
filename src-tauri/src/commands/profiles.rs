@@ -1,6 +1,6 @@
 //! Tauri commands for per-app profile CRUD and voice-editing settings.
 
-use crate::profiles::{self, Profile};
+use crate::profiles::{self, AutoCleanupLevel, CategoryId, CategoryStyle, Profile, StyleId};
 use crate::settings::{get_settings, write_settings, VoiceEditReplaceStrategy};
 use tauri::AppHandle;
 
@@ -161,4 +161,155 @@ pub fn clear_voice_edit_session(app: AppHandle) -> Result<(), String> {
         sb.clear();
     }
     Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Style + Category commands (new)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_style_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.style_enabled = enabled;
+    write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_category_styles(app: AppHandle) -> Result<Vec<CategoryStyle>, String> {
+    Ok(get_settings(&app).category_styles)
+}
+
+fn upsert_category<F: FnOnce(&mut CategoryStyle)>(
+    app: &AppHandle,
+    category: CategoryId,
+    mutate: F,
+) -> Result<Vec<CategoryStyle>, String> {
+    let mut settings = get_settings(app);
+    match settings
+        .category_styles
+        .iter_mut()
+        .find(|cs| cs.category_id == category)
+    {
+        Some(existing) => mutate(existing),
+        None => {
+            let defaults = profiles::default_category_styles();
+            let mut base = defaults
+                .into_iter()
+                .find(|cs| cs.category_id == category)
+                .ok_or_else(|| "Unknown category".to_string())?;
+            mutate(&mut base);
+            settings.category_styles.push(base);
+        }
+    }
+    let out = settings.category_styles.clone();
+    write_settings(app, settings);
+    Ok(out)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_category_style(
+    app: AppHandle,
+    category: CategoryId,
+    style: StyleId,
+) -> Result<Vec<CategoryStyle>, String> {
+    upsert_category(&app, category, |cs| cs.selected_style = style)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_category_custom_prompt(
+    app: AppHandle,
+    category: CategoryId,
+    prompt: Option<String>,
+) -> Result<Vec<CategoryStyle>, String> {
+    upsert_category(&app, category, |cs| {
+        cs.custom_style_prompt = prompt.filter(|s| !s.trim().is_empty());
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_category_custom_style_name(
+    app: AppHandle,
+    category: CategoryId,
+    name: Option<String>,
+) -> Result<Vec<CategoryStyle>, String> {
+    upsert_category(&app, category, |cs| {
+        cs.custom_style_name = name.filter(|s| !s.trim().is_empty());
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_category_vocab(
+    app: AppHandle,
+    category: CategoryId,
+    words: Vec<String>,
+) -> Result<Vec<CategoryStyle>, String> {
+    upsert_category(&app, category, |cs| {
+        // De-duplicate case-insensitively while preserving order.
+        let mut seen = std::collections::HashSet::<String>::new();
+        cs.custom_vocab = words
+            .into_iter()
+            .filter_map(|w| {
+                let trimmed = w.trim().to_string();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let key = trimmed.to_ascii_lowercase();
+                if seen.insert(key) {
+                    Some(trimmed)
+                } else {
+                    None
+                }
+            })
+            .collect();
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_auto_cleanup_level(app: AppHandle, level: AutoCleanupLevel) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.auto_cleanup_level = level;
+    write_settings(&app, settings);
+    Ok(())
+}
+
+/// Update the per-word category tags. Passing an empty `categories` vector
+/// removes the entry (word applies globally).
+#[tauri::command]
+#[specta::specta]
+pub fn set_custom_word_categories(
+    app: AppHandle,
+    word: String,
+    categories: Vec<CategoryId>,
+) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    let key = word.trim().to_ascii_lowercase();
+    if key.is_empty() {
+        return Err("Word is empty".into());
+    }
+    if categories.is_empty() {
+        settings.custom_word_categories.remove(&key);
+    } else {
+        settings.custom_word_categories.insert(key, categories);
+    }
+    write_settings(&app, settings);
+    Ok(())
+}
+
+/// Returns the list of built-in macOS bundle IDs for each Category. Used by
+/// the frontend to render the "applies in" app-icon strip per category.
+#[tauri::command]
+#[specta::specta]
+pub fn get_category_apps(category: CategoryId) -> Vec<String> {
+    profiles::category_apps(category)
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }

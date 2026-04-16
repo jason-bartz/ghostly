@@ -1,14 +1,59 @@
 @import "tailwindcss";
 
+/* =============================================================================
+ * Ghostly — Product Design Tokens
+ *
+ * The in-app theme mirrors the try-ghostly.com landing page:
+ *   - Deep, near-black canvas with a subtle violet aura
+ *   - Translucent surface layers
+ *   - Refined purple accent system (logo primary = landing CTA purple)
+ *   - Hairline borders, quiet typography, calm motion
+ *
+ * The app is dark-only by design; these tokens are the single source of
+ * truth for every surface, border, text, and accent in the product.
+ * Legacy token names (--color-background, --color-logo-primary, etc.) are
+ * preserved so existing Tailwind utilities (bg-background, text-logo-primary,
+ * bg-mid-gray/20, …) keep working.
+ * ========================================================================== */
+
 @theme {
-  /* Design tokens */
-  --color-text: #0f0f0f;
-  --color-background: #fbfbfb;
-  --color-background-ui: #6d3ae8;
+  /* -- Canvas & surfaces -- */
+  --color-canvas: #08080c;
+  --color-background: #0b0b12;
+  --color-surface-1: #111119;
+  --color-surface-2: #17171f;
+  --color-surface-3: #1d1d27;
+
+  /* -- Borders (hairlines) -- */
+  --color-hairline: rgba(255, 255, 255, 0.06);
+  --color-hairline-strong: rgba(255, 255, 255, 0.1);
+
+  /* -- Typography -- */
+  --color-text: #f5f5f7;
+  --color-text-muted: rgba(245, 245, 247, 0.66);
+  --color-text-subtle: rgba(245, 245, 247, 0.42);
+  --color-text-faint: rgba(245, 245, 247, 0.24);
+  --color-text-stroke: #17171f;
+
+  /* -- Accent / brand (landing purple) -- */
   --color-logo-primary: #a78bfa;
-  --color-logo-stroke: #2d1a4a;
-  --color-text-stroke: #f6f6f6;
-  --color-mid-gray: #808080;
+  --color-logo-stroke: #ede9fe;
+  --color-accent: #a78bfa;
+  --color-accent-bright: #c4b5fd;
+  --color-accent-deep: #7c3aed;
+  --color-accent-glow: rgba(167, 139, 250, 0.42);
+
+  /* -- UI primary (CTAs) -- */
+  --color-background-ui: #7c3aed;
+  --color-background-ui-hover: #8b5cf6;
+
+  /* -- Neutral gray (translucent utilities derive from this) -- */
+  --color-mid-gray: #6b7280;
+
+  /* -- Status -- */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
 }
 
 @keyframes shake {
@@ -30,36 +75,56 @@
   }
 }
 
+@keyframes aura-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(0, -1.5%, 0) scale(1.03);
+    opacity: 1;
+  }
+}
+
 :root {
   /* Typography */
   font-size: 15px;
   line-height: 24px;
   font-weight: 400;
-
-  /* Colors - Light Theme */
-  /* --color-text: #0f0f0f;
-  --color-background: #fbfbfb;
-  --color-logo-primary: #FAA2CA;
-  --color-logo-stroke: #382731;
-  --color-text-stroke: #f6f6f6; */
-
-  /* Typography settings */
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 
-  --scrollbar-thumb: color-mix(in srgb, var(--color-text), transparent 85%);
-  --scrollbar-thumb-hover: color-mix(
-    in srgb,
-    var(--color-text),
-    transparent 70%
-  );
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.16);
 
-  /* Apply colors */
+  /* Base */
   color: var(--color-text);
-  background-color: var(--color-background);
+  background-color: var(--color-canvas);
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-text);
+  min-height: 100vh;
+  font-feature-settings:
+    "cv02", "cv03", "cv04", "cv11";
+  letter-spacing: -0.005em;
+}
+
+/* Let future light-theme fallback still work without forcing it today. */
+@media (prefers-color-scheme: light) {
+  :root {
+    /* intentionally empty: landing aesthetic is dark-only for now */
+  }
 }
 
 .container {
@@ -71,22 +136,12 @@
   text-align: center;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Colors - Dark Theme */
-    --color-text: #fbfbfb;
-    --color-background: #2c2b29;
-    --color-logo-primary: #c4b5fd;
-    --color-logo-stroke: #ede9fe;
-  }
-}
-
-/* macOS - tint native overlay scrollbar thumb */
+/* macOS — tint native overlay scrollbar thumb */
 :root[data-platform="macos"] {
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-/* Custom Scrollbar - only on Windows/Linux; macOS uses native overlay scrollbars */
+/* Custom Scrollbar — only on non-macOS */
 :root:not([data-platform="macos"]) ::-webkit-scrollbar {
   width: 14px;
   height: 14px;
@@ -110,10 +165,264 @@
   background-color: var(--scrollbar-thumb-hover);
 }
 
+/* =============================================================================
+ * App canvas aura
+ *
+ * Subtle violet radial glow rising from the top-center — mirrors the hero
+ * backdrop on try-ghostly.com. Sits behind every surface; cards sit on top
+ * of solid translucent fills so content stays readable.
+ * ========================================================================== */
+.app-canvas {
+  position: relative;
+  isolation: isolate;
+}
+
+.app-canvas::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background: var(--color-canvas);
+  pointer-events: none;
+}
+
+.app-canvas::after {
+  content: "";
+  position: fixed;
+  top: -30%;
+  left: 50%;
+  width: 120vw;
+  height: 80vh;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(
+      ellipse 60% 55% at 50% 40%,
+      rgba(124, 58, 237, 0.22) 0%,
+      rgba(124, 58, 237, 0.12) 28%,
+      rgba(124, 58, 237, 0) 70%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 20% 30%,
+      rgba(59, 130, 246, 0.1) 0%,
+      rgba(59, 130, 246, 0) 60%
+    );
+  filter: blur(8px);
+  z-index: -1;
+  pointer-events: none;
+  animation: aura-drift 18s ease-in-out infinite;
+}
+
+.aura-hero {
+  position: relative;
+}
+
+.aura-hero::before {
+  content: "";
+  position: absolute;
+  top: -25%;
+  left: 50%;
+  width: 640px;
+  height: 540px;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(167, 139, 250, 0.18) 0%,
+    rgba(124, 58, 237, 0.08) 35%,
+    transparent 70%
+  );
+  filter: blur(12px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aura-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
 @layer utilities {
+  /* Legacy stroke util retained for the logo component. */
   .text-stroke {
     -webkit-text-stroke: 2px var(--color-text-stroke);
   }
+
+  /* Display type with the landing's italic-serif accent. */
+  .font-display {
+    font-family:
+      "Iowan Old Style", "Palatino", "Palatino Linotype", "Book Antiqua",
+      "Hoefler Text", Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+
+  .italic-serif {
+    font-family:
+      "Iowan Old Style", "Palatino", "Palatino Linotype", "Book Antiqua",
+      "Hoefler Text", Georgia, serif;
+    font-style: italic;
+    letter-spacing: -0.01em;
+  }
+
+  /* Landing-style pill used above section titles. */
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-accent-bright);
+    background: rgba(167, 139, 250, 0.08);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+    border-radius: 9999px;
+  }
+
+  /* Translucent card surfaces, matching landing "feature" cards. */
+  .surface-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--color-hairline);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Section band — mirrors the landing's `bg-white/[0.02]` banded sections.
+   * Sits behind a card (darker inlay) to give content visible grouping and
+   * lift. Pair with `.surface-card-inlay` for the matching card treatment. */
+  .section-band {
+    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid var(--color-hairline);
+    border-bottom: 1px solid var(--color-hairline);
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .section-band-accent {
+    background: linear-gradient(
+      180deg,
+      rgba(167, 139, 250, 0.08) 0%,
+      rgba(167, 139, 250, 0.02) 100%
+    );
+    border: 1px solid rgba(167, 139, 250, 0.28);
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  /* Darker card fill — reads as an inlay against a `.section-band`. */
+  .surface-card-inlay {
+    background: rgba(8, 8, 12, 0.55);
+    border: 1px solid var(--color-hairline);
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  }
+
+  /* Pill chips — unified across filter tags, source-app chips, category chips.
+   * `.pill` is the neutral resting state; modifiers tint it. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--color-hairline-strong);
+    color: var(--color-text-muted);
+    transition:
+      background 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .pill-accent {
+    background: rgba(167, 139, 250, 0.15);
+    border-color: rgba(167, 139, 250, 0.4);
+    color: var(--color-accent-bright);
+  }
+
+  .pill-interactive {
+    cursor: pointer;
+  }
+
+  .pill-interactive:hover {
+    border-color: rgba(167, 139, 250, 0.45);
+    color: var(--color-text);
+  }
+
+  .pill-interactive.pill-accent:hover {
+    background: rgba(167, 139, 250, 0.2);
+  }
+
+  .pill-dashed {
+    background: transparent;
+    border-style: dashed;
+    color: var(--color-text-faint);
+  }
+
+  .pill-dashed:hover {
+    color: var(--color-accent-bright);
+    border-color: rgba(167, 139, 250, 0.5);
+  }
+
+  .surface-card-raised {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.015) 100%
+    );
+    border: 1px solid var(--color-hairline);
+    border-radius: 12px;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 20px 40px -20px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Primary button glow — echoes the landing's Download CTA */
+  .btn-glow {
+    box-shadow:
+      0 0 0 1px rgba(167, 139, 250, 0.35),
+      0 8px 24px -8px rgba(124, 58, 237, 0.55),
+      0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  }
+
+  /* Hairline helpers */
+  .hairline {
+    border-color: var(--color-hairline);
+  }
+  .hairline-strong {
+    border-color: var(--color-hairline-strong);
+  }
+}
+
+/* Sonner toast surface tuning */
+[data-sonner-toaster] [data-sonner-toast] {
+  background: var(--color-surface-2) !important;
+  border-color: var(--color-hairline-strong) !important;
+  color: var(--color-text);
+}
+
+/* Native controls tinted with brand purple */
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface-2);
+  box-shadow: 0 0 0 1px var(--color-accent-deep);
+}
+
+input[type="range"]:focus::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 1px var(--color-accent-deep),
+    0 0 0 4px rgba(167, 139, 250, 0.25);
+}
+
+::selection {
+  background: rgba(167, 139, 250, 0.35);
+  color: var(--color-text);
 }
 
 .logo-primary {

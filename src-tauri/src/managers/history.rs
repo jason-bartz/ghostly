@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::PathBuf;
-use tauri::AppHandle;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
 /// Database migrations for transcription history.
@@ -72,6 +73,30 @@ static MIGRATIONS: &[M] = &[
     // each refresh. Populated at save time and backfilled lazily for legacy
     // rows; see `backfill_word_counts`.
     M::up("ALTER TABLE transcription_history ADD COLUMN word_count INTEGER;"),
+    M::up(
+        "CREATE TABLE IF NOT EXISTS history_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            auto BOOLEAN NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(entry_id) REFERENCES transcription_history(id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_history_tags_entry_name
+            ON history_tags(entry_id, LOWER(name));
+        CREATE INDEX IF NOT EXISTS idx_history_tags_name ON history_tags(LOWER(name));",
+    ),
+    // Human-readable source app (e.g. "Messages", "Slack") captured at recording
+    // start. Shown in the Notes list as a neutral context chip.
+    M::up("ALTER TABLE transcription_history ADD COLUMN source_app TEXT;"),
+    // Persist badge unlock timestamps so the UI can display when each badge
+    // was earned and highlight recently-unlocked achievements.
+    M::up(
+        "CREATE TABLE IF NOT EXISTS badge_unlocks (
+            badge_id TEXT PRIMARY KEY,
+            unlocked_at INTEGER NOT NULL
+        );",
+    ),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -94,6 +119,12 @@ pub enum HistoryUpdatePayload {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct HistoryTag {
+    pub name: String,
+    pub auto: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct HistoryEntry {
     pub id: i64,
     pub file_name: String,
@@ -105,6 +136,10 @@ pub struct HistoryEntry {
     pub post_processed_text: Option<String>,
     pub post_process_prompt: Option<String>,
     pub post_process_requested: bool,
+    #[serde(default)]
+    pub source_app: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<HistoryTag>,
 }
 
 /// Authoritative list of achievement badge identifiers. Serialised as
@@ -135,6 +170,15 @@ pub enum BadgeId {
     Exclaimer,
 }
 
+/// A badge the user has earned, together with the unix timestamp (seconds)
+/// at which it was first recorded. The unlock time is persisted in the
+/// `badge_unlocks` table so the UI can display dates and "new" indicators.
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct EarnedBadge {
+    pub id: BadgeId,
+    pub unlocked_at: i64,
+}
+
 /// Aggregate usage statistics derived from the transcription history table.
 /// All fields are lifetime totals across non-empty entries. Rows missing an
 /// `audio_duration_ms` value (migrated from before the column existed) are
@@ -147,7 +191,7 @@ pub struct TranscriptionStats {
     pub longest_transcription_words: u64,
     pub first_transcription_timestamp: Option<i64>,
     pub latest_transcription_timestamp: Option<i64>,
-    pub earned_badge_ids: Vec<BadgeId>,
+    pub earned_badges: Vec<EarnedBadge>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -194,6 +238,9 @@ impl HistoryManager {
         info!("Initializing database at {:?}", self.db_path);
 
         let mut conn = Connection::open(&self.db_path)?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "busy_timeout", 5000)?;
 
         // Handle migration from tauri-plugin-sql to rusqlite_migration
         // tauri-plugin-sql used _sqlx_migrations table, rusqlite_migration uses user_version pragma
@@ -295,7 +342,11 @@ impl HistoryManager {
     }
 
     fn get_connection(&self) -> Result<Connection> {
-        Ok(Connection::open(&self.db_path)?)
+        let conn = Connection::open(&self.db_path)?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "busy_timeout", 5000)?;
+        Ok(conn)
     }
 
     fn map_history_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
@@ -310,7 +361,57 @@ impl HistoryManager {
             post_processed_text: row.get("post_processed_text")?,
             post_process_prompt: row.get("post_process_prompt")?,
             post_process_requested: row.get("post_process_requested")?,
+            source_app: row.get("source_app").ok(),
+            tags: Vec::new(),
         })
+    }
+
+    /// Populate `tags` for each entry in one batched query. Safe to call with
+    /// an empty slice. Errors are logged and fall through to empty tag lists
+    /// so a tags-table issue doesn't break the history view.
+    fn attach_tags(conn: &Connection, entries: &mut [HistoryEntry]) {
+        if entries.is_empty() {
+            return;
+        }
+        let ids: Vec<String> = entries.iter().map(|e| e.id.to_string()).collect();
+        let placeholders = ids.join(",");
+        let sql = format!(
+            "SELECT entry_id, name, auto FROM history_tags
+             WHERE entry_id IN ({})
+             ORDER BY entry_id, LOWER(name)",
+            placeholders
+        );
+        let mut by_id: std::collections::HashMap<i64, Vec<HistoryTag>> =
+            std::collections::HashMap::new();
+        match conn.prepare(&sql).and_then(|mut stmt| {
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>("entry_id")?,
+                    HistoryTag {
+                        name: row.get::<_, String>("name")?,
+                        auto: row.get::<_, bool>("auto")?,
+                    },
+                ))
+            })?;
+            for row in rows {
+                let (entry_id, tag) = row?;
+                by_id.entry(entry_id).or_default().push(tag);
+            }
+            Ok(())
+        }) {
+            Ok(()) => {
+                for entry in entries {
+                    if let Some(tags) = by_id.remove(&entry.id) {
+                        entry.tags = tags;
+                    }
+                }
+            }
+            Err(e) => error!("Failed to load history tags: {}", e),
+        }
+    }
+
+    fn attach_tags_single(conn: &Connection, entry: &mut HistoryEntry) {
+        Self::attach_tags(conn, std::slice::from_mut(entry));
     }
 
     pub fn recordings_dir(&self) -> &std::path::Path {
@@ -326,6 +427,7 @@ impl HistoryManager {
         post_process_requested: bool,
         post_processed_text: Option<String>,
         post_process_prompt: Option<String>,
+        source_app: Option<String>,
     ) -> Result<HistoryEntry> {
         let timestamp = Utc::now().timestamp();
         let title = self.format_timestamp_title(timestamp);
@@ -344,8 +446,9 @@ impl HistoryManager {
                 post_process_prompt,
                 post_process_requested,
                 audio_duration_ms,
-                word_count
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                word_count,
+                source_app
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 &file_name,
                 timestamp,
@@ -357,6 +460,7 @@ impl HistoryManager {
                 post_process_requested,
                 audio_duration_ms,
                 word_count,
+                &source_app,
             ],
         )?;
 
@@ -371,6 +475,8 @@ impl HistoryManager {
             post_processed_text,
             post_process_prompt,
             post_process_requested,
+            source_app,
+            tags: Vec::new(),
         };
 
         debug!("Saved history entry with id {}", entry.id);
@@ -384,6 +490,27 @@ impl HistoryManager {
         .emit(&self.app_handle)
         {
             error!("Failed to emit history-updated event: {}", e);
+        }
+
+        // Auto-generate title and tags when AI is configured. Runs off the save
+        // path so we never block transcription; no-ops when no provider/model
+        // is set (ai_metadata::generate returns None) or the transcription is
+        // too short to be worth summarizing. Subsequent title/tag mutations
+        // emit their own Updated events so the UI refreshes.
+        if word_count >= 5 {
+            let app_handle = self.app_handle.clone();
+            let entry_id = entry.id;
+            let transcription_for_ai = entry.transcription_text.clone();
+            let post_processed_for_ai = entry.post_processed_text.clone();
+            tauri::async_runtime::spawn(async move {
+                run_auto_metadata(
+                    app_handle,
+                    entry_id,
+                    transcription_for_ai,
+                    post_processed_for_ai,
+                )
+                .await;
+            });
         }
 
         Ok(entry)
@@ -419,13 +546,14 @@ impl HistoryManager {
             return Err(anyhow!("History entry {} not found", id));
         }
 
-        let entry = conn
+        let mut entry = conn
             .query_row(
-                "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested, source_app
                  FROM transcription_history WHERE id = ?1",
                 params![id],
                 Self::map_history_entry,
             )?;
+        Self::attach_tags_single(&conn, &mut entry);
 
         debug!("Updated transcription for history entry {}", id);
 
@@ -460,22 +588,17 @@ impl HistoryManager {
         }
     }
 
-    fn delete_entries_and_files(&self, entries: &[(i64, String)]) -> Result<usize> {
+    /// Deletes WAV files for the given entries but leaves the `transcription_history`
+    /// rows intact so the text stays searchable. Retention settings prune audio only;
+    /// the DB row is only removed via explicit user delete.
+    fn delete_audio_files(&self, entries: &[(i64, String)]) -> Result<usize> {
         if entries.is_empty() {
             return Ok(0);
         }
 
-        let conn = self.get_connection()?;
         let mut deleted_count = 0;
 
-        for (id, file_name) in entries {
-            // Delete database entry
-            conn.execute(
-                "DELETE FROM transcription_history WHERE id = ?1",
-                params![id],
-            )?;
-
-            // Delete WAV file
+        for (_id, file_name) in entries {
             let file_path = self.recordings_dir.join(file_name);
             if file_path.exists() {
                 if let Err(e) = fs::remove_file(&file_path) {
@@ -509,10 +632,10 @@ impl HistoryManager {
 
         if entries.len() > limit {
             let entries_to_delete = &entries[limit..];
-            let deleted_count = self.delete_entries_and_files(entries_to_delete)?;
+            let deleted_count = self.delete_audio_files(entries_to_delete)?;
 
             if deleted_count > 0 {
-                debug!("Cleaned up {} old history entries by count", deleted_count);
+                debug!("Cleaned up {} old audio recordings by count", deleted_count);
             }
         }
 
@@ -548,11 +671,11 @@ impl HistoryManager {
             entries_to_delete.push(row?);
         }
 
-        let deleted_count = self.delete_entries_and_files(&entries_to_delete)?;
+        let deleted_count = self.delete_audio_files(&entries_to_delete)?;
 
         if deleted_count > 0 {
             debug!(
-                "Cleaned up {} old history entries based on retention period",
+                "Cleaned up {} old audio recordings based on retention period",
                 deleted_count
             );
         }
@@ -572,7 +695,7 @@ impl HistoryManager {
             (Some(cursor_id), Some(lim)) => {
                 let fetch_count = (lim + 1) as i64;
                 let mut stmt = conn.prepare(
-                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested, source_app
                      FROM transcription_history
                      WHERE id < ?1
                      ORDER BY id DESC
@@ -586,7 +709,7 @@ impl HistoryManager {
             (None, Some(lim)) => {
                 let fetch_count = (lim + 1) as i64;
                 let mut stmt = conn.prepare(
-                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested, source_app
                      FROM transcription_history
                      ORDER BY id DESC
                      LIMIT ?1",
@@ -598,7 +721,7 @@ impl HistoryManager {
             }
             (_, None) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+                    "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested, source_app
                      FROM transcription_history
                      ORDER BY id DESC",
                 )?;
@@ -614,6 +737,7 @@ impl HistoryManager {
             entries.pop();
         }
 
+        Self::attach_tags(&conn, &mut entries);
         Ok(PaginatedHistory { entries, has_more })
     }
 
@@ -623,26 +747,214 @@ impl HistoryManager {
         &self,
         query: String,
         limit: Option<usize>,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
     ) -> Result<Vec<HistoryEntry>> {
         let conn = self.get_connection()?;
         let limit = limit.unwrap_or(50).min(200) as i64;
 
-        let mut stmt = conn.prepare(
+        let mut where_clauses = vec!["history_fts MATCH ?".to_string()];
+        let mut params_vec: Vec<rusqlite::types::Value> = vec![rusqlite::types::Value::Text(query)];
+
+        if let Some(ts) = start_ts {
+            where_clauses.push("h.timestamp >= ?".to_string());
+            params_vec.push(rusqlite::types::Value::Integer(ts));
+        }
+        if let Some(ts) = end_ts {
+            where_clauses.push("h.timestamp < ?".to_string());
+            params_vec.push(rusqlite::types::Value::Integer(ts));
+        }
+
+        params_vec.push(rusqlite::types::Value::Integer(limit));
+
+        let sql = format!(
             "SELECT h.id, h.file_name, h.timestamp, h.saved, h.title,
                     h.transcription_text, h.post_processed_text,
-                    h.post_process_prompt, h.post_process_requested
+                    h.post_process_prompt, h.post_process_requested, h.source_app
              FROM transcription_history h
              JOIN history_fts ON history_fts.rowid = h.id
-             WHERE history_fts MATCH ?1
+             WHERE {}
              ORDER BY h.id DESC
-             LIMIT ?2",
-        )?;
+             LIMIT ?",
+            where_clauses.join(" AND ")
+        );
 
-        let entries = stmt
-            .query_map(params![query, limit], Self::map_history_entry)?
+        let mut stmt = conn.prepare(&sql)?;
+        let mut entries = stmt
+            .query_map(
+                rusqlite::params_from_iter(params_vec.iter()),
+                Self::map_history_entry,
+            )?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
+        Self::attach_tags(&conn, &mut entries);
         Ok(entries)
+    }
+
+    /// Return entries matching any combination of text query, tag names, and
+    /// date range. All filters are optional and additive. Newest first.
+    pub async fn filter_history_entries(
+        &self,
+        query: Option<String>,
+        tag_names: Vec<String>,
+        limit: Option<usize>,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
+    ) -> Result<Vec<HistoryEntry>> {
+        let conn = self.get_connection()?;
+        let limit = limit.unwrap_or(100).min(500) as i64;
+        let text_query = query
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        let has_tags = !tag_names.is_empty();
+        let has_dates = start_ts.is_some() || end_ts.is_some();
+
+        if !has_tags && !has_dates {
+            return match text_query {
+                Some(q) => {
+                    self.search_history_entries(q, Some(limit as usize), None, None)
+                        .await
+                }
+                None => Ok(self
+                    .get_history_entries(None, Some(limit as usize))
+                    .await?
+                    .entries),
+            };
+        }
+
+        let mut joins = Vec::new();
+        let mut where_clauses = Vec::new();
+        let mut params_vec: Vec<rusqlite::types::Value> = Vec::new();
+
+        if has_tags {
+            let tag_placeholders = tag_names.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            joins.push("JOIN history_tags t ON t.entry_id = h.id".to_string());
+            where_clauses.push(format!("LOWER(t.name) IN ({})", tag_placeholders));
+            for name in &tag_names {
+                params_vec.push(rusqlite::types::Value::Text(name.to_lowercase()));
+            }
+        }
+
+        if let Some(q) = text_query {
+            joins.push("JOIN history_fts ON history_fts.rowid = h.id".to_string());
+            where_clauses.push("history_fts MATCH ?".to_string());
+            params_vec.push(rusqlite::types::Value::Text(q));
+        }
+
+        if let Some(ts) = start_ts {
+            where_clauses.push("h.timestamp >= ?".to_string());
+            params_vec.push(rusqlite::types::Value::Integer(ts));
+        }
+        if let Some(ts) = end_ts {
+            where_clauses.push("h.timestamp < ?".to_string());
+            params_vec.push(rusqlite::types::Value::Integer(ts));
+        }
+
+        params_vec.push(rusqlite::types::Value::Integer(limit));
+
+        let distinct = if has_tags { "DISTINCT " } else { "" };
+        let where_clause = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let sql = format!(
+            "SELECT {distinct}h.id, h.file_name, h.timestamp, h.saved, h.title, h.user_title,
+                    h.transcription_text, h.post_processed_text,
+                    h.post_process_prompt, h.post_process_requested, h.source_app
+             FROM transcription_history h
+             {}
+             {}
+             ORDER BY h.id DESC
+             LIMIT ?",
+            joins.join(" "),
+            where_clause
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let mut entries = stmt
+            .query_map(
+                rusqlite::params_from_iter(params_vec.iter()),
+                Self::map_history_entry,
+            )?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Self::attach_tags(&conn, &mut entries);
+        Ok(entries)
+    }
+
+    /// Return all distinct tag names across history, sorted alphabetically.
+    pub fn list_all_tags(&self) -> Result<Vec<String>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT name FROM history_tags
+             GROUP BY LOWER(name)
+             ORDER BY LOWER(name)",
+        )?;
+        let tags = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(tags)
+    }
+
+    /// Add a tag to an entry. `auto = false` for manual tags, `true` for
+    /// AI-applied tags. Case-insensitive uniqueness — adding "Meeting" when
+    /// "meeting" is already present is a no-op that returns the existing tag.
+    pub fn add_tag(&self, entry_id: i64, name: String, auto: bool) -> Result<HistoryTag> {
+        let trimmed = name.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(anyhow!("Tag name cannot be empty"));
+        }
+        if trimmed.len() > 64 {
+            return Err(anyhow!("Tag name is too long (max 64 chars)"));
+        }
+        let conn = self.get_connection()?;
+        let now = Utc::now().timestamp();
+        conn.execute(
+            "INSERT OR IGNORE INTO history_tags (entry_id, name, auto, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![entry_id, trimmed, auto, now],
+        )?;
+
+        // Emit update for the entry so the UI refreshes its tag chips.
+        self.emit_entry_updated(&conn, entry_id);
+
+        Ok(HistoryTag {
+            name: trimmed,
+            auto,
+        })
+    }
+
+    pub fn remove_tag(&self, entry_id: i64, name: String) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "DELETE FROM history_tags WHERE entry_id = ?1 AND LOWER(name) = LOWER(?2)",
+            params![entry_id, name],
+        )?;
+        self.emit_entry_updated(&conn, entry_id);
+        Ok(())
+    }
+
+    fn emit_entry_updated(&self, conn: &Connection, entry_id: i64) {
+        let entry = conn
+            .query_row(
+                "SELECT id, file_name, timestamp, saved, title, user_title,
+                        transcription_text, post_processed_text,
+                        post_process_prompt, post_process_requested, source_app
+                 FROM transcription_history WHERE id = ?1",
+                params![entry_id],
+                Self::map_history_entry,
+            )
+            .ok();
+        if let Some(mut entry) = entry {
+            Self::attach_tags_single(conn, &mut entry);
+            if let Err(e) = (HistoryUpdatePayload::Updated { entry }).emit(&self.app_handle) {
+                error!("Failed to emit history-updated event: {}", e);
+            }
+        }
     }
 
     #[cfg(test)]
@@ -658,7 +970,8 @@ impl HistoryManager {
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
-                post_process_requested
+                post_process_requested,
+                source_app
              FROM transcription_history
              ORDER BY timestamp DESC
              LIMIT 1",
@@ -686,7 +999,8 @@ impl HistoryManager {
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
-                post_process_requested
+                post_process_requested,
+                source_app
              FROM transcription_history
              WHERE transcription_text != ''
              ORDER BY timestamp DESC
@@ -716,12 +1030,13 @@ impl HistoryManager {
             return Err(anyhow!("History entry {} not found", id));
         }
 
-        let entry = conn.query_row(
-            "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+        let mut entry = conn.query_row(
+            "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested, source_app
              FROM transcription_history WHERE id = ?1",
             params![id],
             Self::map_history_entry,
         )?;
+        Self::attach_tags_single(&conn, &mut entry);
 
         if let Err(e) = (HistoryUpdatePayload::Updated {
             entry: entry.clone(),
@@ -778,12 +1093,20 @@ impl HistoryManager {
                 transcription_text,
                 post_processed_text,
                 post_process_prompt,
-                post_process_requested
+                post_process_requested,
+                source_app
              FROM transcription_history
              WHERE id = ?1",
         )?;
 
         let entry = stmt.query_row([id], Self::map_history_entry).optional()?;
+        let entry = match entry {
+            Some(mut e) => {
+                Self::attach_tags_single(&conn, &mut e);
+                Some(e)
+            }
+            None => None,
+        };
 
         Ok(entry)
     }
@@ -803,7 +1126,7 @@ impl HistoryManager {
             }
         }
 
-        // Delete from database
+        // foreign_keys pragma is ON, so ON DELETE CASCADE handles history_tags.
         conn.execute(
             "DELETE FROM transcription_history WHERE id = ?1",
             params![id],
@@ -814,6 +1137,60 @@ impl HistoryManager {
         // Emit history updated event
         if let Err(e) = (HistoryUpdatePayload::Deleted { id }).emit(&self.app_handle) {
             error!("Failed to emit history-updated event: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// Delete many history rows in a single transaction over one SQLite
+    /// connection. Replaces the previous pattern of firing N parallel
+    /// `delete_entry` calls, which opened N connections and occasionally lost
+    /// writes under contention (pragma races and fd pressure).
+    pub fn bulk_delete_entries(&self, ids: &[i64]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        // Collect file names first so we can remove WAVs after the DB commit.
+        let mut file_names: Vec<String> = Vec::with_capacity(ids.len());
+        {
+            let mut select_stmt =
+                tx.prepare("SELECT file_name FROM transcription_history WHERE id = ?1")?;
+            let mut delete_stmt = tx.prepare("DELETE FROM transcription_history WHERE id = ?1")?;
+            for &id in ids {
+                if let Some(name) = select_stmt
+                    .query_row(params![id], |row| row.get::<_, String>(0))
+                    .optional()?
+                {
+                    file_names.push(name);
+                }
+                // ON DELETE CASCADE cleans up history_tags.
+                delete_stmt.execute(params![id])?;
+            }
+        }
+
+        tx.commit()?;
+
+        // File removal is best-effort; a failure here leaves an orphan WAV but
+        // the DB row is already gone, so the UI won't surface it.
+        for file_name in &file_names {
+            let file_path = self.get_audio_file_path(file_name);
+            if file_path.exists() {
+                if let Err(e) = fs::remove_file(&file_path) {
+                    error!("Failed to delete audio file {}: {}", file_name, e);
+                }
+            }
+        }
+
+        debug!("Bulk deleted {} history entries", ids.len());
+
+        for &id in ids {
+            if let Err(e) = (HistoryUpdatePayload::Deleted { id }).emit(&self.app_handle) {
+                error!("Failed to emit history-updated event: {}", e);
+            }
         }
 
         Ok(())
@@ -906,13 +1283,14 @@ impl HistoryManager {
     pub async fn get_all_history_for_export(&self) -> Result<Vec<HistoryEntry>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested
+            "SELECT id, file_name, timestamp, saved, title, user_title, transcription_text, post_processed_text, post_process_prompt, post_process_requested, source_app
              FROM transcription_history
              ORDER BY id DESC",
         )?;
-        let entries = stmt
+        let mut entries = stmt
             .query_map([], Self::map_history_entry)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        Self::attach_tags(&conn, &mut entries);
         Ok(entries)
     }
 
@@ -932,13 +1310,16 @@ impl HistoryManager {
         Some(((frames * 1000) / sample_rate) as i64)
     }
 
-    /// Compute lifetime transcription statistics and the set of earned badge
-    /// identifiers. Delegates to the free [`compute_stats`] function so the
-    /// derivation logic can be exercised against an in-memory `Connection`
-    /// in unit tests without constructing a full `HistoryManager`.
+    /// Compute lifetime transcription statistics, persist any newly-earned
+    /// badges with the current timestamp, and return the full set of earned
+    /// badges with their unlock dates. Delegates to [`compute_stats`] for the
+    /// derivation logic and [`persist_badge_unlocks`] for storage.
     pub fn get_stats(&self) -> Result<TranscriptionStats> {
         let conn = self.get_connection()?;
-        compute_stats(&conn)
+        let mut stats = compute_stats(&conn)?;
+        let earned_badges = persist_badge_unlocks(&conn, &stats.earned_badges)?;
+        stats.earned_badges = earned_badges;
+        Ok(stats)
     }
 
     fn format_timestamp_title(&self, timestamp: i64) -> String {
@@ -961,6 +1342,50 @@ impl HistoryManager {
 fn count_words(text: &str) -> u64 {
     use unicode_segmentation::UnicodeSegmentation;
     text.unicode_words().count() as u64
+}
+
+/// Background task that generates an AI title and tags for a freshly-saved
+/// history entry. Silently no-ops when the user hasn't configured an AI
+/// provider/model — errors are logged at warn level, never surfaced, since
+/// this is an opportunistic enhancement on top of the save.
+async fn run_auto_metadata(
+    app_handle: AppHandle,
+    entry_id: i64,
+    transcription: String,
+    post_processed: Option<String>,
+) {
+    let source_text = post_processed
+        .as_deref()
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or(transcription.as_str());
+    if source_text.trim().is_empty() {
+        return;
+    }
+
+    let settings = crate::settings::get_settings(&app_handle);
+    let hm = app_handle.state::<Arc<HistoryManager>>();
+    let existing_tags = match hm.list_all_tags() {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("Auto-metadata: failed to list tags: {}", e);
+            return;
+        }
+    };
+
+    let generated = match crate::ai_metadata::generate(&settings, source_text, &existing_tags).await
+    {
+        Some(g) => g,
+        None => return,
+    };
+
+    if let Err(e) = hm.update_user_title(entry_id, Some(generated.title)).await {
+        log::warn!("Auto-metadata: failed to set title: {}", e);
+    }
+    for tag in generated.tags {
+        if let Err(e) = hm.add_tag(entry_id, tag, true) {
+            log::warn!("Auto-metadata: failed to add tag: {}", e);
+        }
+    }
 }
 
 /// Core derivation routine behind [`HistoryManager::get_stats`]. Takes a bare
@@ -1071,63 +1496,71 @@ pub(crate) fn compute_stats(conn: &Connection) -> Result<TranscriptionStats> {
         .unwrap_or(0)
         .max(0) as u64;
 
-    let mut badges: Vec<BadgeId> = Vec::new();
+    let mut badge_ids: Vec<BadgeId> = Vec::new();
     if count >= 1 {
-        badges.push(BadgeId::FirstWords);
+        badge_ids.push(BadgeId::FirstWords);
     }
     if count >= 10 {
-        badges.push(BadgeId::GettingStarted);
+        badge_ids.push(BadgeId::GettingStarted);
     }
     if count >= 100 {
-        badges.push(BadgeId::Regular);
+        badge_ids.push(BadgeId::Regular);
     }
     if count >= 1_000 {
-        badges.push(BadgeId::Devoted);
+        badge_ids.push(BadgeId::Devoted);
     }
     if longest_words >= 250 {
-        badges.push(BadgeId::Paragraph);
+        badge_ids.push(BadgeId::Paragraph);
     }
     if longest_words >= 2_000 {
-        badges.push(BadgeId::Marathon);
+        badge_ids.push(BadgeId::Marathon);
     }
     if total_duration_ms >= 60 * 60 * 1_000 {
-        badges.push(BadgeId::OneHourClub);
+        badge_ids.push(BadgeId::OneHourClub);
     }
     if total_duration_ms >= 10 * 60 * 60 * 1_000 {
-        badges.push(BadgeId::TenHourClub);
+        badge_ids.push(BadgeId::TenHourClub);
     }
     if post_processed_count >= 10 {
-        badges.push(BadgeId::PostProcessor);
+        badge_ids.push(BadgeId::PostProcessor);
     }
     if saved_count >= 10 {
-        badges.push(BadgeId::Collector);
+        badge_ids.push(BadgeId::Collector);
     }
     if word_correction_count >= 5 {
-        badges.push(BadgeId::Lexicographer);
+        badge_ids.push(BadgeId::Lexicographer);
     }
     let any_hour_in =
         |range: std::ops::Range<u32>| range.into_iter().any(|h| (hours_seen >> h) & 1 == 1);
     if any_hour_in(5..7) {
-        badges.push(BadgeId::EarlyBird);
+        badge_ids.push(BadgeId::EarlyBird);
     }
     if any_hour_in(22..24) || any_hour_in(0..4) {
-        badges.push(BadgeId::NightOwl);
+        badge_ids.push(BadgeId::NightOwl);
     }
     if any_hour_in(12..13) {
-        badges.push(BadgeId::LunchBreak);
+        badge_ids.push(BadgeId::LunchBreak);
     }
     if weekdays_seen == 0b0111_1111 {
-        badges.push(BadgeId::EveryDayOfTheWeek);
+        badge_ids.push(BadgeId::EveryDayOfTheWeek);
     }
     if sprint {
-        badges.push(BadgeId::Sprint);
+        badge_ids.push(BadgeId::Sprint);
     }
     if ends_with_question >= 50 {
-        badges.push(BadgeId::Questioner);
+        badge_ids.push(BadgeId::Questioner);
     }
     if contains_exclamation >= 50 {
-        badges.push(BadgeId::Exclaimer);
+        badge_ids.push(BadgeId::Exclaimer);
     }
+
+    // Build EarnedBadge list with placeholder timestamps (0). The real
+    // unlock timestamps are filled in by `persist_badge_unlocks` when
+    // called from `get_stats`.
+    let earned_badges = badge_ids
+        .into_iter()
+        .map(|id| EarnedBadge { id, unlocked_at: 0 })
+        .collect();
 
     Ok(TranscriptionStats {
         total_words,
@@ -1136,8 +1569,53 @@ pub(crate) fn compute_stats(conn: &Connection) -> Result<TranscriptionStats> {
         longest_transcription_words: longest_words,
         first_transcription_timestamp: first_ts,
         latest_transcription_timestamp: latest_ts,
-        earned_badge_ids: badges,
+        earned_badges,
     })
+}
+
+/// Persist newly-earned badges into the `badge_unlocks` table with the current
+/// timestamp, then read back all stored rows so every `EarnedBadge` in the
+/// returned vec carries its real `unlocked_at` value. Existing rows are never
+/// overwritten (INSERT OR IGNORE), so the first-ever unlock time is preserved.
+fn persist_badge_unlocks(conn: &Connection, computed: &[EarnedBadge]) -> Result<Vec<EarnedBadge>> {
+    let now = Utc::now().timestamp();
+    let mut insert_stmt = conn
+        .prepare("INSERT OR IGNORE INTO badge_unlocks (badge_id, unlocked_at) VALUES (?1, ?2)")?;
+    for badge in computed {
+        let id_str = serde_json::to_string(&badge.id)
+            .unwrap_or_default()
+            .trim_matches('"')
+            .to_string();
+        insert_stmt.execute(params![id_str, now])?;
+    }
+
+    // Read back all persisted unlock times keyed by badge_id string.
+    let mut read_stmt = conn.prepare("SELECT badge_id, unlocked_at FROM badge_unlocks")?;
+    let stored: std::collections::HashMap<String, i64> = read_stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Rebuild the vec in the same order as `computed`, enriching with real
+    // timestamps. If a badge somehow has no stored row (should not happen
+    // after the INSERT above), fall back to `now`.
+    let result = computed
+        .iter()
+        .map(|b| {
+            let id_str = serde_json::to_string(&b.id)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_string();
+            let unlocked_at = stored.get(&id_str).copied().unwrap_or(now);
+            EarnedBadge {
+                id: b.id,
+                unlocked_at,
+            }
+        })
+        .collect();
+    Ok(result)
 }
 
 /// One-time backfill of the `word_count` column for rows that pre-date its
@@ -1226,7 +1704,8 @@ mod tests {
                 post_process_prompt TEXT,
                 post_process_requested BOOLEAN NOT NULL DEFAULT 0,
                 audio_duration_ms INTEGER,
-                word_count INTEGER
+                word_count INTEGER,
+                source_app TEXT
             );
             CREATE TABLE word_corrections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1234,6 +1713,10 @@ mod tests {
                 correct TEXT NOT NULL,
                 enabled BOOLEAN NOT NULL DEFAULT 1,
                 created_at INTEGER NOT NULL
+            );
+            CREATE TABLE badge_unlocks (
+                badge_id TEXT PRIMARY KEY,
+                unlocked_at INTEGER NOT NULL
             );",
         )
         .expect("create test tables");
@@ -1435,7 +1918,7 @@ mod tests {
         assert_eq!(stats.longest_transcription_words, 0);
         assert_eq!(stats.first_transcription_timestamp, None);
         assert_eq!(stats.latest_transcription_timestamp, None);
-        assert!(stats.earned_badge_ids.is_empty());
+        assert!(stats.earned_badges.is_empty());
     }
 
     #[test]
@@ -1472,9 +1955,15 @@ mod tests {
             insert_entry(&conn, 100 + i, "hello", None);
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::FirstWords));
-        assert!(stats.earned_badge_ids.contains(&BadgeId::GettingStarted));
-        assert!(!stats.earned_badge_ids.contains(&BadgeId::Regular));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::FirstWords));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::GettingStarted));
+        assert!(!stats.earned_badges.iter().any(|b| b.id == BadgeId::Regular));
     }
 
     #[test]
@@ -1486,8 +1975,14 @@ mod tests {
             .join(" ");
         insert_entry(&conn, 100, &long, None);
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Paragraph));
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Marathon));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::Paragraph));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::Marathon));
     }
 
     #[test]
@@ -1504,7 +1999,10 @@ mod tests {
             false,
         );
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(!stats.earned_badge_ids.contains(&BadgeId::OneHourClub));
+        assert!(!stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::OneHourClub));
 
         // Push to exactly one hour: threshold is inclusive.
         insert_full_entry(
@@ -1517,8 +2015,14 @@ mod tests {
             false,
         );
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::OneHourClub));
-        assert!(!stats.earned_badge_ids.contains(&BadgeId::TenHourClub));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::OneHourClub));
+        assert!(!stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::TenHourClub));
     }
 
     #[test]
@@ -1531,8 +2035,14 @@ mod tests {
             insert_full_entry(&conn, 500 + i, "hello", None, None, false, true);
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::PostProcessor));
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Collector));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::PostProcessor));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::Collector));
     }
 
     #[test]
@@ -1556,7 +2066,10 @@ mod tests {
             .expect("insert word correction");
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Lexicographer));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::Lexicographer));
     }
 
     #[test]
@@ -1569,7 +2082,7 @@ mod tests {
             insert_entry(&conn, base + i * 30, "hello", None);
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Sprint));
+        assert!(stats.earned_badges.iter().any(|b| b.id == BadgeId::Sprint));
     }
 
     #[test]
@@ -1582,7 +2095,7 @@ mod tests {
             insert_entry(&conn, base + i * 10 * 60, "hello", None);
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(!stats.earned_badge_ids.contains(&BadgeId::Sprint));
+        assert!(!stats.earned_badges.iter().any(|b| b.id == BadgeId::Sprint));
     }
 
     #[test]
@@ -1593,12 +2106,18 @@ mod tests {
             insert_entry(&conn, utc_ts(day, 12, 0), "hello", None);
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(!stats.earned_badge_ids.contains(&BadgeId::EveryDayOfTheWeek));
+        assert!(!stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::EveryDayOfTheWeek));
 
         // Adding the seventh distinct weekday should unlock it.
         insert_entry(&conn, utc_ts(6, 12, 0), "hello", None);
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::EveryDayOfTheWeek));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::EveryDayOfTheWeek));
     }
 
     #[test]
@@ -1613,8 +2132,14 @@ mod tests {
             insert_entry(&conn, 2_000 + i, "wow amazing work!", None);
         }
         let stats = compute_stats(&conn).expect("compute_stats succeeds");
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Questioner));
-        assert!(stats.earned_badge_ids.contains(&BadgeId::Exclaimer));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::Questioner));
+        assert!(stats
+            .earned_badges
+            .iter()
+            .any(|b| b.id == BadgeId::Exclaimer));
     }
 
     #[test]

@@ -85,6 +85,10 @@ xcap = "0.9"
 base64 = "0.22"
 keyring = "2"
 unicode-segmentation = "1.12"
+ed25519-dalek = { version = "2", features = ["pkcs8"] }
+hex = "0.4"
+tauri-plugin-deep-link = "2"
+url = "2"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"
@@ -95,6 +99,8 @@ tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-single-instance = "2.3.2"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 transcribe-rs = { version = "0.3.3", features = ["whisper-metal"] }
+cocoa = "0.24"
+objc = "0.2"
 
 [patch.crates-io]
 tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }

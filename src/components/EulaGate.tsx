@@ -96,19 +96,21 @@ export function EulaGate({ onAccepted }: Props) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+    <div className="app-canvas fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-6">
       <div
-        className={`w-full max-w-2xl h-[85vh] max-h-[760px] flex flex-col rounded-2xl bg-background border border-mid-gray/20 shadow-2xl overflow-hidden ${
+        className={`w-full max-w-2xl h-[85vh] max-h-[760px] flex flex-col rounded-2xl bg-surface-1 border border-hairline-strong shadow-[0_40px_80px_-20px_rgba(0,0,0,0.7)] overflow-hidden ${
           shake ? "animate-[shake_0.4s_ease-in-out]" : ""
         }`}
       >
-        <div className="px-8 pt-7 pb-4 border-b border-mid-gray/15">
-          <h1 className="text-2xl font-semibold tracking-tight">
+        <div className="px-8 pt-7 pb-5 border-b border-hairline">
+          <h1 className="text-2xl font-display tracking-tight text-text">
             {t("eula.title")}
           </h1>
-          <p className="text-sm text-mid-gray mt-1.5">{t("eula.intro")}</p>
+          <p className="text-[13px] text-text-muted mt-1.5">
+            {t("eula.intro")}
+          </p>
           {version ? (
-            <p className="text-xs text-mid-gray/70 mt-2">
+            <p className="text-[11px] text-text-faint mt-2 tracking-wide uppercase">
               {t("eula.version", { version })}
             </p>
           ) : null}
@@ -117,23 +119,23 @@ export function EulaGate({ onAccepted }: Props) {
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-8 py-6 bg-mid-gray/[0.03]"
+          className="flex-1 overflow-y-auto px-8 py-6 bg-canvas/40"
         >
           {error ? (
-            <p className="text-red-400 text-sm">{t("eula.loadError")}</p>
+            <p className="text-danger text-sm">{t("eula.loadError")}</p>
           ) : rendered === null ? (
-            <p className="text-sm text-mid-gray">…</p>
+            <p className="text-sm text-text-muted">…</p>
           ) : (
-            <div className="prose-eula text-[13.5px] leading-relaxed text-text space-y-3">
+            <div className="prose-eula text-[13.5px] leading-relaxed text-text-muted space-y-3">
               {rendered}
             </div>
           )}
         </div>
 
-        <div className="px-8 py-4 flex items-center justify-between gap-4 border-t border-mid-gray/15 bg-background">
+        <div className="px-8 py-4 flex items-center justify-between gap-4 border-t border-hairline bg-surface-1">
           <p
             className={`text-xs transition-colors ${
-              scrolledToEnd ? "text-logo-primary" : "text-mid-gray"
+              scrolledToEnd ? "text-accent-bright" : "text-text-faint"
             }`}
           >
             {scrolledToEnd ? t("eula.scrolledPrompt") : t("eula.scrollHint")}

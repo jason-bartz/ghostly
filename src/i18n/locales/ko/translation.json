@@ -557,10 +557,6 @@
         "title": "클램셸 마이크",
         "description": "노트북 덮개가 닫혀 있을 때 사용할 마이크"
       },
-      "postProcessingToggle": {
-        "label": "후처리",
-        "description": "텍스트 변환 후 AI 기반 텍스트 개선 활성화"
-      },
       "muteWhileRecording": {
         "label": "녹음 중 음소거",
         "description": "녹음 중 시스템 오디오 음소거"

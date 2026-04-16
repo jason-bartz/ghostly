@@ -31,8 +31,18 @@ tauri_panel! {
     })
 }
 
-const OVERLAY_WIDTH: f64 = 220.0;
-const OVERLAY_HEIGHT: f64 = 44.0;
+const OVERLAY_WIDTH: f64 = 260.0;
+const OVERLAY_HEIGHT: f64 = 80.0;
+
+/// Enlarged size used when displaying the staged-capture panel (thumbnail +
+/// text preview + cancel button + shortcut hint).
+const STAGED_OVERLAY_WIDTH: f64 = 320.0;
+const STAGED_OVERLAY_HEIGHT: f64 = 140.0;
+
+/// Wider size used when the edit-mode chip strip is visible so the four
+/// chips (Shorten / Lengthen / Fix grammar / Rephrase) have room to breathe
+/// next to the ghost icon and cancel button.
+const EDIT_OVERLAY_WIDTH: f64 = 420.0;
 
 #[cfg(target_os = "macos")]
 const OVERLAY_TOP_OFFSET: f64 = 46.0;
@@ -210,11 +220,23 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
 
     let settings = settings::get_settings(app_handle);
 
-    let x = monitor_x + (monitor_width - OVERLAY_WIDTH) / 2.0;
+    // Read the overlay's actual current size so centering follows whatever
+    // state it's in (compact, staged, edit-mode). Fall back to the default
+    // constants when the window hasn't been created yet.
+    let (current_w, current_h) = app_handle
+        .get_webview_window("recording_overlay")
+        .and_then(|w| {
+            let size = w.outer_size().ok()?;
+            let s = w.scale_factor().unwrap_or(scale);
+            Some((size.width as f64 / s, size.height as f64 / s))
+        })
+        .unwrap_or((OVERLAY_WIDTH, OVERLAY_HEIGHT));
+
+    let x = monitor_x + (monitor_width - current_w) / 2.0;
     let y = match settings.overlay_position {
         OverlayPosition::Top => monitor_y + OVERLAY_TOP_OFFSET,
         OverlayPosition::Bottom | OverlayPosition::None => {
-            monitor_y + monitor_height - OVERLAY_HEIGHT - OVERLAY_BOTTOM_OFFSET
+            monitor_y + monitor_height - current_h - OVERLAY_BOTTOM_OFFSET
         }
     };
 
@@ -326,6 +348,19 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
         return;
     }
 
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        // Resize for the staged state; fall back to the compact size otherwise.
+        let (w, h) = if state == "staged" {
+            (STAGED_OVERLAY_WIDTH, STAGED_OVERLAY_HEIGHT)
+        } else {
+            (OVERLAY_WIDTH, OVERLAY_HEIGHT)
+        };
+        let _ = overlay_window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+            width: w,
+            height: h,
+        }));
+    }
+
     update_overlay_position(app_handle);
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
@@ -352,6 +387,29 @@ pub fn show_transcribing_overlay(app_handle: &AppHandle) {
 /// Shows the processing overlay window
 pub fn show_processing_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "processing");
+}
+
+/// Shows the staged-capture overlay and emits the thumbnail + text so the user
+/// can see what was captured before confirming the paste.
+pub fn show_staged_overlay(
+    app_handle: &AppHandle,
+    png_bytes: &[u8],
+    text: &str,
+    confirm_shortcut: Option<&str>,
+) {
+    // Emit the payload first so the frontend already has the staged data by the
+    // time the state switches to "staged" (avoids a one-frame empty render).
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let data_url = format!("data:image/png;base64,{}", STANDARD.encode(png_bytes));
+        let payload = serde_json::json!({
+            "thumbnail": data_url,
+            "text": text,
+            "confirmShortcut": confirm_shortcut.unwrap_or(""),
+        });
+        let _ = overlay_window.emit("staged-capture", payload);
+    }
+    show_overlay_state(app_handle, "staged");
 }
 
 /// Updates the overlay window position based on current settings
@@ -396,9 +454,61 @@ pub fn emit_transcription_preview(app_handle: &AppHandle, text: &str) {
 /// Emits a one-time IDE-command hint payload to the overlay so the user
 /// learns which voice commands are available in the currently detected IDE.
 /// The overlay decides rendering (chip, auto-dismiss timing).
-pub fn emit_ide_hint(app_handle: &AppHandle, preset: &crate::ide_presets::IdePreset) {
+///
+/// Payload shape is deliberately narrow: only the fields the overlay renders
+/// (id, name, commands). Built-in profiles carry more than the overlay needs
+/// (auto-submit hints, image-paste quirks) — those are plumbed through the
+/// profile resolver in other consumers, not broadcast to the overlay.
+pub fn emit_ide_hint(app_handle: &AppHandle, profile: &crate::profiles::Profile) {
+    #[derive(serde::Serialize, Clone)]
+    struct Payload<'a> {
+        id: &'a str,
+        name: &'a str,
+        commands: &'a [crate::profiles::KeystrokeCommand],
+    }
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        let _ = overlay_window.emit("ide-hint", preset);
+        let _ = overlay_window.emit(
+            "ide-hint",
+            Payload {
+                id: &profile.id,
+                name: &profile.name,
+                commands: &profile.keystroke_commands,
+            },
+        );
+    }
+}
+
+/// Tell the overlay to render the edit-mode chip strip (Shorten / Lengthen /
+/// Fix grammar / Rephrase). The chips are clickable: clicking one invokes
+/// `apply_edit_chip`, which reads the focused field's text and rewrites it
+/// via the post-process LLM. If the user speaks instead, normal voice-edit
+/// flow takes over and the chips fade out.
+pub fn emit_edit_mode(app_handle: &AppHandle) {
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        // Widen the panel to fit the chip strip, then re-center horizontally
+        // so the growth stays balanced on screen.
+        let _ = overlay_window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+            width: EDIT_OVERLAY_WIDTH,
+            height: OVERLAY_HEIGHT,
+        }));
+        update_overlay_position(app_handle);
+
+        let chips = serde_json::json!([
+            { "id": "shorten",     "label": "Shorten",     "instruction": "Rewrite the text to be noticeably shorter while preserving the core meaning and tone." },
+            { "id": "lengthen",    "label": "Lengthen",    "instruction": "Rewrite the text to be more detailed and expanded while preserving the core meaning and tone." },
+            { "id": "fix_grammar", "label": "Fix grammar", "instruction": "Fix any spelling, grammar, and punctuation errors. Do not change wording, meaning, or tone." },
+            { "id": "rephrase",    "label": "Rephrase",    "instruction": "Rephrase the text to be clearer and more natural while preserving the meaning and tone." },
+        ]);
+        let _ = overlay_window.emit("edit-mode", chips);
+    }
+}
+
+/// Tell the overlay the chip action finished (success or failure) so it can
+/// clear the processing state and hide. Kept separate from `hide-overlay` so
+/// callers stay explicit about what triggered the dismissal.
+pub fn emit_edit_chip_done(app_handle: &AppHandle) {
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        let _ = overlay_window.emit("edit-chip-done", ());
     }
 }
 

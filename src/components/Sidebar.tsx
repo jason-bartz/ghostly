@@ -5,7 +5,8 @@ import {
   BookA,
   Bug,
   Keyboard,
-  History,
+  KeyRound,
+  NotebookPen,
   Info,
   Wand2,
   BrainCircuit,
@@ -15,9 +16,11 @@ import {
   Gauge,
   Settings as SettingsIcon,
   ChevronLeft,
+  ArrowLeftRight,
 } from "lucide-react";
 import GhostlyLogo from "./icons/GhostwriterLogo";
 import { useSettings } from "../hooks/useSettings";
+import { commands, type UsageStats } from "@/bindings";
 import {
   AchievementsSettings,
   GeneralSettings,
@@ -28,9 +31,10 @@ import {
   AboutSettings,
   PostProcessingSettings,
   ModelsSettings,
-  ProfilesSettings,
+  StyleSettings,
   UsageSettings,
   DeveloperSettings,
+  LicenseSettings,
 } from "./settings";
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
@@ -63,10 +67,10 @@ export const SECTIONS_CONFIG = {
     component: PostProcessingSettings,
     enabled: () => true,
   },
-  profiles: {
-    labelKey: "sidebar.profiles",
+  style: {
+    labelKey: "sidebar.style",
     icon: Layers,
-    component: ProfilesSettings,
+    component: StyleSettings,
     enabled: () => true,
   },
   dictionary: {
@@ -77,7 +81,7 @@ export const SECTIONS_CONFIG = {
   },
   history: {
     labelKey: "sidebar.history",
-    icon: History,
+    icon: NotebookPen,
     component: HistorySettings,
     enabled: () => true,
   },
@@ -97,6 +101,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.usage",
     icon: Gauge,
     component: UsageSettings,
+    enabled: () => true,
+  },
+  license: {
+    labelKey: "sidebar.license",
+    icon: KeyRound,
+    component: LicenseSettings,
     enabled: () => true,
   },
   developer: {
@@ -126,11 +136,12 @@ export const SECTIONS_CONFIG = {
 } as const satisfies Record<string, SectionConfig>;
 
 const PRIMARY_SECTIONS = [
-  "general",
-  "postprocessing",
-  "profiles",
-  "dictionary",
   "history",
+  "style",
+  "dictionary",
+  "achievements",
+  "postprocessing",
+  "general",
 ] as const satisfies readonly SidebarSection[];
 
 interface SettingsGroup {
@@ -141,7 +152,7 @@ interface SettingsGroup {
 const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   {
     labelKey: "sidebar.groups.preferences",
-    items: ["advanced", "models", "usage"],
+    items: ["advanced", "models", "usage", "license"],
   },
   {
     labelKey: "sidebar.groups.developer",
@@ -149,7 +160,7 @@ const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   },
   {
     labelKey: "sidebar.groups.about",
-    items: ["about", "achievements"],
+    items: ["about"],
   },
 ];
 
@@ -187,16 +198,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const goBack = () => {
     setView("primary");
     if (!isPrimary(activeSection)) {
-      onSectionChange("general");
+      onSectionChange(PRIMARY_SECTIONS[0]);
     }
   };
 
   return (
-    <div className="flex flex-col w-40 h-full border-e border-mid-gray/20 px-2">
-      <GhostlyLogo width={130} className="m-4 self-center" />
+    <div className="flex flex-col w-56 h-full border-e border-hairline bg-surface-1/40 backdrop-blur-xl px-2">
+      <GhostlyLogo width={140} className="mt-5 mb-3 self-center" />
+      <SidebarMetrics />
 
       {view === "primary" ? (
-        <div className="flex flex-col w-full gap-1 pt-2 pb-2 border-t border-mid-gray/20 flex-1 min-h-0">
+        <div className="flex flex-col w-full gap-0.5 pt-3 pb-2 border-t border-hairline flex-1 min-h-0">
           {PRIMARY_SECTIONS.map((id) => (
             <NavItem
               key={id}
@@ -209,34 +221,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={openSettings}
-              className="flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out hover:bg-mid-gray/20 hover:translate-x-0.5 opacity-80 hover:opacity-100"
+              className="flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-white/[0.04]"
             >
               <SettingsIcon
-                width={20}
-                height={20}
+                width={18}
+                height={18}
                 strokeWidth={1.75}
                 className="shrink-0"
               />
-              <p className="text-sm font-medium truncate">
+              <p className="text-[13px] font-medium truncate">
                 {t("sidebar.settings")}
               </p>
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex flex-col w-full gap-1 pt-2 border-t border-mid-gray/20">
+        <div className="flex flex-col w-full gap-0.5 pt-3 border-t border-hairline">
           <button
             type="button"
             onClick={goBack}
-            className="flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out hover:bg-mid-gray/20 opacity-80 hover:opacity-100"
+            className="flex gap-2 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-white/[0.04]"
           >
             <ChevronLeft
-              width={18}
-              height={18}
+              width={16}
+              height={16}
               strokeWidth={1.75}
               className="shrink-0"
             />
-            <p className="text-sm font-medium truncate">
+            <p className="text-[13px] font-medium truncate">
               {t("sidebar.back")}
             </p>
           </button>
@@ -247,8 +259,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
             if (items.length === 0) return null;
             return (
-              <div key={group.labelKey} className="mt-3 flex flex-col gap-1">
-                <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-text/50">
+              <div key={group.labelKey} className="mt-4 flex flex-col gap-0.5">
+                <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-faint">
                   {t(group.labelKey)}
                 </p>
                 {items.map((id) => (
@@ -268,6 +280,95 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
+type MetricsRange = "week" | "lifetime";
+
+const SidebarMetrics: React.FC = () => {
+  const { t } = useTranslation();
+  const [stats, setStats] = useState<UsageStats | null>(null);
+  const [range, setRange] = useState<MetricsRange>("week");
+
+  const load = async () => {
+    const res = await commands.getUsageStats();
+    if (res.status === "ok") setStats(res.data);
+  };
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!stats) return null;
+
+  const isLifetime = range === "lifetime";
+  const words = isLifetime ? stats.lifetime_words : stats.words_this_week;
+  const seconds = isLifetime ? stats.lifetime_seconds : stats.seconds_used;
+  const savedSecs = isLifetime
+    ? stats.time_saved_secs_lifetime
+    : stats.time_saved_secs_this_week;
+  const minutesSaved = Math.floor(savedSecs / 60);
+  const wpm = seconds > 0 ? Math.round((words / seconds) * 60) : 0;
+
+  const toggle = () =>
+    setRange((r) => (r === "week" ? "lifetime" : "week"));
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={t(
+        isLifetime
+          ? "sidebar.metrics.showWeek"
+          : "sidebar.metrics.showLifetime",
+      )}
+      className="mx-1 mb-3 rounded-xl bg-white/[0.025] border border-hairline px-3 py-2.5 text-[11px] leading-tight text-left transition-colors hover:bg-white/[0.04] hover:border-hairline-strong cursor-pointer"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <p className="uppercase tracking-[0.08em] text-[9px] font-semibold text-text-faint">
+          {t(
+            isLifetime
+              ? "sidebar.metrics.allTime"
+              : "sidebar.metrics.thisWeek",
+          )}
+        </p>
+        <ArrowLeftRight
+          width={10}
+          height={10}
+          className="text-text-faint"
+          aria-hidden
+        />
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-text-muted">{t("sidebar.metrics.words")}</span>
+          <span className="font-mono font-semibold tabular-nums text-text">
+            {formatThousands(words)}
+          </span>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-text-muted">{t("sidebar.metrics.saved")}</span>
+          <span className="font-mono font-semibold tabular-nums text-text">
+            {/* eslint-disable-next-line i18next/no-literal-string */}
+            {minutesSaved}m
+          </span>
+        </div>
+        {wpm > 0 && (
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-text-muted">{t("sidebar.metrics.wpm")}</span>
+            <span className="font-mono font-semibold tabular-nums text-text">
+              {wpm}
+            </span>
+          </div>
+        )}
+      </div>
+    </button>
+  );
+};
+
+function formatThousands(n: number): string {
+  return n.toLocaleString();
+}
+
 interface NavItemProps {
   id: SidebarSection;
   active: boolean;
@@ -281,26 +382,26 @@ const NavItem: React.FC<NavItemProps> = ({ id, active, onClick }) => {
   const label = t(config.labelKey);
   return (
     <div
-      className={`relative flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out ${
+      className={`group relative flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out ${
         active
-          ? "bg-logo-primary/80 shadow-sm"
-          : "hover:bg-mid-gray/20 hover:translate-x-0.5 hover:opacity-100 opacity-80"
+          ? "bg-white/[0.06] text-text"
+          : "text-text-muted hover:text-text hover:bg-white/[0.04]"
       }`}
       onClick={onClick}
     >
       <span
         aria-hidden
-        className={`absolute start-0 top-1/2 -translate-y-1/2 w-0.5 rounded-full bg-logo-primary transition-all duration-200 ease-out ${
+        className={`absolute start-0 top-1/2 -translate-y-1/2 w-[2px] rounded-full bg-accent transition-all duration-200 ease-out ${
           active ? "h-5 opacity-100" : "h-0 opacity-0"
         }`}
       />
       <Icon
-        width={20}
-        height={20}
+        width={17}
+        height={17}
         strokeWidth={1.75}
-        className="shrink-0"
+        className={`shrink-0 transition-colors ${active ? "text-accent-bright" : ""}`}
       />
-      <p className="text-sm font-medium truncate" title={label}>
+      <p className="text-[13px] font-medium truncate" title={label}>
         {label}
       </p>
     </div>

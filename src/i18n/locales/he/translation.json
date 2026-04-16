@@ -557,10 +557,6 @@
         "title": "מיקרופון במצב clamshell",
         "description": "המיקרופון שישמש כשהמחשב הנייד סגור"
       },
-      "postProcessingToggle": {
-        "label": "עיבוד משלים",
-        "description": "הפעל שיפור טקסט מבוסס AI אחרי התמלול"
-      },
       "muteWhileRecording": {
         "label": "השתק בזמן הקלטה",
         "description": "השתק את שמע המערכת בזמן הקלטה"
