@@ -244,26 +244,6 @@ fn extract_punctuation(word: &str) -> (&str, &str) {
     (prefix, suffix)
 }
 
-/// Returns true if the custom word has non-standard orthography that Whisper
-/// likely won't spell correctly without a bias hint. Used to filter the words
-/// we send into Whisper's `initial_prompt` so we don't bias against common
-/// homophones (e.g. "OpenAI" in the prompt pulls "open" toward "OpenAI" during
-/// decoding).
-///
-/// Words that qualify: internal capitals (OpenAI, ChargeBee, MacBook),
-/// digits (GPT-4, v0), or hyphens (GPT-4, e2e). Plain proper nouns like
-/// "Claude", "Cursor", or "Anthropic" are excluded — Whisper handles those
-/// correctly from acoustics alone.
-pub fn needs_whisper_bias(word: &str) -> bool {
-    let mut chars = word.chars();
-    let Some(_first) = chars.next() else {
-        return false;
-    };
-    let has_internal_capital = chars.clone().any(|c| c.is_uppercase());
-    let has_special = word.chars().any(|c| c.is_ascii_digit() || c == '-');
-    has_internal_capital || has_special
-}
-
 /// Returns filler words appropriate for the given language code.
 ///
 /// Some words like "um" and "ha" are real words in certain languages
@@ -661,36 +641,6 @@ mod tests {
         let result =
             apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("Claude"), "got: {}", result);
-    }
-
-    #[test]
-    fn test_needs_whisper_bias_mixed_case_compound() {
-        assert!(needs_whisper_bias("OpenAI"));
-        assert!(needs_whisper_bias("ChatGPT"));
-        assert!(needs_whisper_bias("MacBook"));
-        assert!(needs_whisper_bias("ChargeBee"));
-    }
-
-    #[test]
-    fn test_needs_whisper_bias_digits_or_hyphens() {
-        assert!(needs_whisper_bias("GPT-4"));
-        assert!(needs_whisper_bias("v0"));
-        assert!(needs_whisper_bias("e2e"));
-    }
-
-    #[test]
-    fn test_needs_whisper_bias_plain_proper_nouns_excluded() {
-        // Whisper handles these correctly from acoustics alone. Including
-        // them in initial_prompt biases against homophones.
-        assert!(!needs_whisper_bias("Claude"));
-        assert!(!needs_whisper_bias("Cursor"));
-        assert!(!needs_whisper_bias("Anthropic"));
-        assert!(!needs_whisper_bias("Ollama"));
-    }
-
-    #[test]
-    fn test_needs_whisper_bias_empty_word() {
-        assert!(!needs_whisper_bias(""));
     }
 
     #[test]

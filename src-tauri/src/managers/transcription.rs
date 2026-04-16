@@ -1,4 +1,4 @@
-use crate::audio_toolkit::{apply_custom_words, filter_transcription_output, needs_whisper_bias};
+use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{
@@ -540,27 +540,22 @@ impl TranscriptionManager {
                                 Some(normalized)
                             };
 
-                            // Only bias Whisper toward custom words with
-                            // non-standard orthography (mixed-case compounds,
-                            // digits, hyphens). Plain proper nouns like
-                            // "Claude" or "Cursor" are transcribed correctly
-                            // from acoustics; putting them in initial_prompt
-                            // biases Whisper toward homophones (e.g. "open"
-                            // → "OpenAI").
-                            let biased_words: Vec<&str> = settings
-                                .custom_words
-                                .iter()
-                                .filter(|w| needs_whisper_bias(w))
-                                .map(|w| w.as_str())
-                                .collect();
+                            // Custom-word biasing via `initial_prompt` is
+                            // intentionally disabled: even when the prompt
+                            // contains only mixed-case tech tokens (tRPC,
+                            // ESLint, NextAuth…), it puts Whisper into a
+                            // tech-context decoding mode that hallucinates
+                            // unrelated substitutions like "next week" →
+                            // "Next.js" or "pricing" → "Prisma". Custom
+                            // vocabulary is now applied post-transcription
+                            // via `apply_custom_words` (fuzzy + phonetic
+                            // matching with a tunable threshold), which only
+                            // fires on n-grams that actually resemble the
+                            // target word.
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
                                 translate: settings.translate_to_english,
-                                initial_prompt: if biased_words.is_empty() {
-                                    None
-                                } else {
-                                    Some(biased_words.join(", "))
-                                },
+                                initial_prompt: None,
                                 ..Default::default()
                             };
 
@@ -695,23 +690,19 @@ impl TranscriptionManager {
             }
         };
 
-        // Apply word correction if custom words are configured.
-        // Skip for Whisper models since custom words are already passed as initial_prompt.
-        let is_whisper = self
-            .model_manager
-            .get_model_info(&settings.selected_model)
-            .map(|info| matches!(info.engine_type, EngineType::Whisper))
-            .unwrap_or(false);
-
-        let corrected_result = if !settings.custom_words.is_empty() && !is_whisper {
+        // Apply custom-word correction post-transcription for every engine.
+        // Whisper used to receive custom words via `initial_prompt`, but that
+        // caused hallucinated substitutions of unrelated phrases — see the
+        // comment on the WhisperInferenceParams construction above.
+        let corrected_result = if settings.custom_words.is_empty() {
+            result.text
+        } else {
             apply_custom_words(
                 &result.text,
                 &settings.custom_words,
                 &settings.custom_word_phonetics,
                 settings.word_correction_threshold,
             )
-        } else {
-            result.text
         };
 
         // Filter out filler words and hallucinations

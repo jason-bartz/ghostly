@@ -397,7 +397,7 @@ pub struct AppSettings {
     /// Optional phonetic ("sounds like") hints keyed by the lowercased custom
     /// word. Used as a Soundex override so users can nudge fuzzy-match for
     /// proper nouns whose spelling diverges from pronunciation
-    /// (e.g. "Siobhan" -> "shavawn"). Not sent to Whisper as initial_prompt.
+    /// (e.g. "Siobhan" -> "shavawn").
     #[serde(default)]
     pub custom_word_phonetics: HashMap<String, String>,
     #[serde(default)]
