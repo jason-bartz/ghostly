@@ -44,6 +44,21 @@ pub fn handle_shortcut_event(
         return;
     }
 
+    // Continuous dictation arm/disarm: toggle on key press only.
+    // Not backed by ACTION_MAP — dispatch before the lookup.
+    if binding_id == "toggle_continuous_dictation" {
+        if is_pressed {
+            if let Some(cm) =
+                app.try_state::<Arc<crate::managers::continuous::ContinuousDictationManager>>()
+            {
+                cm.toggle();
+            } else {
+                warn!("Continuous dictation manager not available");
+            }
+        }
+        return;
+    }
+
     let Some(action) = ACTION_MAP.get(binding_id) else {
         warn!(
             "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', Pressed: {}",

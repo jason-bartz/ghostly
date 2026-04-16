@@ -14,9 +14,11 @@
     "models": "Models",
     "advanced": "Output",
     "postProcessing": "AI Refinement",
-    "profiles": "Profiles",
-    "history": "History",
+    "profiles": "App Profiles",
+    "style": "Style",
+    "history": "My Notes",
     "usage": "Usage",
+    "license": "License",
     "achievements": "Achievements",
     "dictionary": "Dictionary",
     "developer": "Vibe Coding",
@@ -28,6 +30,15 @@
       "preferences": "Preferences",
       "developer": "Developer",
       "about": "About"
+    },
+    "metrics": {
+      "thisWeek": "This Week",
+      "allTime": "All Time",
+      "words": "Words",
+      "saved": "Saved",
+      "wpm": "WPM",
+      "showWeek": "Show this week",
+      "showLifetime": "Show all time"
     }
   },
   "onboarding": {
@@ -38,8 +49,9 @@
       "fast": "Instant results — transcription in under a second",
       "everywhere": "Works anywhere — paste into any app, any text field"
     },
-    "modelSection": "Choose your model",
+    "modelSection": "Setting up your model",
     "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
+    "changeLaterHint": "You can switch to a different model anytime in Settings → Models.",
     "showMoreModels": "Show more models",
     "hideMoreModels": "Show fewer models",
     "subtitle": "To get started, choose a transcription model",
@@ -275,7 +287,8 @@
         "transcription": "Transcription",
         "history": "Data & Privacy",
         "experimental": "Performance",
-        "developer": "Developer"
+        "developer": "Developer",
+        "continuousDictation": "Continuous Dictation (experimental)"
       },
       "experimentalToggle": {
         "label": "Developer Mode",
@@ -284,6 +297,28 @@
       "lazyStreamClose": {
         "label": "Warm Mic Mode",
         "description": "Keeps the microphone open for 30 seconds after stopping, cutting startup delay for back-to-back dictation. May temporarily affect Bluetooth audio quality."
+      },
+      "continuousDictation": {
+        "label": "Continuous Dictation (experimental)",
+        "description": "Hands-free dictation: while armed, Ghostly listens continuously and transcribes each utterance on silence. No key press per sentence.",
+        "warning": "While armed, the microphone stays hot the entire time. This can degrade Bluetooth audio quality in all other apps. Only what's spoken gets transcribed — but any nearby voice or loud playback can trigger a segment. Use the arm shortcut or button to turn it off when you step away.",
+        "arm": "Arm",
+        "disarm": "Disarm",
+        "statusArmed": "Armed — dictating",
+        "statusDisarmed": "Disarmed",
+        "silenceLabel": "Silence to end segment",
+        "silenceDescription": "How long a pause must last (ms) before the current utterance is closed and transcribed. Shorter = snappier; longer = fewer fragmentations.",
+        "minLabel": "Minimum segment length",
+        "minDescription": "Segments shorter than this (ms) are dropped as noise (coughs, clicks, short sounds).",
+        "maxLabel": "Maximum segment length",
+        "maxDescription": "Hard cap (ms) on a single segment. If you speak longer than this without pausing, Ghostly force-transcribes mid-stream.",
+        "submitPhraseLabel": "Submit phrase",
+        "submitPhraseDescription": "When a segment ends with this phrase, Ghostly strips it and presses the submit key — say \"…send it\" to fire off a chat message hands-free.",
+        "submitPhrasePlaceholder": "send it",
+        "submitKeyLabel": "Submit key",
+        "submitKeyDescription": "Which keystroke to send when the submit phrase is detected.",
+        "submitKeyEnter": "Enter",
+        "submitKeyCmdEnter": "Cmd+Enter"
       },
       "acceleration": {
         "whisper": {
@@ -310,7 +345,11 @@
       },
       "showTrayIcon": {
         "label": "Show Tray Icon",
-        "description": "Display the Ghostly icon in the system tray."
+        "description": "Display the Ghostly icon in the menu bar."
+      },
+      "showDockIcon": {
+        "label": "Show Dock Icon",
+        "description": "Display the Ghostly icon in the Dock. At least one of the Dock or menu bar icons must remain enabled."
       },
       "overlay": {
         "title": "Overlay Position",
@@ -385,6 +424,7 @@
         "placeholder": "Add a word",
         "add": "Add",
         "remove": "Remove {{word}}",
+        "remove_short": "Delete",
         "duplicate": "\"{{word}}\" already exists",
         "presetAdded": "Added {{count}} word(s)",
         "presetAlreadyAdded": "All words from this preset are already added",
@@ -495,7 +535,8 @@
       }
     },
     "history": {
-      "title": "History",
+      "title": "Notes",
+      "description": "Every transcription is saved here as a note — a searchable history of what you've dictated. Add tags, star favorites, and regenerate titles with AI.",
       "storageGroup": "Storage & Retention",
       "openFolder": "Open Recordings Folder",
       "export": {
@@ -516,8 +557,35 @@
       "deleteError": "Failed to delete entry. Please try again.",
       "retranscribe": "Retranscribe",
       "retranscribeError": "Failed to retranscribe. Please try again.",
+      "moreActions": "More actions",
       "transcribing": "Transcribing...",
-      "transcriptionFailed": "Transcription failed. You can retry using the retranscribe button."
+      "transcriptionFailed": "Transcription failed. You can retry using the retranscribe button.",
+      "tags": {
+        "add": "Add tag",
+        "remove": "Remove tag",
+        "placeholder": "tag…",
+        "autoApplied": "Auto-applied by AI",
+        "addFilter": "Filter by tag",
+        "removeFilter": "Remove filter",
+        "clearFilters": "Clear"
+      },
+      "ai": {
+        "generate": "Generate title & tags with AI",
+        "success": "Generated title and tags"
+      },
+      "bulk": {
+        "selectedCount_one": "{{count}} selected",
+        "selectedCount_other": "{{count}} selected",
+        "selectEntry": "Select entry",
+        "selectAll": "Select all visible",
+        "deselectAll": "Deselect all visible",
+        "delete": "Delete",
+        "star": "Star",
+        "unstar": "Unstar",
+        "clear": "Clear selection"
+      },
+      "bulkDeleteError": "Some entries failed to delete",
+      "sourceApp": "Captured in"
     },
     "debug": {
       "title": "Debug",
@@ -538,8 +606,8 @@
         "description": "How closely a word must match your correction list to be replaced. Lower = stricter; higher = more aggressive matching."
       },
       "historyLimit": {
-        "title": "Keep Last N Transcriptions",
-        "description": "Older entries are removed automatically once this limit is reached.",
+        "title": "Keep Last N Audio Recordings",
+        "description": "Older audio recordings are removed automatically once this limit is reached. Text transcriptions are always kept.",
         "entries": "entries"
       },
       "recordingRetention": {
@@ -559,10 +627,6 @@
       "clamshellMicrophone": {
         "title": "Closed-Lid Microphone",
         "description": "Which microphone to use when your laptop lid is closed."
-      },
-      "postProcessingToggle": {
-        "label": "Enable AI Refinement",
-        "description": "Use AI to clean up, format, or rephrase transcriptions after they're captured."
       },
       "muteWhileRecording": {
         "label": "Mute System Audio While Recording",
@@ -637,9 +701,22 @@
       },
       "empty": "No profiles yet.",
       "newProfile": "New profile",
-      "count_one": "{{count}} profile",
-      "count_other": "{{count}} profiles",
+      "count_one": "{{count}} custom profile",
+      "count_other": "{{count}} custom profiles",
       "add": "Add profile",
+      "editAria": "Edit profile",
+      "builtin": {
+        "sectionTitle": "Built-in profiles",
+        "title": "Use built-in profiles",
+        "description": "Recognize IDEs (Cursor, Claude Code, Windsurf, VS Code, Replit) and enable their voice commands, auto-submit, and image-paste behavior.",
+        "idesHeader": "IDEs with voice commands",
+        "customize": "Customize"
+      },
+      "custom": {
+        "sectionTitle": "Your profiles",
+        "empty": "No custom profiles",
+        "emptyHint": "Create a profile to override the prompt, vocabulary, or provider for a specific app. Custom profiles take priority over built-ins."
+      },
       "detectCurrent": "Detect current app",
       "detectCurrentHint": "Switch focus to the target app, then click to prefill a matching rule.",
       "detectFailed": "Couldn't detect the frontmost app.",
@@ -668,7 +745,21 @@
         "trailingSpace": "Append trailing space",
         "trailingSpaceInherit": "Inherit",
         "trailingSpaceOn": "Always append",
-        "trailingSpaceOff": "Never append"
+        "trailingSpaceOff": "Never append",
+        "autoSubmit": "Auto-submit",
+        "autoSubmitHint": "Press Enter after pasting so the prompt fires hands-free.",
+        "autoSubmitInherit": "Inherit global",
+        "autoSubmitOn": "Force on",
+        "autoSubmitOff": "Force off",
+        "imagePasteShift": "Image paste uses Shift+Cmd+V",
+        "imagePasteShiftHint": "Needed for apps like VS Code Copilot Chat that expect Shift+Cmd+V for attachments.",
+        "keystrokes": "Voice commands",
+        "keystrokesHint": "Phrase \u2192 keystroke bindings that apply only when this profile is active. Merged with your global voice commands.",
+        "keystrokePhrasePlaceholder": "e.g. approve",
+        "keystrokeBindingPlaceholder": "cmd+enter",
+        "keystrokeDescriptionPlaceholder": "Short description",
+        "addKeystroke": "Add command",
+        "removeKeystroke": "Remove command"
       },
       "rule": {
         "kind": "Rule type",
@@ -680,6 +771,99 @@
         "windowClass": "Window class (Linux X11)",
         "exePathContains": "Exe path contains",
         "windowTitleContains": "Window title contains"
+      }
+    },
+    "style": {
+      "title": "Style",
+      "enable": {
+        "title": "Style Matching",
+        "description": "Ghostly tunes how your dictation gets written based on which app you're in — casual for messages, polished for email, clean for work chat."
+      },
+      "tabs": {
+        "personal": "Personal messages",
+        "work": "Work messages",
+        "email": "Email",
+        "coding": "Coding",
+        "other": "Other",
+        "cleanup": "Auto Cleanup",
+        "advanced": "Advanced"
+      },
+      "appliesIn": {
+        "personal_messages": "This style applies in personal messengers",
+        "work_messages": "This style applies in workplace messengers",
+        "email": "This style applies in all major email apps",
+        "coding": "This style applies in IDEs and coding agents",
+        "other": "This style applies everywhere else",
+        "otherHint": "Default for any app not in another category"
+      },
+      "appliesInHint": "Auto-applies when the matching app is focused.",
+      "presets": {
+        "formal": {
+          "title": "Formal",
+          "subtitle": "Caps + punctuation"
+        },
+        "casual": {
+          "title": "Casual",
+          "subtitle": "Caps + less punctuation"
+        },
+        "excited": {
+          "title": "Excited",
+          "subtitle": "More exclamations"
+        },
+        "custom": {
+          "title": "Custom",
+          "subtitle": "Your own instructions",
+          "empty": "Click to write custom instructions for this category.",
+          "edit": "Edit"
+        }
+      },
+      "custom": {
+        "editorTitle": "Custom style for this category",
+        "nameLabel": "Style name",
+        "namePlaceholder": "e.g. My Slack voice",
+        "promptLabel": "Custom instructions",
+        "promptPlaceholder": "Describe how Ghostly should rewrite the transcript. e.g. “Keep it short, lowercase, and drop punctuation.”",
+        "promptHint": "This overrides the preset. Auto Cleanup still runs first."
+      },
+      "vocab": {
+        "title": "Vocabulary for this category",
+        "hint": "Words Ghostly should recognize when dictating into these apps. Merged with your Dictionary.",
+        "placeholder": "Add a word",
+        "duplicate": "That word is already in this category's vocabulary."
+      },
+      "cleanup": {
+        "headerTitle": "Auto Cleanup applies to all your dictations",
+        "headerSubtitle": "Choose how much Ghostly automatically edits your dictation each time.",
+        "none": {
+          "title": "None",
+          "subtitle": "Transcribes exactly what you said, including mistakes",
+          "sample": "hey joey, we still on for coffee or i think we maybe should leave earlier to make it there in time there might um be traffic. what are you thinking?"
+        },
+        "light": {
+          "title": "Light",
+          "subtitle": "Removes filler words and corrects grammar",
+          "sample": "Hey joey, are we still on for coffee? I think we should leave earlier to make it there in time. There might be traffic. What are you thinking?"
+        },
+        "medium": {
+          "title": "Medium (Default)",
+          "subtitle": "Improves clarity, removes “ums,” and makes more concise",
+          "sample": "Hey joey, are we still on for coffee? We should leave earlier; there might be traffic. What do you think?"
+        },
+        "high": {
+          "title": "High",
+          "subtitle": "Rewrites for brevity and polish while keeping your meaning",
+          "sample": "Hey joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?"
+        }
+      },
+      "advanced": {
+        "title": "Advanced rules",
+        "description": "Override the category style for a specific app using bundle IDs, process names, or window titles. Custom rules take priority over categories.",
+        "empty": "No custom rules yet.",
+        "count_one": "{{count}} rule",
+        "count_other": "{{count}} rules",
+        "add": "Add rule",
+        "newRule": "New rule",
+        "detectFailed": "Couldn't detect the frontmost app."
       }
     },
     "developer": {
@@ -777,7 +961,19 @@
         "phoneticPlaceholder": "Pronounced like (optional)",
         "showPhonetic": "Add pronunciation hint",
         "hidePhonetic": "Hide pronunciation field",
-        "soundsLike": "sounds like"
+        "soundsLike": "sounds like",
+        "searchPlaceholder": "Search words…",
+        "clearSearch": "Clear search",
+        "sort": "Sort",
+        "sortRecent": "Most recent",
+        "sortAZ": "A → Z",
+        "sortZA": "Z → A",
+        "selectWord": "Select word",
+        "selectedCount_one": "{{count}} selected",
+        "selectedCount_other": "{{count}} selected",
+        "clearSelection": "Clear selection",
+        "noMatches": "No words match your search.",
+        "empty": "No words yet."
       },
       "csv": {
         "button": "Upload CSV",
@@ -785,6 +981,17 @@
         "nothingNew": "All words in that file are already in your vocabulary.",
         "imported": "Imported {{count}} new word(s) ({{total}} in file).",
         "failed": "Couldn't read that file."
+      },
+      "tags": {
+        "global": "Applies everywhere",
+        "scoped": "Only in: {{cats}}",
+        "legendLabel": "Scope:",
+        "legendHint": "Click a tag to limit a word to that context. Unset = applies everywhere.",
+        "personal_messages": "Personal",
+        "work_messages": "Work",
+        "email": "Email",
+        "coding": "Coding",
+        "other": "Other"
       }
     },
     "correctionPhrases": {
@@ -849,7 +1056,8 @@
     "modelLoadFailedUnknown": "unknown model",
     "pasteFailedTitle": "Failed to Paste Text",
     "pasteFailed": "Text could not be pasted into the active application.",
-    "postProcessFailedTitle": "AI Refinement Failed"
+    "postProcessFailedTitle": "AI Refinement Failed",
+    "screenshotQaFailedTitle": "Screenshot Q&A Failed"
   },
   "appLanguage": {
     "title": "Application Language",
@@ -857,7 +1065,12 @@
   },
   "overlay": {
     "transcribing": "Transcribing...",
-    "processing": "Processing..."
+    "processing": "Processing...",
+    "stagedTitle": "Screenshot Ready",
+    "stagedNoText": "(no transcription)",
+    "stagedCancel": "Discard",
+    "stagedPressToPaste": "Focus a text field and press",
+    "stagedUnboundHint": "Set a shortcut in Settings → Output → Shortcuts to paste."
   },
   "eula": {
     "title": "Welcome to Ghostly",
@@ -907,8 +1120,44 @@
     "title": "You've hit your weekly limit",
     "body": "Free accounts can transcribe {{minutes}} minutes per week. Upgrade to Ghostly Pro for unlimited transcription — one-time purchase, no subscription.",
     "upgrade": "Upgrade to Pro",
+    "buyButton": "Buy Ghostly Pro",
+    "haveKey": "I have a key",
     "dismiss": "Maybe later",
     "resetsIn": "Your free minutes reset {{when}}"
+  },
+  "license": {
+    "title": "Activate Ghostly Pro",
+    "description": "Enter your Ghostly Pro license key to unlock unlimited transcription. Your key works on up to 3 devices.",
+    "keyLabel": "License key",
+    "keyPlaceholder": "GHOSTLY-XXXX-XXXX-XXXX",
+    "activate": "Activate",
+    "activating": "Activating…",
+    "buy": "Buy a license",
+    "activeTitle": "Your license",
+    "email": "Email",
+    "renewsLabel": "Renews",
+    "expiresIn": "in {{when}}",
+    "expired": "expired",
+    "deviceList": "Active devices",
+    "noDevices": "No active devices.",
+    "deviceListUnavailable": "Could not load device list.",
+    "retry": "Retry",
+    "currentDevice": "This device",
+    "lastSeen": "Last validated {{when}}",
+    "deactivateDevice": "Remove",
+    "dangerZone": "Danger zone",
+    "deactivateThisDevice": "Deactivate this device",
+    "deactivateThisDeviceHelp": "This removes the license from this Mac. You can reactivate later with the same key on up to 3 devices total.",
+    "errors": {
+      "invalidKey": "That license key isn't valid. Double-check for typos.",
+      "revoked": "This license has been revoked. Contact support if this is unexpected.",
+      "deviceLimitReached": "You've reached the device limit for this license.",
+      "deviceLimitHelp": "Your license allows up to {{limit}} devices. Remove one below to free up a slot.",
+      "networkError": "Couldn't reach the license server. Check your connection and try again.",
+      "notActivated": "No license is currently activated on this device.",
+      "invalidToken": "The license response was invalid. Try again or contact support.",
+      "notReady": "Your purchase is still processing. Try again in a moment."
+    }
   },
   "achievements": {
     "loadError": "Unable to load statistics.",
@@ -971,6 +1220,8 @@
       "subtitle": "Earn badges as you use Ghostly. Locked badges are hidden until the underlying criterion is met.",
       "emptyState": "Record your first transcription to begin earning badges.",
       "lockedDescription": "Locked — {{description}}",
+      "unlocked": "Unlocked {{date}}",
+      "new": "New",
       "status": {
         "earned": "earned",
         "locked": "locked"

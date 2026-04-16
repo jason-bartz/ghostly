@@ -1,17 +1,20 @@
 mod actions;
+mod ai_metadata;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
 mod audio_feedback;
 pub mod audio_toolkit;
 pub mod cli;
 mod clipboard;
+#[cfg(target_os = "macos")]
+mod clipboard_image;
 mod commands;
 mod edit_intent;
 mod frontmost;
 mod helpers;
-mod ide_presets;
 mod input;
 mod keychain;
+mod license;
 mod llm_client;
 mod managers;
 mod overlay;
@@ -23,6 +26,7 @@ mod session;
 mod settings;
 mod shortcut;
 mod signal_handle;
+mod staged_capture;
 mod stream_cancel;
 mod transcription_coordinator;
 mod tray;
@@ -109,8 +113,14 @@ fn show_main_window(app: &AppHandle) {
         }
         #[cfg(target_os = "macos")]
         {
-            if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
-                log::error!("Failed to set activation policy to Regular: {}", e);
+            let settings = settings::get_settings(app);
+            let policy = if settings.show_dock_icon || !settings.show_tray_icon {
+                tauri::ActivationPolicy::Regular
+            } else {
+                tauri::ActivationPolicy::Accessory
+            };
+            if let Err(e) = app.set_activation_policy(policy) {
+                log::error!("Failed to set activation policy: {}", e);
             }
         }
         return;
@@ -180,6 +190,19 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(usage_manager.clone());
     app_handle.manage(Arc::new(SessionBuffer::new()));
     app_handle.manage(Arc::new(stream_cancel::StreamCancellation::new()));
+    app_handle.manage(Arc::new(staged_capture::StagedCaptureState::new()));
+
+    // Continuous dictation manager (dev-mode gated). Construction is fallible
+    // because it loads the Silero VAD; a failure here only disables continuous
+    // dictation — regular shortcuts keep working.
+    match managers::continuous::ContinuousDictationManager::new(app_handle.clone()) {
+        Ok(cm) => {
+            app_handle.manage(cm);
+        }
+        Err(e) => {
+            log::warn!("Continuous dictation disabled: {}", e);
+        }
+    }
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -204,12 +227,14 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         }
     }
 
-    // Apply macOS Accessory policy if starting hidden and tray is available.
-    // If the tray icon is disabled, keep the dock icon so the user can reopen.
+    // Apply macOS activation policy based on dock/tray preferences.
+    // Accessory = no dock icon. Only allowed when the tray provides re-entry.
     #[cfg(target_os = "macos")]
     {
         let settings = settings::get_settings(app_handle);
-        if settings.start_hidden && settings.show_tray_icon {
+        let tray_available = settings.show_tray_icon;
+        let hide_dock = !settings.show_dock_icon && tray_available;
+        if hide_dock {
             let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
     }
@@ -379,7 +404,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::change_clipboard_handling_setting,
             shortcut::change_auto_submit_setting,
             shortcut::change_auto_submit_key_setting,
-            shortcut::change_post_process_enabled_setting,
             shortcut::change_experimental_enabled_setting,
             shortcut::change_post_process_base_url_setting,
             shortcut::change_post_process_api_key_setting,
@@ -399,10 +423,18 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::change_mute_while_recording_setting,
             shortcut::change_append_trailing_space_setting,
             shortcut::change_lazy_stream_close_setting,
+            shortcut::change_continuous_dictation_enabled_setting,
+            shortcut::change_continuous_silence_ms_setting,
+            shortcut::change_continuous_max_segment_ms_setting,
+            shortcut::change_continuous_min_segment_ms_setting,
+            shortcut::change_continuous_submit_phrase_enabled_setting,
+            shortcut::change_continuous_submit_phrase_setting,
+            shortcut::change_continuous_submit_key_setting,
             shortcut::change_app_language_setting,
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
             shortcut::change_show_tray_icon_setting,
+            shortcut::change_show_dock_icon_setting,
             shortcut::change_whisper_accelerator_setting,
             shortcut::change_ort_accelerator_setting,
             shortcut::change_whisper_gpu_device,
@@ -411,6 +443,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::handy_keys::stop_handy_keys_recording,
             show_main_window_command,
             commands::cancel_operation,
+            commands::cancel_staged_capture,
             commands::is_portable,
             commands::get_app_dir_path,
             commands::get_app_settings,
@@ -436,6 +469,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::models::has_any_models_or_downloads,
             commands::audio::update_microphone_mode,
             commands::audio::get_microphone_mode,
+            commands::audio::set_continuous_dictation_armed,
+            commands::audio::is_continuous_dictation_armed,
             commands::audio::get_windows_microphone_permission_status,
             commands::audio::open_microphone_privacy_settings,
             commands::audio::get_available_microphones,
@@ -458,6 +493,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::history::update_history_entry_title,
             commands::history::get_audio_file_path,
             commands::history::delete_history_entry,
+            commands::history::bulk_delete_history_entries,
             commands::history::retry_history_entry_transcription,
             commands::history::update_history_limit,
             commands::history::update_recording_retention_period,
@@ -470,10 +506,16 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::history::delete_word_correction,
             commands::history::export_history,
             commands::history::get_transcription_stats,
+            commands::history::add_history_tag,
+            commands::history::remove_history_tag,
+            commands::history::list_all_history_tags,
+            commands::history::filter_history_entries,
+            commands::history::generate_history_metadata,
             helpers::clamshell::is_laptop,
             commands::set_rest_api_enabled,
             commands::set_rest_api_port,
             frontmost::detect_frontmost_app,
+            frontmost::detect_builtin_profile_id,
             commands::profiles::set_profiles_enabled,
             commands::profiles::get_profiles,
             commands::profiles::add_profile,
@@ -488,17 +530,34 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::profiles::set_session_buffer_size,
             commands::profiles::set_session_idle_timeout_secs,
             commands::profiles::clear_voice_edit_session,
+            commands::profiles::set_style_enabled,
+            commands::profiles::get_category_styles,
+            commands::profiles::set_category_style,
+            commands::profiles::set_category_custom_prompt,
+            commands::profiles::set_category_custom_style_name,
+            commands::profiles::set_category_vocab,
+            commands::profiles::set_auto_cleanup_level,
+            commands::profiles::set_custom_word_categories,
+            commands::profiles::get_category_apps,
             commands::get_eula,
             commands::get_third_party_notices,
             commands::accept_eula,
             commands::usage::get_usage_stats,
             commands::usage::set_dev_force_free_tier,
             commands::usage::set_dev_is_pro,
-            commands::get_ide_presets,
+            commands::license::activate_license,
+            commands::license::deactivate_license,
+            commands::license::deactivate_remote_device,
+            commands::license::revalidate_license,
+            commands::license::get_license_state,
+            commands::license::get_device_list,
+            commands::license::activate_from_session,
+            commands::license::open_payment_link,
             commands::mark_ide_hint_seen,
             commands::set_ide_presets_enabled,
             commands::set_ide_auto_submit,
             commands::reset_seen_ide_hints,
+            commands::edit_chip::apply_edit_chip,
         ])
         .events(collect_events![managers::history::HistoryUpdatePayload,])
 }
@@ -584,6 +643,7 @@ pub fn run(cli_args: CliArgs) {
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -598,8 +658,8 @@ pub fn run(cli_args: CliArgs) {
             let mut win_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("/".into()))
                     .title("Ghostly")
-                    .inner_size(960.0, 720.0)
-                    .min_inner_size(720.0, 520.0)
+                    .inner_size(1180.0, 820.0)
+                    .min_inner_size(960.0, 640.0)
                     .resizable(true)
                     .maximizable(true)
                     .visible(false);
@@ -626,6 +686,48 @@ pub fn run(cli_args: CliArgs) {
             app.manage(TranscriptionCoordinator::new(app_handle.clone()));
 
             initialize_core_logic(&app_handle);
+
+            // Deep-link handler for `ghostly://activate?session_id=cs_...`
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let deep_app = app_handle.clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        if url.scheme() != "ghostly" {
+                            continue;
+                        }
+                        let host_or_path = url.host_str().unwrap_or("").to_string();
+                        let path = url.path();
+                        // Accept both `ghostly://activate?...` and `ghostly:/activate?...`
+                        let is_activate = host_or_path == "activate"
+                            || path.trim_start_matches('/') == "activate";
+                        if !is_activate {
+                            continue;
+                        }
+                        let session_id = url
+                            .query_pairs()
+                            .find(|(k, _)| k == "session_id")
+                            .map(|(_, v)| v.into_owned());
+                        if let Some(sid) = session_id {
+                            let emit_app = deep_app.clone();
+                            let _ = emit_app.emit("license-auto-activate", sid);
+                            show_main_window(&emit_app);
+                        }
+                    }
+                });
+            }
+
+            // Startup token revalidation: if a license is stored, refresh in
+            // the background. Never blocks startup. Uses the same
+            // revalidate logic as the explicit command.
+            {
+                let bg_app = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if crate::license::load_key_and_token().is_some() {
+                        let _ = crate::commands::license::revalidate_license(bg_app).await;
+                    }
+                });
+            }
 
             // Pre-warm GPU/accelerator enumeration on a background thread.
             // The first call into transcribe_rs::whisper_cpp::gpu::list_gpu_devices
@@ -668,8 +770,9 @@ pub fn run(cli_args: CliArgs) {
                     let settings = get_settings(&window.app_handle());
                     let tray_visible =
                         settings.show_tray_icon && !window.app_handle().state::<CliArgs>().no_tray;
-                    if tray_visible {
-                        // Tray is available: hide the dock icon, app lives in the tray
+                    // Only hide the dock if the user opted out of it AND a tray
+                    // is available as an alternate entry point.
+                    if tray_visible && !settings.show_dock_icon {
                         let res = window
                             .app_handle()
                             .set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -677,7 +780,6 @@ pub fn run(cli_args: CliArgs) {
                             log::error!("Failed to set activation policy: {}", e);
                         }
                     }
-                    // No tray: keep the dock icon visible so the user can reopen
                 }
             }
             tauri::WindowEvent::ThemeChanged(theme) => {

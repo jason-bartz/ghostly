@@ -36,6 +36,10 @@ pub struct AudioRecorder {
     worker_handle: Option<std::thread::JoinHandle<()>>,
     vad: Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
+    /// Fires for every resampled 16 kHz frame, regardless of whether a
+    /// recording is active. Used by the continuous-dictation loop to run its
+    /// own VAD/segmentation independent of the start/stop recording cycle.
+    raw_frame_cb: Option<Arc<dyn Fn(&[f32]) + Send + Sync + 'static>>,
 }
 
 impl AudioRecorder {
@@ -46,6 +50,7 @@ impl AudioRecorder {
             worker_handle: None,
             vad: None,
             level_cb: None,
+            raw_frame_cb: None,
         })
     }
 
@@ -59,6 +64,16 @@ impl AudioRecorder {
         F: Fn(Vec<f32>) + Send + Sync + 'static,
     {
         self.level_cb = Some(Arc::new(cb));
+        self
+    }
+
+    /// Register a callback that receives every resampled 16 kHz frame
+    /// regardless of recording state. Used for continuous dictation.
+    pub fn with_raw_frame_callback<F>(mut self, cb: F) -> Self
+    where
+        F: Fn(&[f32]) + Send + Sync + 'static,
+    {
+        self.raw_frame_cb = Some(Arc::new(cb));
         self
     }
 
@@ -83,6 +98,7 @@ impl AudioRecorder {
         let vad = self.vad.clone();
         // Move the optional level callback into the worker thread
         let level_cb = self.level_cb.clone();
+        let raw_frame_cb = self.raw_frame_cb.clone();
 
         let worker = std::thread::spawn(move || {
             let stop_flag = Arc::new(AtomicBool::new(false));
@@ -159,7 +175,15 @@ impl AudioRecorder {
                 Ok((stream, sample_rate)) => {
                     let _ = init_tx.send(Ok(()));
                     // Keep the stream alive while we process samples.
-                    run_consumer(sample_rate, vad, sample_rx, cmd_rx, level_cb, stop_flag);
+                    run_consumer(
+                        sample_rate,
+                        vad,
+                        sample_rx,
+                        cmd_rx,
+                        level_cb,
+                        raw_frame_cb,
+                        stop_flag,
+                    );
                     drop(stream);
                 }
                 Err(error_message) => {
@@ -398,6 +422,7 @@ fn run_consumer(
     sample_rx: mpsc::Receiver<AudioChunk>,
     cmd_rx: mpsc::Receiver<Cmd>,
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
+    raw_frame_cb: Option<Arc<dyn Fn(&[f32]) + Send + Sync + 'static>>,
     stop_flag: Arc<AtomicBool>,
 ) {
     let mut frame_resampler = FrameResampler::new(
@@ -461,6 +486,9 @@ fn run_consumer(
 
         // ---------- existing pipeline ------------------------------------ //
         frame_resampler.push(&raw, &mut |frame: &[f32]| {
+            if let Some(cb) = &raw_frame_cb {
+                cb(frame);
+            }
             handle_frame(frame, recording, &vad, &mut processed_samples)
         });
 
@@ -488,6 +516,9 @@ fn run_consumer(
                         match sample_rx.recv_timeout(Duration::from_secs(2)) {
                             Ok(AudioChunk::Samples(remaining)) => {
                                 frame_resampler.push(&remaining, &mut |frame: &[f32]| {
+                                    if let Some(cb) = &raw_frame_cb {
+                                        cb(frame);
+                                    }
                                     handle_frame(frame, true, &vad, &mut processed_samples)
                                 });
                             }
@@ -500,6 +531,9 @@ fn run_consumer(
                     }
 
                     frame_resampler.finish(&mut |frame: &[f32]| {
+                        if let Some(cb) = &raw_frame_cb {
+                            cb(frame);
+                        }
                         handle_frame(frame, true, &vad, &mut processed_samples)
                     });
 

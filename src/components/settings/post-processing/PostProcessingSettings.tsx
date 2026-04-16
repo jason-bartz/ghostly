@@ -23,7 +23,6 @@ import { usePostProcessProviderState } from "../PostProcessingSettingsApi/usePos
 import { ShortcutInput } from "../ShortcutInput";
 import { VoiceEditing } from "../VoiceEditing";
 import { PromptShortcutInput } from "../PromptShortcutInput";
-import { PostProcessingToggle } from "../PostProcessingToggle";
 import { useSettings } from "../../../hooks/useSettings";
 
 const PostProcessingSettingsApiComponent: React.FC = () => {
@@ -538,55 +537,30 @@ const ConnectionStatusCard: React.FC = () => {
 
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
-  const { getSetting } = useSettings();
-  const enabled = getSetting("post_process_enabled") || false;
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
-      {/* ── Enable toggle — always shown so users can discover the feature ── */}
-      <SettingsGroup title={t("settings.postProcessing.title")}>
-        <PostProcessingToggle descriptionMode="tooltip" grouped={true} />
+      <ConnectionStatusCard />
+
+      <SettingsGroup title={t("settings.postProcessing.api.title")}>
+        <PostProcessingSettingsApi />
       </SettingsGroup>
 
-      {enabled && (
-        <>
-          {/* Connection status at the top — user sees at a glance whether
-              refinement is ready to go. */}
-          <ConnectionStatusCard />
+      <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
+        <PostProcessingSettingsPrompts />
+      </SettingsGroup>
 
-          <SettingsGroup title={t("settings.postProcessing.api.title")}>
-            <PostProcessingSettingsApi />
-          </SettingsGroup>
+      <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
+        <ShortcutInput
+          shortcutId="transcribe_with_screenshot"
+          descriptionMode="tooltip"
+          grouped={true}
+        />
+      </SettingsGroup>
 
-          {/* Advanced: prompt selection, extra hotkeys, voice editing.
-              Collapsed by default so the main path stays clean. */}
-          <details className="group rounded-lg border border-mid-gray/20">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold select-none flex items-center gap-2">
-              <span className="transition-transform group-open:rotate-90">
-                ›
-              </span>
-              {t("settings.postProcessing.advanced.title")}
-            </summary>
-            <div className="p-4 space-y-6 border-t border-mid-gray/20">
-              <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
-                <ShortcutInput
-                  shortcutId="transcribe_with_screenshot"
-                  descriptionMode="tooltip"
-                  grouped={true}
-                />
-              </SettingsGroup>
-
-              <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
-                <PostProcessingSettingsPrompts />
-              </SettingsGroup>
-
-              <SettingsGroup title={t("settings.voiceEditing.title")}>
-                <VoiceEditing />
-              </SettingsGroup>
-            </div>
-          </details>
-        </>
-      )}
+      <SettingsGroup title={t("settings.voiceEditing.title")}>
+        <VoiceEditing />
+      </SettingsGroup>
     </div>
   );
 };

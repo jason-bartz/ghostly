@@ -109,17 +109,28 @@ pub enum RecordingState {
     Recording { binding_id: String },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MicrophoneMode {
     AlwaysOn,
     OnDemand,
+    /// Hands-free continuous dictation. Stream stays open whenever the feature
+    /// is armed and VAD drives segmentation. No shortcut press/release cycle.
+    Continuous,
 }
 
 /* ──────────────────────────────────────────────────────────────── */
 
+/// Shared fan-out slot for a raw 16 kHz frame callback. The
+/// `AudioRecordingManager` installs a forwarder on the recorder that reads
+/// this slot per-frame; external subsystems (e.g. the continuous-dictation
+/// loop) set/clear their callback here without needing to rebuild the
+/// recorder.
+pub type RawFrameCallback = Box<dyn Fn(&[f32]) + Send + Sync + 'static>;
+
 fn create_audio_recorder(
     vad_path: &str,
     app_handle: &tauri::AppHandle,
+    raw_frame_slot: Arc<Mutex<Option<RawFrameCallback>>>,
 ) -> Result<AudioRecorder, anyhow::Error> {
     let silero = SileroVad::new(vad_path, 0.3)
         .map_err(|e| anyhow::anyhow!("Failed to create SileroVad: {}", e))?;
@@ -134,6 +145,13 @@ fn create_audio_recorder(
             let app_handle = app_handle.clone();
             move |levels| {
                 utils::emit_levels(&app_handle, &levels);
+            }
+        })
+        .with_raw_frame_callback(move |frame| {
+            if let Ok(slot) = raw_frame_slot.lock() {
+                if let Some(cb) = slot.as_ref() {
+                    cb(frame);
+                }
             }
         });
 
@@ -153,6 +171,14 @@ pub struct AudioRecordingManager {
     is_recording: Arc<Mutex<bool>>,
     did_mute: Arc<Mutex<bool>>,
     close_generation: Arc<AtomicU64>,
+    /// External subsystems may install a single raw-frame listener here. The
+    /// recorder's worker forwards every 16 kHz frame through this slot.
+    raw_frame_slot: Arc<Mutex<Option<RawFrameCallback>>>,
+    /// Human-readable name of the app that was frontmost when recording began.
+    /// Captured synchronously in `try_start_recording`, before Ghostly's own
+    /// overlay/windows can steal focus. Read by the transcription pipeline so
+    /// the history entry records where the note was dictated in.
+    source_app: Arc<Mutex<Option<String>>>,
 }
 
 impl AudioRecordingManager {
@@ -176,10 +202,12 @@ impl AudioRecordingManager {
             is_recording: Arc::new(Mutex::new(false)),
             did_mute: Arc::new(Mutex::new(false)),
             close_generation: Arc::new(AtomicU64::new(0)),
+            raw_frame_slot: Arc::new(Mutex::new(None)),
+            source_app: Arc::new(Mutex::new(None)),
         };
 
-        // Always-on?  Open immediately.
-        if matches!(mode, MicrophoneMode::AlwaysOn) {
+        // Always-on or Continuous?  Open immediately.
+        if matches!(mode, MicrophoneMode::AlwaysOn | MicrophoneMode::Continuous) {
             manager.start_microphone_stream()?;
         }
 
@@ -239,6 +267,25 @@ impl AudioRecordingManager {
         });
     }
 
+    /// Install (or clear, with `None`) a listener that receives every
+    /// resampled 16 kHz audio frame while the microphone stream is open.
+    /// Only one listener is supported at a time; installing a new one
+    /// replaces the previous. The continuous-dictation manager is the
+    /// primary consumer.
+    pub fn set_raw_frame_listener(&self, cb: Option<RawFrameCallback>) {
+        *self.raw_frame_slot.lock().unwrap() = cb;
+    }
+
+    /// True when the microphone stream is currently open.
+    pub fn is_stream_open(&self) -> bool {
+        *self.is_open.lock().unwrap()
+    }
+
+    /// Snapshot of the current microphone mode.
+    pub fn current_mode(&self) -> MicrophoneMode {
+        self.mode.lock().unwrap().clone()
+    }
+
     /* ---------- microphone life-cycle -------------------------------------- */
 
     /// Applies mute if mute_while_recording is enabled and stream is open
@@ -277,6 +324,7 @@ impl AudioRecordingManager {
             *recorder_opt = Some(create_audio_recorder(
                 vad_path.to_str().unwrap(),
                 &self.app_handle,
+                Arc::clone(&self.raw_frame_slot),
             )?);
         }
         Ok(())
@@ -369,6 +417,17 @@ impl AudioRecordingManager {
                 self.close_generation.fetch_add(1, Ordering::SeqCst);
                 self.start_microphone_stream()?;
             }
+            (MicrophoneMode::OnDemand, MicrophoneMode::Continuous) => {
+                self.close_generation.fetch_add(1, Ordering::SeqCst);
+                self.start_microphone_stream()?;
+            }
+            (MicrophoneMode::Continuous, MicrophoneMode::OnDemand) => {
+                if matches!(*self.state.lock().unwrap(), RecordingState::Idle) {
+                    self.close_generation.fetch_add(1, Ordering::SeqCst);
+                    self.stop_microphone_stream();
+                }
+            }
+            // AlwaysOn <-> Continuous: stream already open, nothing to do.
             _ => {}
         }
 
@@ -382,6 +441,14 @@ impl AudioRecordingManager {
         let mut state = self.state.lock().unwrap();
 
         if let RecordingState::Idle = *state {
+            // Capture the frontmost app NOW, before any Ghostly UI activates.
+            // The value is consumed by the transcription pipeline when the
+            // history entry is saved.
+            *self.source_app.lock().unwrap() = crate::frontmost::current()
+                .ok()
+                .flatten()
+                .as_ref()
+                .and_then(crate::frontmost::display_name);
             // Ensure microphone is open in on-demand mode
             if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
                 // Cancel any pending lazy close
@@ -407,6 +474,14 @@ impl AudioRecordingManager {
         } else {
             Err("Already recording".to_string())
         }
+    }
+
+    /// Consume the source app captured at the last `try_start_recording`.
+    /// Returns None after the first read, which is intentional: history entries
+    /// saved later in the same session (e.g. voice-command retries) should not
+    /// reuse a stale capture.
+    pub fn take_source_app(&self) -> Option<String> {
+        self.source_app.lock().unwrap().take()
     }
 
     pub fn update_selected_device(&self) -> Result<(), anyhow::Error> {

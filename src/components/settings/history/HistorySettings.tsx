@@ -8,20 +8,25 @@ import {
 import {
   ArrowDownNarrowWide,
   ArrowUpNarrowWide,
+  Calendar,
   Check,
   ChevronDown,
   ChevronUp,
-  Clipboard,
   Copy,
   Download,
   FileAudio,
   FileJson,
   FolderOpen,
   Loader2,
+  MoreHorizontal,
   Pencil,
+  Plus,
   RotateCcw,
   Search,
+  Settings2,
+  Sparkles,
   Star,
+  Tag as TagIcon,
   Trash2,
   X,
 } from "lucide-react";
@@ -31,14 +36,20 @@ import {
   commands,
   events,
   type HistoryEntry,
+  type HistoryTag,
   type HistoryUpdatePayload,
 } from "@/bindings";
 import { useOsType } from "@/hooks/useOsType";
 import { formatDateTime } from "@/utils/dateFormat";
 import { AudioPlayer } from "../../ui/AudioPlayer";
-import { SettingsGroup } from "../../ui/SettingsGroup";
+import {
+  DateRangePicker,
+  type DateRange,
+} from "../../ui/DateRangePicker";
 import { HistoryLimit } from "../HistoryLimit";
 import { RecordingRetentionPeriodSelector } from "../RecordingRetentionPeriod";
+import { useSettings } from "@/hooks/useSettings";
+import { getAppInfoByName, categoryColors } from "@/lib/appIcons";
 
 const IconButton: React.FC<{
   onClick: () => void;
@@ -56,6 +67,28 @@ const IconButton: React.FC<{
         : "text-text/50 hover:text-logo-primary"
     }`}
     title={title}
+  >
+    {children}
+  </button>
+);
+
+/** 32px-square toolbar button — matches the search input / sort select height. */
+const ToolbarButton: React.FC<{
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+  active?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, disabled, active, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    title={title}
+    className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+      active
+        ? "bg-accent/15 border-accent/40 text-accent-bright"
+        : "bg-white/[0.03] border-hairline-strong text-text-muted hover:text-accent-bright hover:border-accent/40"
+    }`}
   >
     {children}
   </button>
@@ -105,6 +138,8 @@ function dayLabel(timestamp: number, locale: string): string {
 export const HistorySettings: React.FC = () => {
   const { t, i18n } = useTranslation();
   const osType = useOsType();
+  const { getSetting } = useSettings();
+  const retentionPeriod = getSetting("recording_retention_period") ?? "never";
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -115,14 +150,50 @@ export const HistorySettings: React.FC = () => {
   // Sort state
   const [sortMode, setSortMode] = useState<SortMode>("newest");
 
-  // Search state
+  // Retention popover
+  const [showRetention, setShowRetention] = useState(false);
+
+  // Date range filter
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Multi-select state. Checkboxes are always visible on hover; the bulk-action
+  // bar appears above the list whenever at least one entry is selected.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const toggleSelect = useCallback((id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  // Search + tag filter state
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [searchResults, setSearchResults] = useState<HistoryEntry[] | null>(
     null,
   );
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isSearchMode = searchQuery.trim().length > 0;
+  const isSearchMode =
+    searchQuery.trim().length > 0 || selectedTags.length > 0 || dateRange !== null;
+
+  const refreshAllTags = useCallback(async () => {
+    try {
+      const result = await commands.listAllHistoryTags();
+      if (result.status === "ok") setAllTags(result.data);
+    } catch (error) {
+      console.error("Failed to load tag list:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshAllTags();
+  }, [refreshAllTags]);
 
   // Keep ref in sync for use in IntersectionObserver callback
   useEffect(() => {
@@ -167,19 +238,33 @@ export const HistorySettings: React.FC = () => {
       clearTimeout(searchDebounceRef.current);
     }
 
-    if (!searchQuery.trim()) {
+    const trimmed = searchQuery.trim();
+    const hasFilters = selectedTags.length > 0 || dateRange !== null;
+    if (!trimmed && !hasFilters) {
       setSearchResults(null);
       setIsSearching(false);
       return;
     }
 
+    const startTs = dateRange
+      ? Math.floor(dateRange.start.getTime() / 1000)
+      : null;
+    const endTs = dateRange
+      ? Math.floor(dateRange.end.getTime() / 1000) + 86400
+      : null;
+
     setIsSearching(true);
     searchDebounceRef.current = setTimeout(async () => {
       try {
-        const result = await commands.searchHistoryEntries(
-          searchQuery.trim(),
-          50,
-        );
+        const result = hasFilters
+          ? await commands.filterHistoryEntries(
+              trimmed || null,
+              selectedTags,
+              100,
+              startTs,
+              endTs,
+            )
+          : await commands.searchHistoryEntries(trimmed, 50, startTs, endTs);
         if (result.status === "ok") {
           setSearchResults(result.data);
         } else {
@@ -198,7 +283,7 @@ export const HistorySettings: React.FC = () => {
         clearTimeout(searchDebounceRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [searchQuery, selectedTags, dateRange]);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -245,13 +330,23 @@ export const HistorySettings: React.FC = () => {
               : prev,
           );
         }
+        // Tags may have changed — refresh the distinct-tag list for the filter bar.
+        refreshAllTags();
+      } else if (payload.action === "deleted") {
+        refreshAllTags();
+        setSelected((prev) => {
+          if (!prev.has(payload.id)) return prev;
+          const next = new Set(prev);
+          next.delete(payload.id);
+          return next;
+        });
       }
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [isSearchMode, searchResults]);
+  }, [isSearchMode, searchResults, refreshAllTags]);
 
   const toggleSaved = async (id: number) => {
     const updateList = (list: HistoryEntry[]) =>
@@ -305,6 +400,60 @@ export const HistorySettings: React.FC = () => {
     [osType],
   );
 
+  const bulkDelete = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    // Optimistic: strip from the list immediately, then hand the whole batch
+    // to the backend, which deletes all rows in a single transaction.
+    const idSet = new Set(ids);
+    setEntries((prev) => prev.filter((e) => !idSet.has(e.id)));
+    if (searchResults)
+      setSearchResults((prev) =>
+        prev ? prev.filter((e) => !idSet.has(e.id)) : prev,
+      );
+    clearSelection();
+    try {
+      const result = await commands.bulkDeleteHistoryEntries(ids);
+      if (result.status !== "ok") {
+        toast.error(
+          t("settings.history.bulkDeleteError", "Failed to delete entries"),
+        );
+        loadPage();
+      }
+    } catch (error) {
+      console.error("Bulk delete failed:", error);
+      toast.error(String(error));
+      loadPage();
+    }
+  };
+
+  const bulkToggleSaved = async (save: boolean) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const apply = (list: HistoryEntry[]) =>
+      list.map((e) => (selected.has(e.id) ? { ...e, saved: save } : e));
+    setEntries((prev) => apply(prev));
+    if (searchResults) setSearchResults((prev) => (prev ? apply(prev) : prev));
+    try {
+      // Existing endpoint toggles, so only touch entries whose current state
+      // differs from the target.
+      const needsFlip = ids.filter((id) => {
+        const inList =
+          entries.find((e) => e.id === id) ??
+          searchResults?.find((e) => e.id === id);
+        return inList ? inList.saved !== save : false;
+      });
+      await Promise.all(
+        needsFlip.map((id) => commands.toggleHistoryEntrySaved(id)),
+      );
+    } catch (error) {
+      console.error("Bulk save toggle failed:", error);
+      toast.error(String(error));
+      loadPage();
+    }
+    clearSelection();
+  };
+
   const deleteAudioEntry = async (id: number) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     if (searchResults)
@@ -342,15 +491,61 @@ export const HistorySettings: React.FC = () => {
     }
   };
 
-  const retryHistoryEntry = async (id: number) => {
-    const result = await commands.retryHistoryEntryTranscription(id);
-    if (result.status !== "ok") {
-      throw new Error(String(result.error));
+  const addTag = async (id: number, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const result = await commands.addHistoryTag(id, trimmed);
+      if (result.status !== "ok") {
+        toast.error(String(result.error));
+      }
+      // Entry refresh comes via the history-updated event emitted by the backend.
+    } catch (error) {
+      console.error("Failed to add tag:", error);
+      toast.error(String(error));
     }
   };
 
-  const pasteHistoryEntry = async (id: number) => {
-    const result = await commands.pasteHistoryEntry(id);
+  const removeTag = async (id: number, name: string) => {
+    try {
+      const result = await commands.removeHistoryTag(id, name);
+      if (result.status !== "ok") toast.error(String(result.error));
+    } catch (error) {
+      console.error("Failed to remove tag:", error);
+      toast.error(String(error));
+    }
+  };
+
+  const generateMetadata = async (id: number) => {
+    try {
+      const result = await commands.generateHistoryMetadata(id);
+      if (result.status === "ok") {
+        const updated = result.data;
+        setEntries((prev) => prev.map((e) => (e.id === id ? updated : e)));
+        if (searchResults)
+          setSearchResults((prev) =>
+            prev ? prev.map((e) => (e.id === id ? updated : e)) : prev,
+          );
+        toast.success(
+          t("settings.history.ai.success", "Generated title and tags"),
+        );
+      } else {
+        toast.error(String(result.error));
+      }
+    } catch (error) {
+      console.error("AI metadata generation failed:", error);
+      toast.error(String(error));
+    }
+  };
+
+  const toggleFilterTag = (name: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name],
+    );
+  };
+
+  const retryHistoryEntry = async (id: number) => {
+    const result = await commands.retryHistoryEntryTranscription(id);
     if (result.status !== "ok") {
       throw new Error(String(result.error));
     }
@@ -474,7 +669,7 @@ export const HistorySettings: React.FC = () => {
     <HistoryEntryComponent
       key={entry.id}
       entry={entry}
-      searchQuery={isSearchMode ? searchQuery : ""}
+      searchQuery={searchQuery.trim().length > 0 ? searchQuery : ""}
       onToggleSaved={() => toggleSaved(entry.id)}
       onCopyText={() =>
         copyToClipboard(entry.post_processed_text ?? entry.transcription_text)
@@ -482,10 +677,38 @@ export const HistorySettings: React.FC = () => {
       getAudioUrl={getAudioUrl}
       deleteAudio={deleteAudioEntry}
       retryTranscription={retryHistoryEntry}
-      pasteEntry={pasteHistoryEntry}
       updateTitle={updateTitle}
+      onAddTag={(name) => addTag(entry.id, name)}
+      onRemoveTag={(name) => removeTag(entry.id, name)}
+      onGenerateMetadata={() => generateMetadata(entry.id)}
+      isSelected={selected.has(entry.id)}
+      onToggleSelect={() => toggleSelect(entry.id)}
+      selectionActive={selected.size > 0}
     />
   );
+
+  const visibleEntryIds = displayedEntries.map((e) => e.id);
+  const allVisibleSelected =
+    visibleEntryIds.length > 0 &&
+    visibleEntryIds.every((id) => selected.has(id));
+  const anyVisibleSelected = visibleEntryIds.some((id) => selected.has(id));
+  const toggleSelectAllVisible = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleEntryIds.forEach((id) => next.delete(id));
+      } else {
+        visibleEntryIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+  const anySelectedAreSaved = Array.from(selected).some((id) => {
+    const entry =
+      entries.find((e) => e.id === id) ??
+      searchResults?.find((e) => e.id === id);
+    return entry?.saved ?? false;
+  });
 
   let content: React.ReactNode;
 
@@ -512,12 +735,12 @@ export const HistorySettings: React.FC = () => {
   } else {
     content = (
       <>
-        <div className="divide-y divide-mid-gray/20">
+        <div className="divide-y divide-[color:var(--color-hairline)]">
           {groupedEntries.map((item) =>
             item.type === "header" ? (
               <div
                 key={`h-${item.key}`}
-                className="px-4 py-1.5 text-[11px] uppercase tracking-wide font-semibold text-mid-gray/80 bg-mid-gray/5 sticky top-0 z-[1]"
+                className="px-4 py-1.5 text-[11px] uppercase tracking-wide font-semibold text-text-muted bg-white/[0.02] sticky top-0 z-[1]"
               >
                 {item.label}
               </div>
@@ -533,126 +756,259 @@ export const HistorySettings: React.FC = () => {
   }
 
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-6">
-      {/* ── Storage & Retention settings ── */}
-      <SettingsGroup title={t("settings.history.storageGroup")}>
-        <HistoryLimit descriptionMode="tooltip" grouped={true} />
-        <RecordingRetentionPeriodSelector
-          descriptionMode="tooltip"
-          grouped={true}
-        />
-      </SettingsGroup>
-
-      <div className="space-y-2">
-        <div className="px-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xs font-medium text-mid-gray uppercase tracking-wide">
-              {t("settings.history.title")}
-            </h2>
-          </div>
-          <div className="flex items-center">
-            <IconButton
-              onClick={() => exportHistory("json")}
-              disabled={exportingJson || exportingDocx}
-              title={t("settings.history.export.jsonButton", "Export as JSON")}
+    <div className="w-full flex flex-col gap-3 pt-1">
+      {/* Toolbar: search + sort + actions — all 32px tall for a clean grid */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t(
+              "settings.history.searchPlaceholder",
+              "Search transcriptions…",
+            )}
+            className="w-full h-8 pl-9 pr-8 text-sm bg-white/[0.03] border border-hairline-strong rounded-md
+                       focus:outline-none focus:border-accent/60 placeholder:text-text-faint"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-muted"
+              aria-label="Clear search"
             >
-              {exportingJson ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <FileJson className="w-4 h-4" />
-              )}
-            </IconButton>
-            <IconButton
-              onClick={() => exportHistory("docx")}
-              disabled={exportingJson || exportingDocx}
-              title={t(
-                "settings.history.export.docxButton",
-                "Export as Word document",
-              )}
-            >
-              {exportingDocx ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-            </IconButton>
-            <div className="w-px h-4 bg-mid-gray/20 mx-1" />
-            <IconButton
-              onClick={transcribeFile}
-              disabled={transcribingFile}
-              title={t(
-                "settings.history.fileTranscribe.button",
-                "Transcribe audio file",
-              )}
-            >
-              {transcribingFile ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <FileAudio className="w-4 h-4" />
-              )}
-            </IconButton>
-            <IconButton
-              onClick={openRecordingsFolder}
-              title={t("settings.history.openFolder")}
-            >
-              <FolderOpen className="w-4 h-4" />
-            </IconButton>
-          </div>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        {/* Search + sort */}
-        <div className="px-4 flex items-center gap-2">
-          <div className="relative flex items-center flex-1">
-            <Search className="absolute left-3 w-4 h-4 text-mid-gray/60 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t(
-                "settings.history.searchPlaceholder",
-                "Search transcriptions…",
-              )}
-              className="w-full pl-9 pr-8 py-1.5 text-sm bg-background border border-mid-gray/30 rounded-md
-                         focus:outline-none focus:border-logo-primary/60 placeholder:text-mid-gray/40"
+        <div className="relative">
+          {sortMode === "oldest" ? (
+            <ArrowUpNarrowWide className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
+          ) : (
+            <ArrowDownNarrowWide className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
+          )}
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            className="h-8 pl-7 pr-2 bg-white/[0.03] border border-hairline-strong rounded-md text-sm
+                       focus:outline-none focus:border-accent/60 cursor-pointer appearance-none"
+            title={t("settings.history.sort", "Sort")}
+          >
+            <option value="newest">
+              {t("settings.history.sortNewest", "Newest")}
+            </option>
+            <option value="oldest">
+              {t("settings.history.sortOldest", "Oldest")}
+            </option>
+            <option value="saved">
+              {t("settings.history.sortSaved", "Starred first")}
+            </option>
+          </select>
+        </div>
+
+        <div className="w-px h-6 bg-hairline-strong mx-0.5" />
+
+        <ToolbarButton
+          onClick={transcribeFile}
+          disabled={transcribingFile}
+          title={t(
+            "settings.history.fileTranscribe.button",
+            "Transcribe audio file",
+          )}
+        >
+          {transcribingFile ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <FileAudio className="w-4 h-4" />
+          )}
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={openRecordingsFolder}
+          title={t("settings.history.openFolder")}
+        >
+          <FolderOpen className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => exportHistory("json")}
+          disabled={exportingJson || exportingDocx}
+          title={t("settings.history.export.jsonButton", "Export as JSON")}
+        >
+          {exportingJson ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <FileJson className="w-4 h-4" />
+          )}
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => exportHistory("docx")}
+          disabled={exportingJson || exportingDocx}
+          title={t(
+            "settings.history.export.docxButton",
+            "Export as Word document",
+          )}
+        >
+          {exportingDocx ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
+        </ToolbarButton>
+        <div className="relative">
+          <ToolbarButton
+            onClick={() => setShowDatePicker((v) => !v)}
+            active={showDatePicker || dateRange !== null}
+            title={t(
+              "settings.history.dateFilter.button",
+              "Filter by date range",
+            )}
+          >
+            <Calendar className="w-4 h-4" />
+          </ToolbarButton>
+          {showDatePicker && (
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              onClose={() => setShowDatePicker(false)}
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 text-mid-gray/50 hover:text-mid-gray"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-1 text-xs">
-            {sortMode === "oldest" ? (
-              <ArrowUpNarrowWide className="w-3.5 h-3.5 text-mid-gray/60" />
-            ) : (
-              <ArrowDownNarrowWide className="w-3.5 h-3.5 text-mid-gray/60" />
-            )}
-            <select
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as SortMode)}
-              className="py-1.5 px-2 bg-background border border-mid-gray/30 rounded-md text-sm
-                         focus:outline-none focus:border-logo-primary/60 cursor-pointer"
-              title={t("settings.history.sort", "Sort")}
-            >
-              <option value="newest">
-                {t("settings.history.sortNewest", "Newest")}
-              </option>
-              <option value="oldest">
-                {t("settings.history.sortOldest", "Oldest")}
-              </option>
-              <option value="saved">
-                {t("settings.history.sortSaved", "Starred first")}
-              </option>
-            </select>
-          </div>
+          )}
         </div>
+        <ToolbarButton
+          onClick={() => setShowRetention((v) => !v)}
+          active={showRetention}
+          title={t(
+            "settings.history.storageGroup",
+            "Storage & retention",
+          )}
+        >
+          <Settings2 className="w-4 h-4" />
+        </ToolbarButton>
+      </div>
 
-        <div className="bg-background border border-mid-gray/20 rounded-lg overflow-visible">
-          {content}
+      {/* Retention popover — compact, inline, collapsible */}
+      {showRetention && (
+        <div className="surface-card-inlay py-1 divide-y divide-[color:var(--color-hairline)]">
+          <RecordingRetentionPeriodSelector
+            descriptionMode="tooltip"
+            grouped={true}
+          />
+          {retentionPeriod === "preserve_limit" && (
+            <HistoryLimit descriptionMode="tooltip" grouped={true} />
+          )}
         </div>
+      )}
+
+      {/* Tag filter bar */}
+      {allTags.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <TagIcon className="w-3.5 h-3.5 text-text-faint shrink-0" />
+          {allTags.map((tag) => {
+            const active = selectedTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => toggleFilterTag(tag)}
+                className={`pill pill-interactive ${active ? "pill-accent" : ""}`}
+                title={
+                  active
+                    ? t("settings.history.tags.removeFilter", "Remove filter")
+                    : t("settings.history.tags.addFilter", "Filter by tag")
+                }
+              >
+                {tag}
+              </button>
+            );
+          })}
+          {selectedTags.length > 0 && (
+            <button
+              onClick={() => setSelectedTags([])}
+              className="text-xs text-text-faint hover:text-text-muted underline ml-1"
+            >
+              {t("settings.history.tags.clearFilters", "Clear")}
+            </button>
+          )}
+        </div>
+      )}
+
+      {dateRange && (
+        <div className="flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5 text-text-faint shrink-0" />
+          <span className="pill pill-accent">
+            {dateRange.start.toLocaleDateString(i18n.language)} – {dateRange.end.toLocaleDateString(i18n.language)}
+            <button
+              onClick={() => setDateRange(null)}
+              className="hover:text-logo-primary/70 cursor-pointer"
+              title={t("settings.history.dateFilter.clear", "Clear date filter")}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 px-3 h-10 rounded-lg border border-accent/40 bg-accent/10 text-sm">
+          <label
+            className="flex items-center gap-2 cursor-pointer select-none"
+            title={
+              allVisibleSelected
+                ? t("settings.history.bulk.deselectAll", "Deselect all visible")
+                : t("settings.history.bulk.selectAll", "Select all visible")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = !allVisibleSelected && anyVisibleSelected;
+              }}
+              onChange={toggleSelectAllVisible}
+              className="w-4 h-4 accent-logo-primary cursor-pointer"
+            />
+            <span className="font-medium text-logo-primary">
+              {t("settings.history.bulk.selectedCount", "{{count}} selected", {
+                count: selected.size,
+              })}
+            </span>
+          </label>
+          <div className="flex-1" />
+          <button
+            onClick={() => bulkToggleSaved(!anySelectedAreSaved)}
+            className="flex items-center gap-1.5 h-7 px-2 rounded-md text-xs text-text/80 hover:text-logo-primary hover:bg-logo-primary/10 transition-colors cursor-pointer"
+            title={
+              anySelectedAreSaved
+                ? t("settings.history.unsave")
+                : t("settings.history.save")
+            }
+          >
+            <Star
+              className="w-3.5 h-3.5"
+              fill={anySelectedAreSaved ? "none" : "currentColor"}
+            />
+            {anySelectedAreSaved
+              ? t("settings.history.bulk.unstar", "Unstar")
+              : t("settings.history.bulk.star", "Star")}
+          </button>
+          <button
+            onClick={bulkDelete}
+            className="flex items-center gap-1.5 h-7 px-2 rounded-md text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            {t("settings.history.bulk.delete", "Delete")}
+          </button>
+          <button
+            onClick={clearSelection}
+            className="flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-white/[0.05] transition-colors cursor-pointer"
+            title={t("settings.history.bulk.clear", "Clear selection")}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      <div className="surface-card-inlay overflow-visible">
+        {content}
       </div>
     </div>
   );
@@ -666,8 +1022,14 @@ interface HistoryEntryProps {
   getAudioUrl: (fileName: string) => Promise<string | null>;
   deleteAudio: (id: number) => Promise<void>;
   retryTranscription: (id: number) => Promise<void>;
-  pasteEntry: (id: number) => Promise<void>;
   updateTitle: (id: number, title: string | null) => Promise<void>;
+  onAddTag: (name: string) => Promise<void>;
+  onRemoveTag: (name: string) => Promise<void>;
+  onGenerateMetadata: () => Promise<void>;
+  isSelected: boolean;
+  onToggleSelect: () => void;
+  /** True when any entry is selected — keeps checkboxes visible even when not hovering. */
+  selectionActive: boolean;
 }
 
 /** Highlight matching text in a string */
@@ -687,6 +1049,96 @@ function highlightText(text: string, query: string): React.ReactNode {
   );
 }
 
+const EntryMoreMenu: React.FC<{
+  onGenerate: () => void;
+  onRetranscribe: () => void;
+  onDelete: () => void;
+  generating: boolean;
+  retrying: boolean;
+  hasTranscription: boolean;
+}> = ({ onGenerate, onRetranscribe, onDelete, generating, retrying, hasTranscription }) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  const run = (fn: () => void) => {
+    setOpen(false);
+    fn();
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <IconButton
+        onClick={() => setOpen((v) => !v)}
+        disabled={retrying}
+        active={open}
+        title={t("settings.history.moreActions", "More actions")}
+      >
+        <MoreHorizontal width={16} height={16} />
+      </IconButton>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded-md border border-hairline-strong
+                     bg-surface-2 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.6)] py-1 text-sm"
+          role="menu"
+        >
+          <button
+            role="menuitem"
+            onClick={() => run(onGenerate)}
+            disabled={retrying || generating || !hasTranscription}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-text/90 hover:bg-white/[0.05]
+                       disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {generating ? (
+              <Loader2 width={14} height={14} className="animate-spin" />
+            ) : (
+              <Sparkles width={14} height={14} />
+            )}
+            {t("settings.history.ai.generate", "Generate title & tags with AI")}
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => run(onRetranscribe)}
+            disabled={retrying}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-text/90 hover:bg-white/[0.05]
+                       disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <RotateCcw width={14} height={14} />
+            {t("settings.history.retranscribe")}
+          </button>
+          <div className="my-1 h-px bg-hairline-strong" />
+          <button
+            role="menuitem"
+            onClick={() => run(onDelete)}
+            disabled={retrying}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-500 hover:bg-red-500/10
+                       disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Trash2 width={14} height={14} />
+            {t("settings.history.delete")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   entry,
   searchQuery,
@@ -695,17 +1147,26 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   getAudioUrl,
   deleteAudio,
   retryTranscription,
-  pasteEntry,
   updateTitle,
+  onAddTag,
+  onRemoveTag,
+  onGenerateMetadata,
+  isSelected,
+  onToggleSelect,
+  selectionActive,
 }) => {
   const { t, i18n } = useTranslation();
   const [showCopied, setShowCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [pasting, setPasting] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(entry.user_title ?? "");
+  const [addingTag, setAddingTag] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const tags: HistoryTag[] = entry.tags ?? [];
 
   useEffect(() => {
     setTitleDraft(entry.user_title ?? "");
@@ -714,6 +1175,27 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus();
   }, [editingTitle]);
+
+  useEffect(() => {
+    if (addingTag) tagInputRef.current?.focus();
+  }, [addingTag]);
+
+  const commitTag = async () => {
+    const next = tagDraft.trim();
+    setTagDraft("");
+    setAddingTag(false);
+    if (next) await onAddTag(next);
+  };
+
+  const handleGenerate = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      await onGenerateMetadata();
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const commitTitle = async () => {
     const next = titleDraft.trim();
@@ -767,18 +1249,6 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
     }
   };
 
-  const handlePaste = async () => {
-    try {
-      setPasting(true);
-      await pasteEntry(entry.id);
-    } catch (error) {
-      console.error("Failed to paste entry:", error);
-      toast.error(t("settings.history.pasteError", "Failed to paste text"));
-    } finally {
-      setPasting(false);
-    }
-  };
-
   const formattedDate = formatDateTime(String(entry.timestamp), i18n.language);
 
   const renderedText = searchQuery
@@ -796,7 +1266,23 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   const showSubtitle = !!entry.user_title?.trim();
 
   return (
-    <div className="px-4 py-2 pb-5 flex flex-col gap-3">
+    <div
+      className={`group/entry relative pl-9 pr-4 py-2 pb-5 flex flex-col gap-3 transition-colors ${
+        isSelected ? "bg-logo-primary/5" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={onToggleSelect}
+        onClick={(e) => e.stopPropagation()}
+        className={`absolute left-3 top-3.5 w-4 h-4 accent-logo-primary cursor-pointer shrink-0 transition-opacity ${
+          selectionActive || isSelected
+            ? "opacity-100"
+            : "opacity-0 group-hover/entry:opacity-100 focus:opacity-100"
+        }`}
+        aria-label={t("settings.history.bulk.selectEntry", "Select entry")}
+      />
       <div className="flex justify-between items-center gap-2">
         <div className="flex-1 min-w-0 flex flex-col">
           {editingTitle ? (
@@ -819,8 +1305,8 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
                 "settings.history.titlePlaceholder",
                 "Add a title…",
               )}
-              className="text-sm font-medium bg-background border border-mid-gray/30 rounded px-2 py-0.5 w-full
-                         focus:outline-none focus:border-logo-primary/60"
+              className="text-sm font-medium bg-white/[0.03] border border-hairline-strong rounded px-2 py-0.5 w-full
+                         focus:outline-none focus:border-accent/60"
             />
           ) : (
             <button
@@ -831,11 +1317,11 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
               <span className="text-sm font-medium truncate">
                 {displayTitle}
               </span>
-              <Pencil className="w-3 h-3 text-mid-gray/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              <Pencil className="w-3 h-3 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </button>
           )}
           {showSubtitle && !editingTitle && (
-            <span className="text-xs text-mid-gray/70 truncate">
+            <span className="text-sm text-text-muted truncate">
               {formattedDate}
             </span>
           )}
@@ -853,13 +1339,6 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
             )}
           </IconButton>
           <IconButton
-            onClick={handlePaste}
-            disabled={!hasTranscription || retrying || pasting}
-            title={t("settings.history.pasteText", "Paste to active app")}
-          >
-            <Clipboard width={16} height={16} />
-          </IconButton>
-          <IconButton
             onClick={onToggleSaved}
             disabled={retrying}
             active={entry.saved}
@@ -875,37 +1354,93 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
               fill={entry.saved ? "currentColor" : "none"}
             />
           </IconButton>
-          <IconButton
-            onClick={handleRetranscribe}
-            disabled={retrying}
-            title={t("settings.history.retranscribe")}
-          >
-            <RotateCcw
-              width={16}
-              height={16}
-              style={
-                retrying
-                  ? { animation: "spin 1s linear infinite reverse" }
-                  : undefined
-              }
-            />
-          </IconButton>
-          <IconButton
-            onClick={handleDeleteEntry}
-            disabled={retrying}
-            title={t("settings.history.delete")}
-          >
-            <Trash2 width={16} height={16} />
-          </IconButton>
+          <EntryMoreMenu
+            onGenerate={handleGenerate}
+            onRetranscribe={handleRetranscribe}
+            onDelete={handleDeleteEntry}
+            generating={generating}
+            retrying={retrying}
+            hasTranscription={hasTranscription}
+          />
         </div>
       </div>
 
-      {hasPostProcessed && (
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs px-1.5 py-0.5 rounded-sm bg-logo-primary/15 text-logo-primary font-medium">
-            {entry.post_process_prompt ??
-              t("settings.history.postProcessed", "Post-processed")}
-          </span>
+      {!retrying && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {entry.source_app && (() => {
+            const appInfo = getAppInfoByName(entry.source_app);
+            const colors = appInfo ? categoryColors[appInfo.category] : null;
+            return (
+              <span
+                className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium border ${
+                  colors
+                    ? `${colors.chipBg} ${colors.chipBorder} ${colors.chipText}`
+                    : "bg-white/[0.04] border-hairline-strong text-text-muted"
+                }`}
+                title={t("settings.history.sourceApp", "Captured in")}
+              >
+                {appInfo && (
+                  <img
+                    src={appInfo.icon}
+                    alt=""
+                    className="w-3.5 h-3.5 rounded-[3px] shrink-0"
+                  />
+                )}
+                {appInfo?.label ?? entry.source_app}
+              </span>
+            );
+          })()}
+          {tags.map((tag) => (
+            <span
+              key={tag.name}
+              className={`pill ${tag.auto ? "pill-accent" : ""}`}
+              title={
+                tag.auto
+                  ? t("settings.history.tags.autoApplied", "Auto-applied by AI")
+                  : undefined
+              }
+            >
+              {tag.name}
+              <button
+                onClick={() => onRemoveTag(tag.name)}
+                className="opacity-50 hover:opacity-100 transition-opacity"
+                aria-label={t("settings.history.tags.remove", "Remove tag")}
+              >
+                <X width={10} height={10} />
+              </button>
+            </span>
+          ))}
+          {addingTag ? (
+            <input
+              ref={tagInputRef}
+              type="text"
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onBlur={commitTag}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitTag();
+                } else if (e.key === "Escape") {
+                  setTagDraft("");
+                  setAddingTag(false);
+                }
+              }}
+              placeholder={t("settings.history.tags.placeholder", "tag…")}
+              maxLength={64}
+              className="text-xs px-2 py-0.5 w-24 bg-white/[0.03] border border-hairline-strong rounded-full text-text
+                         focus:outline-none focus:border-accent/60"
+            />
+          ) : (
+            <button
+              onClick={() => setAddingTag(true)}
+              className="pill pill-dashed pill-interactive"
+              title={t("settings.history.tags.add", "Add tag")}
+            >
+              <Plus width={10} height={10} />
+              {t("settings.history.tags.add", "Add tag")}
+            </button>
+          )}
         </div>
       )}
 

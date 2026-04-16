@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { commands, type IdePreset } from "@/bindings";
+import { commands } from "@/bindings";
 import { useSettings } from "@/hooks/useSettings";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { SettingContainer } from "../ui/SettingContainer";
 import { Button } from "../ui/Button";
+import type { ProfileLike } from "./profiles/types";
 
 function formatKeystroke(ks: string): string {
   return ks
@@ -35,7 +36,7 @@ export const IdePresets: React.FC<IdePresetsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { getSetting, updateSetting } = useSettings();
-  const [presets, setPresets] = useState<IdePreset[]>([]);
+  const [presets, setPresets] = useState<ProfileLike[]>([]);
   const [detectedId, setDetectedId] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
 
@@ -45,8 +46,18 @@ export const IdePresets: React.FC<IdePresetsProps> = ({
 
   useEffect(() => {
     commands
-      .getIdePresets()
-      .then((list) => setPresets(list))
+      .getBuiltinProfiles()
+      .then((res) => {
+        if (res.status === "ok") {
+          // Only built-in profiles that carry keystroke bindings are "IDE
+          // presets" from the user's perspective. Profiles without commands
+          // (hypothetical future additions) don't belong on this tab.
+          const withKeystrokes = (res.data as ProfileLike[]).filter(
+            (p) => p.keystroke_commands.length > 0,
+          );
+          setPresets(withKeystrokes);
+        }
+      })
       .catch(() => {
         // Non-fatal: the section will just render empty.
       });
@@ -83,49 +94,15 @@ export const IdePresets: React.FC<IdePresetsProps> = ({
   const handleDetect = async () => {
     setDetecting(true);
     try {
-      const ctx = await commands.detectFrontmostApp();
-      if (ctx.status !== "ok" || !ctx.data) {
+      // Delegate detection to the Rust resolver so we don't duplicate
+      // heuristics across the FE/BE boundary.
+      const res = await commands.detectBuiltinProfileId();
+      if (res.status !== "ok") {
         setDetectedId(null);
         toast.error(t("settings.idePresets.detectFailed"));
         return;
       }
-      const bundle = (ctx.data.bundleId ?? "").toLowerCase();
-      const title = (ctx.data.windowTitle ?? "").toLowerCase();
-      const exe = (ctx.data.exePath ?? "").toLowerCase();
-      // Mirror the Rust detection heuristics. Kept in sync manually — if
-      // ide_presets.rs changes, update this too.
-      const match = presets.find((p) => {
-        if (p.id === "cursor")
-          return (
-            bundle.includes("cursor") ||
-            bundle.includes("todesktop.230313mzl4w4u92") ||
-            exe.includes("/cursor.app/")
-          );
-        if (p.id === "windsurf")
-          return bundle.includes("windsurf") || bundle.includes("exafunction");
-        if (p.id === "replit")
-          return bundle.includes("replit") || title.includes("replit");
-        if (p.id === "vscode")
-          return (
-            bundle.includes("com.microsoft.vscode") ||
-            bundle.includes("visualstudio.code") ||
-            bundle.includes("vscodium")
-          );
-        if (p.id === "claude_code") {
-          const term =
-            bundle.includes("apple.terminal") ||
-            bundle.includes("iterm") ||
-            bundle.includes("alacritty") ||
-            bundle.includes("warp") ||
-            bundle.includes("ghostty") ||
-            bundle.includes("kitty") ||
-            bundle.includes("wezterm") ||
-            bundle.includes("hyper");
-          return term && title.includes("claude");
-        }
-        return false;
-      });
-      setDetectedId(match?.id ?? "__none__");
+      setDetectedId(res.data ?? "__none__");
     } finally {
       setDetecting(false);
     }
@@ -203,7 +180,7 @@ export const IdePresets: React.FC<IdePresetsProps> = ({
                         <span className="font-semibold text-sm">
                           {preset.name}
                         </span>
-                        {preset.autoSubmit && (
+                        {preset.auto_submit === true && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-logo-primary/20 text-logo-primary">
                             {t("settings.idePresets.badges.autoSubmit")}
                           </span>
@@ -216,7 +193,7 @@ export const IdePresets: React.FC<IdePresetsProps> = ({
                       </div>
                     </div>
                     <div className="space-y-1">
-                      {preset.commands.map((c) => (
+                      {preset.keystroke_commands.map((c) => (
                         <div
                           key={c.phrase}
                           className="flex items-center gap-2 text-xs text-mid-gray/80"

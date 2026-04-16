@@ -557,10 +557,6 @@
         "title": "Clamshell-mikrofon",
         "description": "Mikrofon som ska användas när bärbara datorns lock är stängt"
       },
-      "postProcessingToggle": {
-        "label": "Efterbearbetning",
-        "description": "Aktivera AI-driven textförfining efter transkription"
-      },
       "muteWhileRecording": {
         "label": "Ljudlös under inspelning",
         "description": "Stäng av systemljudet under inspelning"

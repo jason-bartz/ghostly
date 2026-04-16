@@ -39,7 +39,7 @@ function App() {
   // (vs a new user who needs full onboarding including model selection)
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [currentSection, setCurrentSection] =
-    useState<SidebarSection>("general");
+    useState<SidebarSection>("history");
   const { settings, updateSetting } = useSettings();
   const direction = getLanguageDirection(i18n.language);
   const refreshAudioDevices = useSettingsStore(
@@ -180,6 +180,36 @@ function App() {
     };
   }, [t]);
 
+  // Listen for Screenshot Q&A failures so the user sees what went wrong
+  // (missing permission, no vision provider, bad API key, etc.).
+  useEffect(() => {
+    const unlisten = listen<{ message: string }>(
+      "screenshot-qa-failed",
+      (event) => {
+        toast.error(t("errors.screenshotQaFailedTitle"), {
+          description: event.payload.message,
+        });
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
+  // Navigate to the License settings pane when the paywall's "I have a key"
+  // button is clicked, or when an auto-activate deep link arrives.
+  useEffect(() => {
+    const onNav = () => setCurrentSection("license");
+    window.addEventListener("ghostly-navigate-to-license", onNav);
+    const unlistenAuto = listen("license-auto-activate", () => {
+      setCurrentSection("license");
+    });
+    return () => {
+      window.removeEventListener("ghostly-navigate-to-license", onNav);
+      void unlistenAuto.then((fn) => fn());
+    };
+  }, []);
+
   // Soft warning when free-tier users cross 80% of their weekly cap. Emitted
   // once per week by the backend, so a single toast is enough.
   useEffect(() => {
@@ -311,17 +341,17 @@ function App() {
   return (
     <div
       dir={direction}
-      className="h-screen flex flex-col select-none cursor-default"
+      className="app-canvas h-screen flex flex-col select-none cursor-default"
     >
       <Toaster
-        theme="system"
+        theme="dark"
         toastOptions={{
           unstyled: true,
           classNames: {
             toast:
-              "bg-background border border-mid-gray/20 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3 text-sm",
-            title: "font-medium",
-            description: "text-mid-gray",
+              "bg-surface-2 border border-hairline-strong rounded-xl shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] px-4 py-3 flex items-center gap-3 text-sm text-text",
+            title: "font-medium text-text",
+            description: "text-text-muted",
           },
         }}
       />

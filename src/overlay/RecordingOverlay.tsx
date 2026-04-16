@@ -8,18 +8,29 @@ import i18n, { syncLanguageFromSettings } from "@/i18n";
 import { getLanguageDirection } from "@/lib/utils/rtl";
 import logoSrc from "@/assets/ghostly_logo.svg";
 
-type OverlayState = "recording" | "transcribing" | "processing";
+type OverlayState = "recording" | "transcribing" | "processing" | "staged";
+
+type StagedPayload = {
+  thumbnail: string;
+  text: string;
+  confirmShortcut: string;
+};
 
 type IdeHint = {
   id: string;
   name: string;
-  autoSubmit: boolean;
   commands: Array<{
     phrase: string;
     aliases: string[];
     keystroke: string;
     description: string;
   }>;
+};
+
+type EditChip = {
+  id: string;
+  label: string;
+  instruction: string;
 };
 
 const HINT_DURATION_MS = 4500;
@@ -54,6 +65,9 @@ const RecordingOverlay: React.FC = () => {
   const [peakLevel, setPeakLevel] = useState<number>(0);
   const [previewText, setPreviewText] = useState<string>("");
   const [hint, setHint] = useState<IdeHint | null>(null);
+  const [staged, setStaged] = useState<StagedPayload | null>(null);
+  const [editChips, setEditChips] = useState<EditChip[] | null>(null);
+  const [pendingChipId, setPendingChipId] = useState<string | null>(null);
   const hintTimerRef = useRef<number | null>(null);
   const direction = getLanguageDirection(i18n.language);
 
@@ -75,8 +89,13 @@ const RecordingOverlay: React.FC = () => {
       // Listen for hide-overlay event from Rust
       const unlistenHide = await listen("hide-overlay", () => {
         setIsVisible(false);
-        // Clear preview after hide animation
-        setTimeout(() => setPreviewText(""), 300);
+        // Clear preview + staged + edit chips after hide animation
+        setTimeout(() => {
+          setPreviewText("");
+          setStaged(null);
+          setEditChips(null);
+          setPendingChipId(null);
+        }, 300);
       });
 
       // Listen for mic-level updates
@@ -112,6 +131,14 @@ const RecordingOverlay: React.FC = () => {
         },
       );
 
+      // Staged screenshot capture: show thumbnail + transcription + confirm hint
+      const unlistenStaged = await listen<StagedPayload>(
+        "staged-capture",
+        (event) => {
+          setStaged(event.payload);
+        },
+      );
+
       // One-time IDE hint: show for a few seconds, then mark as seen so it
       // doesn't appear again for this preset.
       const unlistenHint = await listen<IdeHint>("ide-hint", (event) => {
@@ -128,13 +155,32 @@ const RecordingOverlay: React.FC = () => {
         });
       });
 
+      // Edit-mode chips appear when the user triggers the edit shortcut.
+      // Speaking an instruction falls through to the voice-edit pipeline;
+      // clicking a chip runs `apply_edit_chip` against the focused field.
+      const unlistenEditMode = await listen<EditChip[]>("edit-mode", (event) => {
+        setEditChips(event.payload);
+        setPendingChipId(null);
+      });
+
+      // Chip action finished — Rust will also drive hide-overlay, but we
+      // clear the pending state here so the UI doesn't stay stuck if timing
+      // gets weird.
+      const unlistenEditDone = await listen("edit-chip-done", () => {
+        setPendingChipId(null);
+        setEditChips(null);
+      });
+
       // Cleanup function
       return () => {
         unlistenShow();
         unlistenHide();
         unlistenLevel();
         unlistenPreview();
+        unlistenStaged();
         unlistenHint();
+        unlistenEditMode();
+        unlistenEditDone();
       };
     };
 
@@ -156,10 +202,55 @@ const RecordingOverlay: React.FC = () => {
   const glowIntensity =
     state === "recording" ? Math.min(1, peakLevel * 1.5) : 0;
 
+  if (state === "staged" && staged) {
+    const formattedShortcut = staged.confirmShortcut
+      ? formatKeystroke(staged.confirmShortcut)
+      : null;
+    const stagedPreview =
+      staged.text.length > 80 ? staged.text.slice(0, 78) + "…" : staged.text;
+    return (
+      <div
+        dir={direction}
+        className={`recording-overlay staged-overlay ${isVisible ? "fade-in" : ""}`}
+      >
+        <div className="staged-top">
+          <img src={staged.thumbnail} className="staged-thumb" alt="" />
+          <div className="staged-text-block">
+            <div className="staged-label">{t("overlay.stagedTitle")}</div>
+            <div className="staged-text" title={staged.text}>
+              {stagedPreview || t("overlay.stagedNoText")}
+            </div>
+          </div>
+          <div
+            className="cancel-button"
+            onClick={() => {
+              commands.cancelStagedCapture();
+            }}
+            title={t("overlay.stagedCancel")}
+          >
+            <CancelIcon />
+          </div>
+        </div>
+        <div className="staged-hint">
+          {formattedShortcut ? (
+            <>
+              {t("overlay.stagedPressToPaste")}{" "}
+              <span className="staged-hint-key">{formattedShortcut}</span>
+            </>
+          ) : (
+            t("overlay.stagedUnboundHint")
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const showingEditChips = state === "recording" && !!editChips;
+
   return (
     <div
       dir={direction}
-      className={`recording-overlay ${isVisible ? "fade-in" : ""}`}
+      className={`recording-overlay ${showingEditChips ? "recording-overlay-wide" : ""} ${isVisible ? "fade-in" : ""}`}
       style={{
         boxShadow: `0 0 ${20 + glowIntensity * 18}px rgba(124, 58, 237, ${0.18 + glowIntensity * 0.35}), 0 4px 24px #00000080`,
       }}
@@ -167,7 +258,33 @@ const RecordingOverlay: React.FC = () => {
       <div className="overlay-left">{getIcon()}</div>
 
       <div className="overlay-middle">
-        {state === "recording" && hint && (
+        {state === "recording" && editChips && (
+          <div className="edit-chips state-fade">
+            {editChips.map((chip) => {
+              const isPending = pendingChipId === chip.id;
+              const disabled = pendingChipId !== null && !isPending;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  className={`edit-chip${isPending ? " edit-chip-pending" : ""}`}
+                  disabled={disabled}
+                  title={chip.instruction}
+                  onClick={() => {
+                    if (pendingChipId) return;
+                    setPendingChipId(chip.id);
+                    commands.applyEditChip(chip.id).catch(() => {
+                      setPendingChipId(null);
+                    });
+                  }}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {state === "recording" && !editChips && hint && (
           <div
             className="ide-hint state-fade"
             title={`${hint.name} voice commands`}
@@ -185,7 +302,7 @@ const RecordingOverlay: React.FC = () => {
             ))}
           </div>
         )}
-        {state === "recording" && !hint && (
+        {state === "recording" && !editChips && !hint && (
           <div className="bars-container state-fade">
             {levels.map((v, i) => (
               <div

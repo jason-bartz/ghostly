@@ -584,6 +584,21 @@ fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), Str
     Ok(())
 }
 
+/// Public helper to fire an auto-submit keystroke independently of a paste.
+/// Used by continuous dictation's submit-phrase feature, which decides on its
+/// own whether to submit (and may submit even when the segment is just the
+/// trigger phrase with no text to paste).
+pub fn send_submit_key(app_handle: &AppHandle, key: AutoSubmitKey) -> Result<(), String> {
+    let enigo_state = app_handle
+        .try_state::<EnigoState>()
+        .ok_or("Enigo state not initialized")?;
+    let mut enigo = enigo_state
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
+    send_return_key(&mut enigo, key)
+}
+
 fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool {
     auto_submit && paste_method != PasteMethod::None
 }
@@ -717,20 +732,25 @@ pub fn paste_with_options(
         }
     }
 
-    // IDE presets can force auto-submit even when the global setting is off:
-    // dictating into Cursor/Claude Code/Windsurf/Replit should paste AND press
-    // Enter so the prompt fires without the user touching the keyboard.
-    let ide_forces_submit = if settings.ide_presets_enabled && settings.ide_auto_submit {
-        crate::frontmost::current()
-            .ok()
-            .flatten()
-            .and_then(|ctx| crate::ide_presets::detect(&ctx))
-            .map(|preset| preset.auto_submit)
-            .unwrap_or(false)
-    } else {
-        false
+    // A matched built-in profile (Cursor/Claude Code/Windsurf/Replit) can
+    // force auto-submit even when the user's global setting is off: dictating
+    // into those IDEs should paste AND press Enter so the prompt fires
+    // without touching the keyboard. `auto_submit: Some(false)` would
+    // explicitly suppress; `None` means inherit the global setting.
+    let profile_auto_submit: Option<bool> =
+        if settings.ide_presets_enabled && settings.ide_auto_submit {
+            crate::frontmost::current()
+                .ok()
+                .flatten()
+                .and_then(|ctx| crate::profiles::match_builtin_profile(&ctx))
+                .and_then(|profile| profile.auto_submit)
+        } else {
+            None
+        };
+    let effective_auto_submit = match profile_auto_submit {
+        Some(explicit) => explicit || settings.auto_submit,
+        None => settings.auto_submit,
     };
-    let effective_auto_submit = settings.auto_submit || ide_forces_submit;
 
     if !options.suppress_auto_submit && should_send_auto_submit(effective_auto_submit, paste_method)
     {

@@ -42,5 +42,12 @@
       "entitlements": "Entitlements.plist"
     }
   },
-  "plugins": {}
+  "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["ghostly"]
+      }
+    }
+  }
 }

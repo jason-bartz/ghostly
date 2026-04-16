@@ -6,6 +6,7 @@ import { SettingsGroup } from "../../ui/SettingsGroup";
 import { StartHidden } from "../StartHidden";
 import { AutostartToggle } from "../AutostartToggle";
 import { ShowTrayIcon } from "../ShowTrayIcon";
+import { ShowDockIcon } from "../ShowDockIcon";
 import { PasteMethodSetting } from "../PasteMethod";
 import { TypingToolSetting } from "../TypingTool";
 import { ClipboardHandlingSetting } from "../ClipboardHandling";
@@ -16,6 +17,7 @@ import { useSettings } from "../../../hooks/useSettings";
 import { KeyboardImplementationSelector } from "../debug/KeyboardImplementationSelector";
 import { AccelerationSelector } from "../AccelerationSelector";
 import { LazyStreamClose } from "../LazyStreamClose";
+import { ContinuousDictation } from "../ContinuousDictation";
 
 export const AdvancedSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -44,6 +46,7 @@ export const AdvancedSettings: React.FC = () => {
         <StartHidden descriptionMode="tooltip" grouped={true} />
         <AutostartToggle descriptionMode="tooltip" grouped={true} />
         <ShowTrayIcon descriptionMode="tooltip" grouped={true} />
+        <ShowDockIcon descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 
       {/* ── Performance ── always visible; no experimental gate */}
@@ -56,6 +59,14 @@ export const AdvancedSettings: React.FC = () => {
         />
         <ExperimentalToggle descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
+
+      {experimentalEnabled && (
+        <SettingsGroup
+          title={t("settings.advanced.groups.continuousDictation")}
+        >
+          <ContinuousDictation descriptionMode="tooltip" grouped={true} />
+        </SettingsGroup>
+      )}
     </div>
   );
 };

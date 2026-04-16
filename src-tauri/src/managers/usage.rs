@@ -37,7 +37,15 @@ const KEYCHAIN_ACCOUNT: &str = "weekly_v1";
 /// Compile-time HMAC secret. Not truly secret (anyone disassembling the
 /// binary can find it), but combined with keychain-scoped storage it's a
 /// meaningful deterrent to casual tampering.
-const HMAC_SECRET: &[u8] = b"ghostly-usage-v1-21a4f8c9e0b6";
+///
+/// Bump the version suffix when the `UsageBlob` shape changes in a way that
+/// would otherwise be silently zero-filled by serde defaults — forcing the
+/// old blob to fail HMAC check and get discarded is cleaner than a migration.
+const HMAC_SECRET: &[u8] = b"ghostly-usage-v2-words";
+
+/// Average typing speed baseline used for the "time saved" vanity metric.
+/// 40 WPM is a reasonable middle-of-the-road typist.
+const TYPING_WPM_BASELINE: u64 = 40;
 
 /// Serialized form persisted in the keychain.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -45,10 +53,14 @@ struct UsageBlob {
     version: u32,
     current_week_start: String, // "YYYY-MM-DD" (Monday, local)
     current_week_seconds: u64,
+    #[serde(default)]
+    current_week_words: u64,
     /// Whether we've already emitted the 80% warning for this week.
     #[serde(default)]
     warned_this_week: bool,
     lifetime_seconds: u64,
+    #[serde(default)]
+    lifetime_words: u64,
     /// Completed weeks, newest first, capped to HISTORY_RETENTION_WEEKS.
     history: Vec<CompletedWeek>,
 }
@@ -57,6 +69,8 @@ struct UsageBlob {
 struct CompletedWeek {
     week_start: String,
     seconds: u64,
+    #[serde(default)]
+    words: u64,
     hit_limit: bool,
 }
 
@@ -64,6 +78,7 @@ struct CompletedWeek {
 pub struct UsageWeek {
     pub week_start_iso: String,
     pub seconds: u64,
+    pub words: u64,
     pub hit_limit: bool,
 }
 
@@ -79,6 +94,13 @@ pub struct UsageStats {
     /// 00:00 local). Frontend computes "time remaining" from this.
     pub resets_at_unix: i64,
     pub lifetime_seconds: u64,
+    pub words_this_week: u64,
+    pub lifetime_words: u64,
+    /// Estimated seconds saved vs. typing at TYPING_WPM_BASELINE. Clamped at 0
+    /// when audio duration exceeded the hypothetical typing time (e.g. mostly
+    /// silence).
+    pub time_saved_secs_this_week: u64,
+    pub time_saved_secs_lifetime: u64,
     pub history: Vec<UsageWeek>,
 }
 
@@ -125,6 +147,7 @@ impl UsageManager {
         let completed = CompletedWeek {
             week_start: blob.current_week_start.clone(),
             seconds: blob.current_week_seconds,
+            words: blob.current_week_words,
             hit_limit,
         };
         blob.history.insert(0, completed);
@@ -133,6 +156,7 @@ impl UsageManager {
         }
         blob.current_week_start = this_week;
         blob.current_week_seconds = 0;
+        blob.current_week_words = 0;
         blob.warned_this_week = false;
     }
 
@@ -162,11 +186,11 @@ impl UsageManager {
         LimitCheck::Allowed
     }
 
-    /// Record a successful transcription's audio duration against this
-    /// week's counter and the lifetime counter. Pro users are recorded too
-    /// (for the vanity metric) but never trip the cap.
-    pub fn record(&self, duration_secs: u64) {
-        if duration_secs == 0 {
+    /// Record a successful transcription's audio duration + word count
+    /// against this week's counters and the lifetime counters. Pro users are
+    /// recorded too (for the vanity metric) but never trip the cap.
+    pub fn record(&self, duration_secs: u64, word_count: u64) {
+        if duration_secs == 0 && word_count == 0 {
             return;
         }
         let snapshot = {
@@ -174,6 +198,8 @@ impl UsageManager {
             self.rotate_if_needed(&mut blob);
             blob.current_week_seconds = blob.current_week_seconds.saturating_add(duration_secs);
             blob.lifetime_seconds = blob.lifetime_seconds.saturating_add(duration_secs);
+            blob.current_week_words = blob.current_week_words.saturating_add(word_count);
+            blob.lifetime_words = blob.lifetime_words.saturating_add(word_count);
             blob.clone()
         };
         save_blob(&snapshot);
@@ -197,17 +223,33 @@ impl UsageManager {
             is_at_warning,
             resets_at_unix: next_week_start_unix(),
             lifetime_seconds: blob.lifetime_seconds,
+            words_this_week: blob.current_week_words,
+            lifetime_words: blob.lifetime_words,
+            time_saved_secs_this_week: time_saved_secs(
+                blob.current_week_words,
+                blob.current_week_seconds,
+            ),
+            time_saved_secs_lifetime: time_saved_secs(blob.lifetime_words, blob.lifetime_seconds),
             history: blob
                 .history
                 .iter()
                 .map(|w| UsageWeek {
                     week_start_iso: w.week_start.clone(),
                     seconds: w.seconds,
+                    words: w.words,
                     hit_limit: w.hit_limit,
                 })
                 .collect(),
         }
     }
+}
+
+/// Estimated seconds saved versus typing the same words at
+/// `TYPING_WPM_BASELINE`. `words / WPM * 60` is the time a typist would have
+/// spent; we subtract the actual audio duration. Clamped at 0.
+fn time_saved_secs(words: u64, audio_secs: u64) -> u64 {
+    let would_have_typed_secs = words.saturating_mul(60) / TYPING_WPM_BASELINE.max(1);
+    would_have_typed_secs.saturating_sub(audio_secs)
 }
 
 impl Default for UsageManager {
@@ -251,11 +293,13 @@ fn next_week_start_unix() -> i64 {
 
 fn fresh_blob() -> UsageBlob {
     UsageBlob {
-        version: 1,
+        version: 2,
         current_week_start: current_week_start_iso(),
         current_week_seconds: 0,
+        current_week_words: 0,
         warned_this_week: false,
         lifetime_seconds: 0,
+        lifetime_words: 0,
         history: Vec::new(),
     }
 }

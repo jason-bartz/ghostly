@@ -1,9 +1,12 @@
 use crate::actions::process_transcription_output;
+use crate::ai_metadata;
 use crate::managers::{
-    history::{HistoryEntry, HistoryManager, PaginatedHistory, TranscriptionStats, WordCorrection},
+    history::{
+        HistoryEntry, HistoryManager, HistoryTag, PaginatedHistory, TranscriptionStats,
+        WordCorrection,
+    },
     transcription::TranscriptionManager,
 };
-use chrono::Utc;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -268,6 +271,18 @@ pub async fn delete_history_entry(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn bulk_delete_history_entries(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    ids: Vec<i64>,
+) -> Result<(), String> {
+    history_manager
+        .bulk_delete_entries(&ids)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn retry_history_entry_transcription(
     app: AppHandle,
     history_manager: State<'_, Arc<HistoryManager>>,
@@ -338,12 +353,14 @@ pub async fn search_history_entries(
     history_manager: State<'_, Arc<HistoryManager>>,
     query: String,
     limit: Option<usize>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
 ) -> Result<Vec<HistoryEntry>, String> {
     if query.trim().is_empty() {
         return Ok(vec![]);
     }
     history_manager
-        .search_history_entries(query, limit)
+        .search_history_entries(query, limit, start_ts, end_ts)
         .await
         .map_err(|e| e.to_string())
 }
@@ -444,6 +461,8 @@ pub async fn transcribe_audio_file(
 
     let processed = process_transcription_output(&app, &transcription, false).await;
 
+    // File-import transcription has no capture context (the user picked a file,
+    // not dictated into an app), so source_app stays None.
     history_manager
         .save_entry(
             wav_name,
@@ -451,6 +470,7 @@ pub async fn transcribe_audio_file(
             false,
             processed.post_processed_text,
             processed.post_process_prompt,
+            None,
         )
         .map_err(|e| e.to_string())
 }
@@ -501,6 +521,111 @@ pub async fn get_transcription_stats(
     history_manager: State<'_, Arc<HistoryManager>>,
 ) -> Result<TranscriptionStats, String> {
     history_manager.get_stats().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn add_history_tag(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    id: i64,
+    name: String,
+) -> Result<HistoryTag, String> {
+    history_manager
+        .add_tag(id, name, false)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_history_tag(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    id: i64,
+    name: String,
+) -> Result<(), String> {
+    history_manager
+        .remove_tag(id, name)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn list_all_history_tags(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+) -> Result<Vec<String>, String> {
+    history_manager.list_all_tags().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn filter_history_entries(
+    _app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    query: Option<String>,
+    tag_names: Vec<String>,
+    limit: Option<usize>,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+) -> Result<Vec<HistoryEntry>, String> {
+    history_manager
+        .filter_history_entries(query, tag_names, limit, start_ts, end_ts)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Generate a title and tags for an entry using the configured LLM provider,
+/// apply them (sets `user_title`, inserts tags as `auto = true`), and return
+/// the updated entry. Existing tags are preserved — AI-suggested tags that
+/// already exist are deduped by the unique index. User-set title is replaced
+/// only when the caller explicitly chose to regenerate.
+#[tauri::command]
+#[specta::specta]
+pub async fn generate_history_metadata(
+    app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    id: i64,
+) -> Result<HistoryEntry, String> {
+    let entry = history_manager
+        .get_entry_by_id(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("History entry {} not found", id))?;
+
+    let source_text = entry
+        .post_processed_text
+        .as_deref()
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or(entry.transcription_text.as_str());
+
+    let settings = crate::settings::get_settings(&app);
+    let existing_tags = history_manager.list_all_tags().map_err(|e| e.to_string())?;
+    let generated = ai_metadata::generate(&settings, source_text, &existing_tags)
+        .await
+        .ok_or_else(|| {
+            "Unable to generate metadata. Check that an AI provider, model, and API key are configured."
+                .to_string()
+        })?;
+
+    // Apply title as user_title (the editable layer).
+    let updated = history_manager
+        .update_user_title(id, Some(generated.title))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for tag in generated.tags {
+        if let Err(e) = history_manager.add_tag(id, tag, true) {
+            log::warn!("Failed to add AI tag: {}", e);
+        }
+    }
+
+    // Re-fetch so returned entry reflects both the new title and tags.
+    history_manager
+        .get_entry_by_id(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("History entry {} disappeared after update", updated.id))
 }
 
 #[tauri::command]
