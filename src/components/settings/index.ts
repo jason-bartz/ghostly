@@ -10,6 +10,7 @@ export { ModelsSettings } from "./models/ModelsSettings";
 export { AchievementsSettings } from "./achievements/AchievementsSettings";
 export { UsageSettings } from "./usage/UsageSettings";
 export { DeveloperSettings } from "./developer/DeveloperSettings";
+export { LicenseSettings } from "./license/LicenseSettings";
 
 // Individual setting components
 export { MicrophoneSelector } from "./MicrophoneSelector";
@@ -23,7 +24,6 @@ export { GlobalShortcutInput } from "./GlobalShortcutInput";
 export { HandyKeysShortcutInput } from "./HandyKeysShortcutInput";
 export { ShortcutInput } from "./ShortcutInput";
 export { TranslateToEnglish } from "./TranslateToEnglish";
-export { CustomWords } from "./CustomWords";
 export { FillerWords } from "./FillerWords";
 export { PostProcessingToggle } from "./PostProcessingToggle";
 export { PostProcessingSettingsApi } from "./PostProcessingSettingsApi";
@@ -34,8 +34,10 @@ export { StartHidden } from "./StartHidden";
 export { HistoryLimit } from "./HistoryLimit";
 export { RecordingRetentionPeriodSelector } from "./RecordingRetentionPeriod";
 export { AutostartToggle } from "./AutostartToggle";
+export { ShowDockIcon } from "./ShowDockIcon";
 export { VoiceEditing } from "./VoiceEditing";
 export { VoiceCommands } from "./VoiceCommands";
 export { IdePresets } from "./IdePresets";
 export { ProfilesSettings } from "./profiles/ProfilesSettings";
+export { StyleSettings } from "./profiles/StyleSettings";
 export { ProfilesEnableToggle } from "./ProfilesEnableToggle";
