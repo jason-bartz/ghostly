@@ -370,6 +370,12 @@ pub struct AppSettings {
     pub sound_theme: SoundTheme,
     #[serde(default = "default_start_hidden")]
     pub start_hidden: bool,
+    /// Marker for the 0.1.7 `start_hidden` default flip. When false, the
+    /// migration in `migrate_start_hidden_default` will reset `start_hidden`
+    /// to false (matching the new default) and set this to true so it only
+    /// runs once. See lib.rs autostart args for the full rationale.
+    #[serde(default)]
+    pub start_hidden_default_flipped: bool,
     #[serde(default = "default_autostart_enabled")]
     pub autostart_enabled: bool,
     #[serde(default = "default_model")]
@@ -644,7 +650,11 @@ fn default_translate_to_english() -> bool {
 }
 
 fn default_start_hidden() -> bool {
-    true
+    // Manual app launches (DMG → Applications → double-click) should open
+    // the window. Login-launched instances pass `--start-hidden` via the
+    // autostart plugin args, so the tray-only behavior is preserved at
+    // login without making manual launches feel broken.
+    false
 }
 
 fn default_autostart_enabled() -> bool {
@@ -1161,6 +1171,9 @@ pub fn get_default_settings() -> AppSettings {
         audio_feedback_volume: default_audio_feedback_volume(),
         sound_theme: default_sound_theme(),
         start_hidden: default_start_hidden(),
+        // Fresh installs are already on the new default, so mark the
+        // migration done — only pre-0.1.7 stored settings need it.
+        start_hidden_default_flipped: true,
         autostart_enabled: default_autostart_enabled(),
         selected_model: "".to_string(),
         always_on_microphone: false,
@@ -1356,6 +1369,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     changed |= ensure_builtin_prompts(&mut settings);
     changed |= ensure_category_style_defaults(&mut settings);
     changed |= migrate_seen_ide_hint_ids(&mut settings);
+    changed |= migrate_start_hidden_default(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1365,6 +1379,22 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     }
 
     settings
+}
+
+/// One-shot reset of `start_hidden` to the new 0.1.7 default of false.
+/// Pre-0.1.7 the default was true, so existing users had it persisted as
+/// true even if they never opened the setting — leaving them with the
+/// "manual launch only opens tray" behavior even after the autostart-args
+/// fix at lib.rs. After this runs once we mark
+/// `start_hidden_default_flipped` so we don't trample any deliberate
+/// re-enable.
+fn migrate_start_hidden_default(settings: &mut AppSettings) -> bool {
+    if settings.start_hidden_default_flipped {
+        return false;
+    }
+    settings.start_hidden = false;
+    settings.start_hidden_default_flipped = true;
+    true
 }
 
 /// Migrate legacy `seen_ide_hints` entries from the bare preset ids
@@ -1493,6 +1523,7 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     changed |= ensure_builtin_prompts(&mut settings);
     changed |= ensure_category_style_defaults(&mut settings);
     changed |= migrate_seen_ide_hint_ids(&mut settings);
+    changed |= migrate_start_hidden_default(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
