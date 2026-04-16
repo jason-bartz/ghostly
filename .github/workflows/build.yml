@@ -199,6 +199,38 @@ jobs:
             --content-type "application/x-apple-diskimage" \
             --cache-control "public, max-age=300"
 
+      - name: Sync version on try-ghostly landing page
+        if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin' && inputs.release-id
+        shell: bash
+        env:
+          TRY_GHOSTLY_PAT: ${{ secrets.TRY_GHOSTLY_PAT }}
+        run: |
+          if [ -z "$TRY_GHOSTLY_PAT" ]; then
+            echo "TRY_GHOSTLY_PAT not set — skipping landing page sync"
+            exit 0
+          fi
+          APP_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          if [ -z "$APP_VERSION" ]; then
+            echo "Could not read version from tauri.conf.json"
+            exit 1
+          fi
+          WORKDIR=$(mktemp -d)
+          git clone --depth=1 "https://x-access-token:${TRY_GHOSTLY_PAT}@github.com/jason-bartz/try-ghostly.git" "$WORKDIR"
+          cd "$WORKDIR"
+          MONTH_YEAR=$(date -u +"%b %Y")
+          sed -i.bak -E 's|("softwareVersion": ")[^"]+(")|\1'"$APP_VERSION"'\2|' index.html
+          sed -i.bak -E 's|(id="footer-version">)v[0-9]+\.[0-9]+\.[0-9]+ · updated [A-Za-z]+ [0-9]{4}|\1v'"$APP_VERSION"' · updated '"$MONTH_YEAR"'|g' index.html install/index.html
+          rm -f index.html.bak install/index.html.bak
+          if git diff --quiet; then
+            echo "Landing page already on v$APP_VERSION — nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html install/index.html
+          git commit -m "chore: bump displayed version to $APP_VERSION"
+          git push origin main
+
       - name: Upload artifacts
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
