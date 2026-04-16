@@ -2,12 +2,6 @@ import Dispatch
 import Foundation
 import FoundationModels
 
-@available(macOS 26.0, *)
-@Generable
-private struct CleanedTranscript: Sendable {
-    let cleanedText: String
-}
-
 // MARK: - Swift implementation for Apple LLM integration
 // This file is compiled via Cargo build script for Apple Silicon targets
 
@@ -93,18 +87,14 @@ public func processTextWithSystemPrompt(
                 model: model,
                 instructions: swiftSystemPrompt
             )
-            var output: String
-
-            do {
-                let structured = try await session.respond(
-                    to: swiftUserContent,
-                    generating: CleanedTranscript.self
-                )
-                output = structured.content.cleanedText
-            } catch {
-                let fallbackGeneration = try await session.respond(to: swiftUserContent)
-                output = fallbackGeneration.content
-            }
+            // Use plain text generation. `@Generable` structured output on
+            // macOS 26 occasionally places the schema description into the
+            // generated field instead of the model's response, leaking text
+            // like "response format in json. name: ... schema: {...}" into
+            // the paste. Single-field outputs don't need structured generation
+            // — the user's prompt already instructs the model to return only
+            // the cleaned text.
+            var output = try await session.respond(to: swiftUserContent).content
 
             if tokenLimit > 0 {
                 output = truncatedText(output, limit: tokenLimit)
