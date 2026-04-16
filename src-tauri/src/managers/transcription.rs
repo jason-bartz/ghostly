@@ -1,4 +1,4 @@
-use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
+use crate::audio_toolkit::{apply_custom_words, filter_transcription_output, needs_whisper_bias};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{
@@ -540,13 +540,26 @@ impl TranscriptionManager {
                                 Some(normalized)
                             };
 
+                            // Only bias Whisper toward custom words with
+                            // non-standard orthography (mixed-case compounds,
+                            // digits, hyphens). Plain proper nouns like
+                            // "Claude" or "Cursor" are transcribed correctly
+                            // from acoustics; putting them in initial_prompt
+                            // biases Whisper toward homophones (e.g. "open"
+                            // → "OpenAI").
+                            let biased_words: Vec<&str> = settings
+                                .custom_words
+                                .iter()
+                                .filter(|w| needs_whisper_bias(w))
+                                .map(|w| w.as_str())
+                                .collect();
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
                                 translate: settings.translate_to_english,
-                                initial_prompt: if settings.custom_words.is_empty() {
+                                initial_prompt: if biased_words.is_empty() {
                                     None
                                 } else {
-                                    Some(settings.custom_words.join(", "))
+                                    Some(biased_words.join(", "))
                                 },
                                 ..Default::default()
                             };

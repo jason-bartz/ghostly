@@ -37,6 +37,7 @@ fn find_best_match<'a>(
     custom_words_nospace: &[String],
     phonetic_targets: &[Option<String>],
     threshold: f64,
+    ngram_size: usize,
 ) -> Option<(&'a String, f64)> {
     if candidate.is_empty() || candidate.len() > 50 {
         return None;
@@ -54,6 +55,21 @@ fn find_best_match<'a>(
         let max_allowed_diff = (max_len * 0.25).max(2.0); // At least 2 chars difference allowed
         if len_diff > max_allowed_diff {
             continue;
+        }
+
+        // For single-word candidates (n=1), require the candidate to be at
+        // least 75% of the custom word's length. Blocks prefix-expansion
+        // false positives like "open" → "OpenAI" (Soundex matches, tiny
+        // Levenshtein ratio with the 0.3x phonetic boost slips past the
+        // threshold) while still allowing legitimate n=1 fuzzy matches like
+        // "openai" → "OpenAI" or "Claud" → "Claude". N-gram matches (n≥2)
+        // skip this check because they explicitly stitch multiple words into
+        // one custom word (e.g. "Chat G P T" → "ChatGPT").
+        if ngram_size == 1 {
+            let min_candidate_len = (custom_word_nospace.len() as f64 * 0.75).ceil() as usize;
+            if candidate.len() < min_candidate_len {
+                continue;
+            }
         }
 
         // Calculate Levenshtein distance (normalized by length)
@@ -164,6 +180,7 @@ pub fn apply_custom_words(
                 &custom_words_nospace,
                 &phonetic_targets,
                 threshold,
+                n,
             ) {
                 // Extract punctuation from first and last words of the n-gram
                 let (prefix, _) = extract_punctuation(ngram_words[0]);
@@ -225,6 +242,26 @@ fn extract_punctuation(word: &str) -> (&str, &str) {
     };
 
     (prefix, suffix)
+}
+
+/// Returns true if the custom word has non-standard orthography that Whisper
+/// likely won't spell correctly without a bias hint. Used to filter the words
+/// we send into Whisper's `initial_prompt` so we don't bias against common
+/// homophones (e.g. "OpenAI" in the prompt pulls "open" toward "OpenAI" during
+/// decoding).
+///
+/// Words that qualify: internal capitals (OpenAI, ChargeBee, MacBook),
+/// digits (GPT-4, v0), or hyphens (GPT-4, e2e). Plain proper nouns like
+/// "Claude", "Cursor", or "Anthropic" are excluded — Whisper handles those
+/// correctly from acoustics alone.
+pub fn needs_whisper_bias(word: &str) -> bool {
+    let mut chars = word.chars();
+    let Some(_first) = chars.next() else {
+        return false;
+    };
+    let has_internal_capital = chars.clone().any(|c| c.is_uppercase());
+    let has_special = word.chars().any(|c| c.is_ascii_digit() || c == '-');
+    has_internal_capital || has_special
 }
 
 /// Returns filler words appropriate for the given language code.
@@ -589,6 +626,71 @@ mod tests {
         let result =
             apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("MacBook"));
+    }
+
+    #[test]
+    fn test_apply_custom_words_short_candidate_not_expanded_to_longer() {
+        // Regression: "open" (4 chars) must not auto-correct to "OpenAI"
+        // (6 chars). Soundex matches both and the phonetic boost otherwise
+        // drops the combined score under threshold. Uses the production
+        // threshold (0.18) since that's what users actually experience.
+        let text = "please open the door";
+        let custom_words = vec!["OpenAI".to_string()];
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.18);
+        assert_eq!(result, "please open the door");
+    }
+
+    #[test]
+    fn test_apply_custom_words_single_word_full_length_still_matches() {
+        // Positive case: a lowercased same-length utterance SHOULD still map
+        // to its custom spelling.
+        let text = "using openai today";
+        let custom_words = vec!["OpenAI".to_string()];
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
+        assert!(result.contains("OpenAI"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_apply_custom_words_short_typo_still_corrects() {
+        // "Claud" → "Claude": single-char drop, length 5 vs 6, passes the
+        // 75% threshold (5 >= ceil(6 * 0.75) = 5).
+        let text = "ask Claud for help";
+        let custom_words = vec!["Claude".to_string()];
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
+        assert!(result.contains("Claude"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_needs_whisper_bias_mixed_case_compound() {
+        assert!(needs_whisper_bias("OpenAI"));
+        assert!(needs_whisper_bias("ChatGPT"));
+        assert!(needs_whisper_bias("MacBook"));
+        assert!(needs_whisper_bias("ChargeBee"));
+    }
+
+    #[test]
+    fn test_needs_whisper_bias_digits_or_hyphens() {
+        assert!(needs_whisper_bias("GPT-4"));
+        assert!(needs_whisper_bias("v0"));
+        assert!(needs_whisper_bias("e2e"));
+    }
+
+    #[test]
+    fn test_needs_whisper_bias_plain_proper_nouns_excluded() {
+        // Whisper handles these correctly from acoustics alone. Including
+        // them in initial_prompt biases against homophones.
+        assert!(!needs_whisper_bias("Claude"));
+        assert!(!needs_whisper_bias("Cursor"));
+        assert!(!needs_whisper_bias("Anthropic"));
+        assert!(!needs_whisper_bias("Ollama"));
+    }
+
+    #[test]
+    fn test_needs_whisper_bias_empty_word() {
+        assert!(!needs_whisper_bias(""));
     }
 
     #[test]
