@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { TranscriptionIcon, CancelIcon } from "../components/icons";
+import { CancelIcon } from "../components/icons";
 import "./RecordingOverlay.css";
 import { commands } from "@/bindings";
 import i18n, { syncLanguageFromSettings } from "@/i18n";
@@ -63,7 +63,6 @@ const RecordingOverlay: React.FC = () => {
   const [levels, setLevels] = useState<number[]>(Array(14).fill(0));
   const smoothedLevelsRef = useRef<number[]>(Array(16).fill(0));
   const [peakLevel, setPeakLevel] = useState<number>(0);
-  const [previewText, setPreviewText] = useState<string>("");
   const [hint, setHint] = useState<IdeHint | null>(null);
   const [staged, setStaged] = useState<StagedPayload | null>(null);
   const [editChips, setEditChips] = useState<EditChip[] | null>(null);
@@ -80,18 +79,13 @@ const RecordingOverlay: React.FC = () => {
         const overlayState = event.payload as OverlayState;
         setState(overlayState);
         setIsVisible(true);
-        // Clear preview text when entering recording state
-        if (overlayState === "recording") {
-          setPreviewText("");
-        }
       });
 
       // Listen for hide-overlay event from Rust
       const unlistenHide = await listen("hide-overlay", () => {
         setIsVisible(false);
-        // Clear preview + staged + edit chips after hide animation
+        // Clear staged + edit chips after hide animation
         setTimeout(() => {
-          setPreviewText("");
           setStaged(null);
           setEditChips(null);
           setPendingChipId(null);
@@ -122,14 +116,6 @@ const RecordingOverlay: React.FC = () => {
         setLevels(mirrored);
         setPeakLevel(Math.max(...sliced));
       });
-
-      // Listen for transcription preview from Rust (shows text before paste)
-      const unlistenPreview = await listen<string>(
-        "transcription-preview",
-        (event) => {
-          setPreviewText(event.payload);
-        },
-      );
 
       // Staged screenshot capture: show thumbnail + transcription + confirm hint
       const unlistenStaged = await listen<StagedPayload>(
@@ -176,7 +162,6 @@ const RecordingOverlay: React.FC = () => {
         unlistenShow();
         unlistenHide();
         unlistenLevel();
-        unlistenPreview();
         unlistenStaged();
         unlistenHint();
         unlistenEditMode();
@@ -187,17 +172,7 @@ const RecordingOverlay: React.FC = () => {
     setupEventListeners();
   }, []);
 
-  const getIcon = () => {
-    if (state === "recording") {
-      return <GhostIcon />;
-    } else {
-      return <TranscriptionIcon />;
-    }
-  };
-
-  // Truncate preview text to fit the overlay width
-  const truncatedPreview =
-    previewText.length > 40 ? previewText.slice(0, 38) + "…" : previewText;
+  const getIcon = () => <GhostIcon />;
 
   const glowIntensity =
     state === "recording" ? Math.min(1, peakLevel * 1.5) : 0;
@@ -319,12 +294,12 @@ const RecordingOverlay: React.FC = () => {
         )}
         {state === "transcribing" && (
           <div className="transcribing-text state-fade">
-            {previewText ? truncatedPreview : t("overlay.transcribing")}
+            {t("overlay.transcribing")}
           </div>
         )}
         {state === "processing" && (
           <div className="transcribing-text state-fade">
-            {previewText ? truncatedPreview : t("overlay.processing")}
+            {t("overlay.processing")}
           </div>
         )}
       </div>
