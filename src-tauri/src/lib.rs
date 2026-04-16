@@ -369,7 +369,14 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     let settings = settings::get_settings(&app_handle);
 
     if settings.autostart_enabled {
-        // Enable autostart if user has opted in
+        // Force re-register so the LaunchAgent plist picks up any change to
+        // the args we pass at plugin init (e.g. `--start-hidden` added in
+        // 0.1.7). The auto-launch crate's `enable()` is a no-op when the
+        // plist already exists, so existing users would otherwise keep the
+        // old plist forever and never get the manual-launch-shows-window
+        // behavior. Disable+enable rewrites the plist; both calls are
+        // silent (no UI prompts) on macOS.
+        let _ = autostart_manager.disable();
         let _ = autostart_manager.enable();
     } else {
         // Disable autostart if user has opted out
@@ -663,7 +670,11 @@ pub fn run(cli_args: CliArgs) {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            // Login-launched instances pass `--start-hidden` so the window
+            // stays in the tray. A manual double-click of the app icon does
+            // NOT carry this flag, so the window opens — which is what users
+            // expect after install/update.
+            Some(vec!["--start-hidden"]),
         ))
         .manage(cli_args.clone())
         .setup(move |app| {
