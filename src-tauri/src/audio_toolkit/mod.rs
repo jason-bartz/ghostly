@@ -9,6 +9,6 @@ pub use audio::{
     read_audio_file_samples, read_wav_samples, save_wav_file, verify_wav_file, AudioRecorder,
     CpalDeviceInfo,
 };
-pub use text::{apply_custom_words, filter_transcription_output, needs_whisper_bias};
+pub use text::{apply_custom_words, filter_transcription_output};
 pub use utils::get_cpal_host;
 pub use vad::{SileroVad, VoiceActivityDetector};
