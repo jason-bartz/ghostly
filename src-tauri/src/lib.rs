@@ -156,6 +156,22 @@ fn should_force_show_permissions_window(app: &AppHandle) -> bool {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    {
+        let model_manager = app.state::<Arc<ModelManager>>();
+        let has_downloaded_models = model_manager
+            .get_available_models()
+            .iter()
+            .any(|model| model.is_downloaded);
+
+        if !has_downloaded_models {
+            log::info!(
+                "No transcription model downloaded; forcing main window visible for first-run onboarding"
+            );
+            return true;
+        }
+    }
+
     false
 }
 
