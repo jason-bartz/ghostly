@@ -1,6 +1,6 @@
 [package]
 name = "ghostly"
-version = "0.1.8"
+version = "0.1.9"
 description = "Ghostly"
 authors = ["Jason Bartz <me@jason-bartz.com>"]
 edition = "2021"
