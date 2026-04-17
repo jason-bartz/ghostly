@@ -1314,12 +1314,60 @@ impl HistoryManager {
     /// badges with the current timestamp, and return the full set of earned
     /// badges with their unlock dates. Delegates to [`compute_stats`] for the
     /// derivation logic and [`persist_badge_unlocks`] for storage.
-    pub fn get_stats(&self) -> Result<TranscriptionStats> {
+    /// Achievements view. Merges DB-derived per-row badge signals (temporal
+    /// clusters, content predicates, post-process/save counts) with the
+    /// monotonic counters from `UsageManager` so top-level numbers and the
+    /// count/duration/longest-based badges survive note deletion and app
+    /// reinstall. Pass the caller's current
+    /// [`crate::managers::usage::LifetimeAchievementCounters`] snapshot.
+    pub fn get_stats(
+        &self,
+        counters: crate::managers::usage::LifetimeAchievementCounters,
+    ) -> Result<TranscriptionStats> {
         let conn = self.get_connection()?;
         let mut stats = compute_stats(&conn)?;
+        // Keychain counters are authoritative for the cumulative display
+        // values and for badge thresholds that only depend on those totals.
+        // DB-derived numbers remain the fallback when keychain values are
+        // smaller (e.g. brand-new install that hasn't recorded anything yet
+        // but has migrated history entries — the startup backfill should
+        // have seeded the keychain from the DB, so this `max` is belt-and-
+        // suspenders).
+        stats.total_words = stats.total_words.max(counters.total_words);
+        stats.total_duration_ms = stats
+            .total_duration_ms
+            .max(counters.total_seconds.saturating_mul(1000));
+        stats.transcription_count = stats.transcription_count.max(counters.transcription_count);
+        stats.longest_transcription_words = stats
+            .longest_transcription_words
+            .max(counters.longest_transcription_words);
+        augment_badges_from_counters(
+            &mut stats.earned_badges,
+            stats.transcription_count,
+            stats.total_duration_ms,
+            stats.longest_transcription_words,
+        );
         let earned_badges = persist_badge_unlocks(&conn, &stats.earned_badges)?;
         stats.earned_badges = earned_badges;
         Ok(stats)
+    }
+
+    /// Current row-count and max-word-count in the history DB. Used once at
+    /// startup to seed the v3 achievements counters in the keychain
+    /// [`crate::managers::usage::UsageManager`] for users upgrading from a
+    /// build that tracked those stats only in the DB.
+    pub fn achievements_backfill_seed(&self) -> Result<(u64, u64)> {
+        let conn = self.get_connection()?;
+        let (count, longest): (u64, u64) = conn.query_row(
+            "SELECT
+                COUNT(*) AS cnt,
+                COALESCE(MAX(word_count), 0) AS longest
+             FROM transcription_history
+             WHERE transcription_text != ''",
+            [],
+            |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)? as u64)),
+        )?;
+        Ok((count, longest))
     }
 
     fn format_timestamp_title(&self, timestamp: i64) -> String {
@@ -1573,49 +1621,89 @@ pub(crate) fn compute_stats(conn: &Connection) -> Result<TranscriptionStats> {
     })
 }
 
+/// Append any badges whose thresholds are cleared by the top-level
+/// monotonic counters (transcription count, total duration, longest
+/// transcription) without removing badges already in `badges`. This keeps
+/// count/duration/longest-based unlocks coherent with the keychain-backed
+/// counters even when the underlying DB rows have been deleted.
+fn augment_badges_from_counters(
+    badges: &mut Vec<EarnedBadge>,
+    transcription_count: u64,
+    total_duration_ms: u64,
+    longest_transcription_words: u64,
+) {
+    let mut add = |id: BadgeId| {
+        if !badges.iter().any(|b| b.id == id) {
+            badges.push(EarnedBadge { id, unlocked_at: 0 });
+        }
+    };
+    if transcription_count >= 1 {
+        add(BadgeId::FirstWords);
+    }
+    if transcription_count >= 10 {
+        add(BadgeId::GettingStarted);
+    }
+    if transcription_count >= 100 {
+        add(BadgeId::Regular);
+    }
+    if transcription_count >= 1_000 {
+        add(BadgeId::Devoted);
+    }
+    if longest_transcription_words >= 250 {
+        add(BadgeId::Paragraph);
+    }
+    if longest_transcription_words >= 2_000 {
+        add(BadgeId::Marathon);
+    }
+    if total_duration_ms >= 60 * 60 * 1_000 {
+        add(BadgeId::OneHourClub);
+    }
+    if total_duration_ms >= 10 * 60 * 60 * 1_000 {
+        add(BadgeId::TenHourClub);
+    }
+}
+
 /// Persist newly-earned badges into the `badge_unlocks` table with the current
-/// timestamp, then read back all stored rows so every `EarnedBadge` in the
-/// returned vec carries its real `unlocked_at` value. Existing rows are never
-/// overwritten (INSERT OR IGNORE), so the first-ever unlock time is preserved.
+/// timestamp, then return the full set of stored unlocks. Once a badge has
+/// been recorded, it stays earned even if the underlying DB state later
+/// regresses (notes deleted, word corrections removed, etc.). Existing rows
+/// are never overwritten (INSERT OR IGNORE), so the first-ever unlock time
+/// is preserved.
 fn persist_badge_unlocks(conn: &Connection, computed: &[EarnedBadge]) -> Result<Vec<EarnedBadge>> {
     let now = Utc::now().timestamp();
     let mut insert_stmt = conn
         .prepare("INSERT OR IGNORE INTO badge_unlocks (badge_id, unlocked_at) VALUES (?1, ?2)")?;
     for badge in computed {
-        let id_str = serde_json::to_string(&badge.id)
-            .unwrap_or_default()
-            .trim_matches('"')
-            .to_string();
+        let id_str = badge_id_to_key(&badge.id);
         insert_stmt.execute(params![id_str, now])?;
     }
 
-    // Read back all persisted unlock times keyed by badge_id string.
+    // Read back every stored unlock and deserialize the key back into a
+    // BadgeId. Unknown keys (e.g. rows left over from an older build that
+    // shipped a badge we've since removed) are skipped silently.
     let mut read_stmt = conn.prepare("SELECT badge_id, unlocked_at FROM badge_unlocks")?;
-    let stored: std::collections::HashMap<String, i64> = read_stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    // Rebuild the vec in the same order as `computed`, enriching with real
-    // timestamps. If a badge somehow has no stored row (should not happen
-    // after the INSERT above), fall back to `now`.
-    let result = computed
-        .iter()
-        .map(|b| {
-            let id_str = serde_json::to_string(&b.id)
-                .unwrap_or_default()
-                .trim_matches('"')
-                .to_string();
-            let unlocked_at = stored.get(&id_str).copied().unwrap_or(now);
-            EarnedBadge {
-                id: b.id,
-                unlocked_at,
-            }
-        })
-        .collect();
+    let rows = read_stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let mut result: Vec<EarnedBadge> = Vec::new();
+    for row in rows {
+        let (id_str, unlocked_at) = row?;
+        if let Some(id) = key_to_badge_id(&id_str) {
+            result.push(EarnedBadge { id, unlocked_at });
+        }
+    }
     Ok(result)
+}
+
+fn badge_id_to_key(id: &BadgeId) -> String {
+    serde_json::to_string(id)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string()
+}
+
+fn key_to_badge_id(key: &str) -> Option<BadgeId> {
+    serde_json::from_str::<BadgeId>(&format!("\"{}\"", key)).ok()
 }
 
 /// One-time backfill of the `word_count` column for rows that pre-date its

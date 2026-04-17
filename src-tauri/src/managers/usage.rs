@@ -48,6 +48,16 @@ const HMAC_SECRET: &[u8] = b"ghostly-usage-v2-words";
 const TYPING_WPM_BASELINE: u64 = 40;
 
 /// Serialized form persisted in the keychain.
+///
+/// Schema versions:
+///   v2 — original shape; all fields except the two "lifetime_achievements"
+///        trailing fields.
+///   v3 — adds `lifetime_transcription_count` and `lifetime_longest_words`
+///        so the Achievements page can display cumulative stats that survive
+///        note deletion and app reinstall. Loading a v2 blob defaults the
+///        new fields to 0; a one-time backfill from the history DB
+///        ([`UsageManager::backfill_achievements`]) seeds them on first
+///        launch after the upgrade.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct UsageBlob {
     version: u32,
@@ -63,6 +73,27 @@ struct UsageBlob {
     lifetime_words: u64,
     /// Completed weeks, newest first, capped to HISTORY_RETENTION_WEEKS.
     history: Vec<CompletedWeek>,
+    /// v3 additions — monotonic counters that back the Achievements page so
+    /// numbers don't reset when a user deletes notes or reinstalls the app.
+    #[serde(default)]
+    lifetime_transcription_count: u64,
+    #[serde(default)]
+    lifetime_longest_words: u64,
+}
+
+/// Serialize-only mirror of `UsageBlob`'s v2 shape, used to verify HMACs
+/// written by older builds. Keeping it as a dedicated struct means the v2
+/// wire format is frozen here regardless of future `UsageBlob` additions.
+#[derive(Serialize)]
+struct UsageBlobV2Shape<'a> {
+    version: u32,
+    current_week_start: &'a str,
+    current_week_seconds: u64,
+    current_week_words: u64,
+    warned_this_week: bool,
+    lifetime_seconds: u64,
+    lifetime_words: u64,
+    history: &'a [CompletedWeek],
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -102,6 +133,18 @@ pub struct UsageStats {
     pub time_saved_secs_this_week: u64,
     pub time_saved_secs_lifetime: u64,
     pub history: Vec<UsageWeek>,
+}
+
+/// Snapshot of the monotonic counters surfaced on the Achievements page.
+/// These values only ever increase — deleting a note or reinstalling the
+/// app does not lower them — so the page reflects a user's actual history
+/// rather than the current contents of the transcription DB.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LifetimeAchievementCounters {
+    pub total_words: u64,
+    pub total_seconds: u64,
+    pub transcription_count: u64,
+    pub longest_transcription_words: u64,
 }
 
 /// Returned by [`UsageManager::check_limit`] so callers can decide what to do
@@ -200,9 +243,55 @@ impl UsageManager {
             blob.lifetime_seconds = blob.lifetime_seconds.saturating_add(duration_secs);
             blob.current_week_words = blob.current_week_words.saturating_add(word_count);
             blob.lifetime_words = blob.lifetime_words.saturating_add(word_count);
+            blob.lifetime_transcription_count = blob.lifetime_transcription_count.saturating_add(1);
+            if word_count > blob.lifetime_longest_words {
+                blob.lifetime_longest_words = word_count;
+            }
             blob.clone()
         };
         save_blob(&snapshot);
+    }
+
+    /// Seed the v3 achievements counters from the transcription history DB
+    /// the first time a user launches a build that has them. Idempotent:
+    /// only writes when the current stored value is smaller, so repeated
+    /// invocations and subsequent history edits never lower the counter.
+    /// Called once at startup from `lib.rs` after `HistoryManager` is ready.
+    pub fn backfill_achievements(&self, count_from_db: u64, longest_words_from_db: u64) {
+        let snapshot: Option<UsageBlob> = {
+            let mut blob = self.state.lock().expect("usage mutex poisoned");
+            let mut changed = false;
+            if count_from_db > blob.lifetime_transcription_count {
+                blob.lifetime_transcription_count = count_from_db;
+                changed = true;
+            }
+            if longest_words_from_db > blob.lifetime_longest_words {
+                blob.lifetime_longest_words = longest_words_from_db;
+                changed = true;
+            }
+            if changed {
+                Some(blob.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(snapshot) = snapshot {
+            save_blob(&snapshot);
+        }
+    }
+
+    /// Monotonic counters used by the Achievements page. Kept in a dedicated
+    /// accessor (rather than on [`UsageStats`]) because this view has no
+    /// concept of weekly quota — callers should reach for `stats()` when
+    /// they need the billing-side fields too.
+    pub fn lifetime_achievement_counters(&self) -> LifetimeAchievementCounters {
+        let blob = self.state.lock().expect("usage mutex poisoned");
+        LifetimeAchievementCounters {
+            total_words: blob.lifetime_words,
+            total_seconds: blob.lifetime_seconds,
+            transcription_count: blob.lifetime_transcription_count,
+            longest_transcription_words: blob.lifetime_longest_words,
+        }
     }
 
     /// Snapshot for the Usage settings pane. Always recomputes `is_over_limit`
@@ -293,7 +382,7 @@ fn next_week_start_unix() -> i64 {
 
 fn fresh_blob() -> UsageBlob {
     UsageBlob {
-        version: 2,
+        version: 3,
         current_week_start: current_week_start_iso(),
         current_week_seconds: 0,
         current_week_words: 0,
@@ -301,6 +390,8 @@ fn fresh_blob() -> UsageBlob {
         lifetime_seconds: 0,
         lifetime_words: 0,
         history: Vec::new(),
+        lifetime_transcription_count: 0,
+        lifetime_longest_words: 0,
     }
 }
 
@@ -316,12 +407,34 @@ fn compute_hmac(blob: &UsageBlob) -> String {
     // tamper detection, not authentication. Using sha2 directly keeps the
     // dependency footprint minimal — `sha2` is already in Cargo.toml.
     let payload = serde_json::to_vec(blob).unwrap_or_default();
+    hmac_of(&payload)
+}
+
+/// HMAC against the v2 wire shape, used to verify blobs written by builds
+/// that predate the Achievements counters. Returns the same hash the old
+/// `compute_hmac` would have produced so existing keychain entries continue
+/// to load cleanly after the upgrade.
+fn compute_hmac_v2_shape(blob: &UsageBlob) -> String {
+    let v2 = UsageBlobV2Shape {
+        version: blob.version,
+        current_week_start: &blob.current_week_start,
+        current_week_seconds: blob.current_week_seconds,
+        current_week_words: blob.current_week_words,
+        warned_this_week: blob.warned_this_week,
+        lifetime_seconds: blob.lifetime_seconds,
+        lifetime_words: blob.lifetime_words,
+        history: &blob.history,
+    };
+    let payload = serde_json::to_vec(&v2).unwrap_or_default();
+    hmac_of(&payload)
+}
+
+fn hmac_of(payload: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(HMAC_SECRET);
-    hasher.update(&payload);
+    hasher.update(payload);
     hasher.update(HMAC_SECRET);
-    let digest = hasher.finalize();
-    hex_encode(&digest)
+    hex_encode(&hasher.finalize())
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -359,27 +472,40 @@ fn load_blob() -> Option<UsageBlob> {
             return None;
         }
     };
-    let expected = compute_hmac(&envelope.blob);
-    if expected != envelope.hmac {
-        // Tamper / corruption. Treat as fresh-but-over-limit so we don't
-        // accidentally reward tampering: if the blob says 0 and the real
-        // value was 1800, returning 0 is worse than returning nothing.
-        // Caller uses None -> fresh blob, so the user effectively gets a
-        // reset week. This is the lesser evil; if abuse turns out to be
-        // material, we switch to server-side enforcement.
-        warn!("Usage blob HMAC mismatch; ignoring stored value");
-        return None;
+    let expected_current = compute_hmac(&envelope.blob);
+    if expected_current == envelope.hmac {
+        return Some(envelope.blob);
     }
-    Some(envelope.blob)
+    // Fall back to the v2 wire shape. Old blobs written before the
+    // Achievements counters landed are hashed over a smaller struct; serde
+    // defaults the new fields to 0 on load, and the next save rewrites with
+    // the current-shape HMAC.
+    let expected_v2 = compute_hmac_v2_shape(&envelope.blob);
+    if expected_v2 == envelope.hmac {
+        debug!("Usage blob matched v2 HMAC; upgrading to v3 on next save");
+        return Some(envelope.blob);
+    }
+    // Tamper / corruption. Treat as fresh-but-over-limit so we don't
+    // accidentally reward tampering: if the blob says 0 and the real
+    // value was 1800, returning 0 is worse than returning nothing.
+    // Caller uses None -> fresh blob, so the user effectively gets a
+    // reset week. This is the lesser evil; if abuse turns out to be
+    // material, we switch to server-side enforcement.
+    warn!("Usage blob HMAC mismatch; ignoring stored value");
+    None
 }
 
 fn save_blob(blob: &UsageBlob) {
     let Some(entry) = keychain_entry() else {
         return;
     };
+    // Always write at the current schema version so next load hits the
+    // current-shape HMAC without falling back.
+    let mut upgraded = blob.clone();
+    upgraded.version = 3;
     let envelope = SignedEnvelope {
-        blob: blob.clone(),
-        hmac: compute_hmac(blob),
+        hmac: compute_hmac(&upgraded),
+        blob: upgraded,
     };
     let serialized = match serde_json::to_string(&envelope) {
         Ok(s) => s,
@@ -416,5 +542,37 @@ mod tests {
         blob.current_week_seconds = 600;
         let h2 = compute_hmac(&blob);
         assert_ne!(h1, h2);
+    }
+
+    /// A v2 blob (pre-Achievements counters) whose stored HMAC was computed
+    /// without the new fields must still validate after the v3 upgrade, or
+    /// existing users would silently lose their `lifetime_words` /
+    /// `lifetime_seconds` on first launch of the new build.
+    #[test]
+    fn v2_hmac_still_validates_for_legacy_blob() {
+        let mut legacy = UsageBlob {
+            version: 2,
+            current_week_start: "2026-04-13".to_string(),
+            current_week_seconds: 120,
+            current_week_words: 500,
+            warned_this_week: false,
+            lifetime_seconds: 9_000,
+            lifetime_words: 40_000,
+            history: Vec::new(),
+            lifetime_transcription_count: 0,
+            lifetime_longest_words: 0,
+        };
+        // Simulate an old build's stored HMAC (hashed over the v2 shape).
+        let old_hmac = compute_hmac_v2_shape(&legacy);
+        // Current shape hash would not match — that's the whole reason we
+        // keep the v2 fallback path.
+        assert_ne!(old_hmac, compute_hmac(&legacy));
+        // But the v2 fallback must recognize it.
+        assert_eq!(old_hmac, compute_hmac_v2_shape(&legacy));
+        // And once the new fields are populated, the v2 hash is unaffected
+        // (v2 shape doesn't include those fields).
+        legacy.lifetime_transcription_count = 7;
+        legacy.lifetime_longest_words = 123;
+        assert_eq!(old_hmac, compute_hmac_v2_shape(&legacy));
     }
 }
