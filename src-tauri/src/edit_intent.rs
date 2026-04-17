@@ -3,23 +3,29 @@ use regex::Regex;
 
 const PREFIX_EDIT_MAX_WORDS: usize = 15;
 
+// Raw strings (`r"..."`) do NOT support Rust's `\<newline>` line-continuation —
+// a backslash followed by a newline is two literal characters in a raw string.
+// Build the pattern with `concat!` so each alternative is a clean fragment.
 static EDIT_PREFIX_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)^\s*[\p{P}]*\s*(?:\
-fix\s+that\b|\
-make\s+(?:that|it)\s+(?:shorter|longer|formal|casual|concise|clearer)\b|\
-shorten\s+(?:that|it)\b|\
-lengthen\s+(?:that|it)\b|\
-rewrite\s+(?:that|it)\s+(?:formally|casually|in\s+\w+)\b|\
-rephrase\s+(?:that|it)\b|\
-undo\s+(?:that|it|the\s+last)\b|\
-redo\s+(?:that|it)\b|\
-try\s+again\b|\
-combine\s+the\s+last\s+(?:two|2|three|3)\b|\
-change\s+\S+\s+to\s+\S+|\
-replace\s+\S+\s+with\s+\S+\
-)",
-    )
+    Regex::new(concat!(
+        r"(?i)^\s*[\p{P}]*\s*(?:",
+        r"fix\s+that\b",
+        r"|make\s+(?:that|it)\s+(?:shorter|longer|formal|casual|concise|clearer)\b",
+        r"|shorten\s+(?:that|it)\b",
+        r"|lengthen\s+(?:that|it)\b",
+        r"|rewrite\s+(?:that|it)\s+(?:formally|casually|in\s+\w+)\b",
+        r"|rephrase\s+(?:that|it)\b",
+        r"|undo\s+(?:that|it|the\s+last)\b",
+        r"|redo\s+(?:that|it)\b",
+        r"|try\s+again\b",
+        r"|combine\s+the\s+last\s+(?:two|2|three|3)\b",
+        r"|change\s+\S+\s+to\s+\S+",
+        r"|replace\s+\S+\s+with\s+\S+",
+        // Anchor to end-of-input (modulo trailing punctuation/whitespace) so
+        // "fix that" matches but "fix that bug on line 12 please" — a dictation
+        // that happens to start with an edit phrase — does not.
+        r")\s*[\p{P}]*\s*$",
+    ))
     .expect("valid edit-intent regex")
 });
 
