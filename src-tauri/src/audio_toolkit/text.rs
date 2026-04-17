@@ -91,9 +91,18 @@ fn find_best_match<'a>(
             .unwrap_or(custom_word_nospace.as_str());
         let phonetic_match = soundex(candidate, phonetic_target);
 
-        // Combine scores: favor phonetic matches, but also consider string similarity
-        let combined_score = if phonetic_match {
-            levenshtein_score * 0.3 // Give significant boost to phonetic matches
+        // Soundex is a 4-char consonant-skeleton hash — loose enough that
+        // unrelated words collide frequently (e.g. "pricing" / "Prisma",
+        // "nextweek" / "nextjs" both share the same Soundex code). A naive
+        // 0.3× phonetic boost was letting these collisions slide under the
+        // default threshold and replacing common English with tech terms
+        // in non-technical contexts. Gate the boost on a reasonably close
+        // Levenshtein ratio so only words that are BOTH phonetically and
+        // orthographically similar benefit. Ratio ≤ 0.4 still covers real
+        // typos ("helo"→"hello", "wrold"→"world", "Claud"→"Claude") while
+        // blocking skeleton collisions where most of the characters differ.
+        let combined_score = if phonetic_match && levenshtein_score <= 0.4 {
+            levenshtein_score * 0.3
         } else {
             levenshtein_score
         };
@@ -641,6 +650,35 @@ mod tests {
         let result =
             apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.5);
         assert!(result.contains("Claude"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_apply_custom_words_pricing_not_swapped_for_prisma() {
+        // Regression: "pricing" and "Prisma" share the Soundex code P625,
+        // but have a Levenshtein ratio of ~0.57 — nowhere near a typo.
+        // Prior logic applied a 0.3× phonetic boost that dropped the
+        // combined score below the 0.18 default threshold, causing
+        // "pricing details" to be rewritten to "Prisma details" in
+        // non-technical apps like email clients.
+        let text = "walk through the pricing details";
+        let custom_words = vec!["Prisma".to_string()];
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.18);
+        assert_eq!(result, "walk through the pricing details");
+    }
+
+    #[test]
+    fn test_apply_custom_words_next_week_not_swapped_for_nextjs() {
+        // Regression: the n-gram "next week" concatenates to "nextweek",
+        // which shares a Soundex skeleton with "nextjs" but has a
+        // Levenshtein ratio of 0.5. The phonetic boost was collapsing
+        // unrelated phrases to tech terms — e.g. "call next week" →
+        // "call Next.js" — even when the user was typing into an email.
+        let text = "jump on a call next week";
+        let custom_words = vec!["Next.js".to_string()];
+        let result =
+            apply_custom_words(text, &custom_words, &std::collections::HashMap::new(), 0.18);
+        assert_eq!(result, "jump on a call next week");
     }
 
     #[test]
