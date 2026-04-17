@@ -1279,20 +1279,10 @@ impl ShortcutAction for TranscribeAction {
                             let post_process = force_post_process
                                 || (!capture_screenshot && settings_snapshot.has_working_llm());
                             let app_ctx = frontmost::current().ok().flatten();
-                            let mut overrides = profiles::resolve_with_builtins(
+                            let overrides = profiles::resolve_with_builtins(
                                 &settings_snapshot,
                                 app_ctx.as_ref(),
                             );
-                            // If this was triggered by a prompt shortcut, override the prompt_id.
-                            if binding_id.starts_with("prompt_shortcut_") {
-                                let prompt_id = binding_id
-                                    .strip_prefix("prompt_shortcut_")
-                                    .unwrap()
-                                    .to_string();
-                                overrides.prompt_id = Some(prompt_id);
-                                // Prompt shortcuts always post-process
-                                overrides.post_process_enabled = Some(true);
-                            }
                             if let Some(name) = &overrides.profile_name {
                                 debug!("Active profile: '{}'", name);
                             }
@@ -1756,10 +1746,6 @@ impl ShortcutAction for ConfirmScreenshotPasteAction {
             }
         };
 
-        // Release the shortcut before performing the paste so the paste
-        // action's own Cmd+V simulation isn't captured by our handler.
-        crate::shortcut::unregister_confirm_paste_shortcut(app);
-
         // Reads the `image_paste_uses_shift` flag off the matched built-in
         // profile, if any. VS Code is the only current case — Copilot Chat
         // requires Shift+Cmd+V to attach images.
@@ -1770,31 +1756,53 @@ impl ShortcutAction for ConfirmScreenshotPasteAction {
             .map(|profile| profile.image_paste_uses_shift)
             .unwrap_or(false);
 
+        // Hand the rest of the work to a tokio worker. Two reasons:
+        //   1. handy-keys dispatches shortcut handlers from its manager
+        //      thread. A synchronous unregister round-trip from the handler
+        //      would self-deadlock the mpsc channel the manager owns.
+        //   2. The unregister MUST complete before we simulate Cmd+V,
+        //      otherwise the manager's blocking event tap re-consumes our
+        //      own synthetic keystroke and the target app never sees the
+        //      paste. Returning from the handler frees the manager thread
+        //      to process the unregister command; we then proceed.
         let app_clone = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            if let Err(e) = crate::clipboard_image::paste_image(&capture.png, &app_clone, use_shift)
-            {
-                error!("Image paste failed during confirm: {}", e);
-                let _ = app_clone.emit("paste-error", ());
-                utils::hide_recording_overlay(&app_clone);
-                return;
+        tauri::async_runtime::spawn(async move {
+            // Synchronous unregister from a worker thread is safe —
+            // the manager thread is no longer blocked on us.
+            let settings = crate::settings::get_settings(&app_clone);
+            if let Some(binding) = settings.bindings.get("confirm_screenshot_paste").cloned() {
+                if !binding.current_binding.is_empty() {
+                    let _ = crate::shortcut::unregister_shortcut(&app_clone, binding);
+                }
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            let app_for_paste = app_clone.clone();
+            let _ = app_clone.run_on_main_thread(move || {
+                if let Err(e) =
+                    crate::clipboard_image::paste_image(&capture.png, &app_for_paste, use_shift)
+                {
+                    error!("Image paste failed during confirm: {}", e);
+                    let _ = app_for_paste.emit("paste-error", ());
+                    utils::hide_recording_overlay(&app_for_paste);
+                    return;
+                }
 
-            let opts = PasteOptions {
-                append_trailing_space: None,
-                replace_prior_chars: None,
-                suppress_auto_submit: false,
-            };
-            if let Err(e) =
-                crate::clipboard::paste_with_options(capture.text, app_clone.clone(), opts)
-            {
-                error!("Text paste during confirm failed: {}", e);
-                let _ = app_clone.emit("paste-error", ());
-            }
+                std::thread::sleep(std::time::Duration::from_millis(300));
 
-            utils::hide_recording_overlay(&app_clone);
+                let opts = PasteOptions {
+                    append_trailing_space: None,
+                    replace_prior_chars: None,
+                    suppress_auto_submit: false,
+                };
+                if let Err(e) =
+                    crate::clipboard::paste_with_options(capture.text, app_for_paste.clone(), opts)
+                {
+                    error!("Text paste during confirm failed: {}", e);
+                    let _ = app_for_paste.emit("paste-error", ());
+                }
+
+                utils::hide_recording_overlay(&app_for_paste);
+            });
         });
     }
 

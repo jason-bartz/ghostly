@@ -22,7 +22,6 @@ import { ModelSelect } from "../PostProcessingSettingsApi/ModelSelect";
 import { usePostProcessProviderState } from "../PostProcessingSettingsApi/usePostProcessProviderState";
 import { ShortcutInput } from "../ShortcutInput";
 import { VoiceEditing } from "../VoiceEditing";
-import { PromptShortcutInput } from "../PromptShortcutInput";
 import { useSettings } from "../../../hooks/useSettings";
 
 const PostProcessingSettingsApiComponent: React.FC = () => {
@@ -368,13 +367,6 @@ const PostProcessingSettingsPromptsComponent: React.FC = () => {
                 />
               </p>
             </div>
-
-            <PromptShortcutInput
-              promptId={selectedPromptId}
-              currentShortcut={selectedPrompt.shortcut ?? null}
-              promptName={selectedPrompt.name}
-              onShortcutChange={refreshSettings}
-            />
 
             <div className="flex gap-2 pt-2">
               <Button

@@ -9,8 +9,11 @@ const DB_RANGE: f32 = 40.0;
 const PEAK_ATTACK: f32 = 0.15;
 const PEAK_RELEASE: f32 = 0.002;
 // Floor the peak so a silent room doesn't collapse the range onto ambient
-// noise — quiet mics should still *look* quiet when nobody's speaking.
-const PEAK_FLOOR: f32 = -25.0;
+// noise. Set low enough that quiet inputs (e.g. laptop built-in mics at
+// normal distance) still reach the top of the normalized window when
+// speaking — otherwise the bars register dim while the transcription is
+// fine.
+const PEAK_FLOOR: f32 = -50.0;
 // Noise gate offset above the tracked per-bucket noise floor.
 const GATE_MARGIN_DB: f32 = 4.0;
 const GAIN: f32 = 1.3;
@@ -142,8 +145,11 @@ impl AudioVisualiser {
                 frame_max_db = db;
             }
 
-            // Only update noise floor when signal is quiet (below current floor + 10dB)
-            if db < self.noise_floor[bucket_idx] + 10.0 {
+            // Only update noise floor when signal is within 2 dB of (or below)
+            // the current floor. A wider window (e.g. +10) lets persistent
+            // quiet speech drag the floor up until the gate blocks it — bad
+            // for built-in mics where speech already sits close to ambient.
+            if db < self.noise_floor[bucket_idx] + 2.0 {
                 const NOISE_ALPHA: f32 = 0.001;
                 self.noise_floor[bucket_idx] =
                     NOISE_ALPHA * db + (1.0 - NOISE_ALPHA) * self.noise_floor[bucket_idx];

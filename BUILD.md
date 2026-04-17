@@ -81,10 +81,10 @@ The command prints the **public key** (a single-line base64 string). Copy that s
 
 Two secrets must exist on the repository (or org):
 
-| Secret | Value |
-|---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.ghostly/updater.key` (the encrypted private key file) |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password you set during `tauri signer generate` |
+| Secret                               | Value                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | Contents of `~/.ghostly/updater.key` (the encrypted private key file) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password you set during `tauri signer generate`                       |
 
 These are referenced by `.github/workflows/build.yml` and consumed by `tauri-action`, which uses them to sign the `.app.tar.gz` bundle and emit the matching `.sig` file.
 
@@ -113,6 +113,7 @@ The release workflow publishes three objects to the R2 bucket on every release:
 ```
 bun run tauri build
 ```
+
 …is the local path; for production releases, trigger `.github/workflows/release.yml` from GitHub. The workflow:
 
 1. Creates a draft GitHub Release named `v<version>`.
