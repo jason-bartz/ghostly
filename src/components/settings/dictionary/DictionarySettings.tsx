@@ -28,10 +28,16 @@ const CATEGORY_TAGS: Array<{ id: CategoryId; label: string; full: string }> = [
 
 type DictSort = "recent" | "az" | "za";
 
-const VOCAB_PRESETS: { id: string; labelKey: string; words: string[] }[] = [
+const VOCAB_PRESETS: {
+  id: string;
+  labelKey: string;
+  category: CategoryId;
+  words: string[];
+}[] = [
   {
     id: "web",
     labelKey: "settings.advanced.customWords.presets.web",
+    category: "coding",
     words: [
       "React",
       "Next.js",
@@ -58,6 +64,7 @@ const VOCAB_PRESETS: { id: string; labelKey: string; words: string[] }[] = [
   {
     id: "rust",
     labelKey: "settings.advanced.customWords.presets.rust",
+    category: "coding",
     words: [
       "Rust",
       "Cargo",
@@ -76,6 +83,7 @@ const VOCAB_PRESETS: { id: string; labelKey: string; words: string[] }[] = [
   {
     id: "python",
     labelKey: "settings.advanced.customWords.presets.python",
+    category: "coding",
     words: [
       "Python",
       "FastAPI",
@@ -96,6 +104,7 @@ const VOCAB_PRESETS: { id: string; labelKey: string; words: string[] }[] = [
   {
     id: "ai",
     labelKey: "settings.advanced.customWords.presets.ai",
+    category: "coding",
     words: [
       "Cursor",
       "Claude",
@@ -283,18 +292,51 @@ export const DictionarySettings: React.FC = () => {
     updateSetting("custom_word_phonetics", next);
   };
 
-  const handleAddPreset = (presetId: string) => {
+  const handleAddPreset = async (presetId: string) => {
     const preset = VOCAB_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     const existing = new Set(customWords.map((w) => w.toLowerCase()));
     const toAdd = preset.words.filter((w) => !existing.has(w.toLowerCase()));
-    if (toAdd.length === 0) {
+
+    // Scope preset words to their category (e.g. "coding") so they only
+    // activate when the frontmost app matches that category — prevents
+    // "next week" → "Next.js" and "pricing" → "Prisma" in Superhuman,
+    // Messages, browser, etc. Tag every preset word, including ones the
+    // user already has — re-clicking the preset backfills the category
+    // on existing untagged words. Preserve any other tags the user set
+    // manually.
+    const needsTag = preset.words.filter((w) => {
+      const current = wordCategories[w.toLowerCase()] ?? [];
+      return !current.includes(preset.category);
+    });
+
+    if (toAdd.length === 0 && needsTag.length === 0) {
       toast(t("settings.advanced.customWords.presetAlreadyAdded"));
       return;
     }
-    updateSetting("custom_words", [...toAdd, ...customWords]);
+
+    if (toAdd.length > 0) {
+      updateSetting("custom_words", [...toAdd, ...customWords]);
+    }
+
+    try {
+      for (const w of needsTag) {
+        const current = wordCategories[w.toLowerCase()] ?? [];
+        await styleCommands.setCustomWordCategories(w, [
+          ...current,
+          preset.category,
+        ]);
+      }
+      await refreshSettings();
+    } catch (e) {
+      toast.error(String(e));
+      return;
+    }
+
     toast.success(
-      t("settings.advanced.customWords.presetAdded", { count: toAdd.length }),
+      t("settings.advanced.customWords.presetAdded", {
+        count: toAdd.length || needsTag.length,
+      }),
     );
   };
 
