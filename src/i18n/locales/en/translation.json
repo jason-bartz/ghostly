@@ -1070,7 +1070,7 @@
     "stagedNoText": "(no transcription)",
     "stagedCancel": "Discard",
     "stagedPressToPaste": "Focus a text field and press",
-    "stagedUnboundHint": "Set a shortcut in Settings → Output → Shortcuts to paste."
+    "stagedUnboundHint": "Set a shortcut in Settings → Recording → Shortcuts to paste."
   },
   "eula": {
     "title": "Welcome to Ghostly",

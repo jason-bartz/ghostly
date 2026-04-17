@@ -428,9 +428,10 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
     let default_bindings = settings::get_default_settings().bindings;
     let user_settings = settings::load_or_create_app_settings(app);
 
-    // Register all bindings except cancel (which is dynamic)
+    // Register all bindings except cancel and confirm_screenshot_paste — both
+    // are dynamic (cancel while recording, paste while a capture is staged).
     for (id, default_binding) in default_bindings {
-        if id == "cancel" {
+        if id == "cancel" || id == "confirm_screenshot_paste" {
             continue;
         }
 

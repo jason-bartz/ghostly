@@ -31,18 +31,24 @@ tauri_panel! {
     })
 }
 
-const OVERLAY_WIDTH: f64 = 260.0;
-const OVERLAY_HEIGHT: f64 = 80.0;
+// Panels are intentionally larger than the visible glass rectangle: the CSS
+// box-shadow emanates ~40px past the element on every side, and any part of
+// that halo that extends beyond the panel's transparent window gets clipped
+// to the rectangular window bounds — producing visible square edges around
+// an otherwise rounded UI. Keeping ~50px breathing room lets the shadow
+// fade smoothly.
+const OVERLAY_WIDTH: f64 = 320.0;
+const OVERLAY_HEIGHT: f64 = 140.0;
 
 /// Enlarged size used when displaying the staged-capture panel (thumbnail +
 /// text preview + cancel button + shortcut hint).
-const STAGED_OVERLAY_WIDTH: f64 = 320.0;
-const STAGED_OVERLAY_HEIGHT: f64 = 140.0;
+const STAGED_OVERLAY_WIDTH: f64 = 400.0;
+const STAGED_OVERLAY_HEIGHT: f64 = 220.0;
 
 /// Wider size used when the edit-mode chip strip is visible so the four
 /// chips (Shorten / Lengthen / Fix grammar / Rephrase) have room to breathe
 /// next to the ghost icon and cancel button.
-const EDIT_OVERLAY_WIDTH: f64 = 420.0;
+const EDIT_OVERLAY_WIDTH: f64 = 500.0;
 
 #[cfg(target_os = "macos")]
 const OVERLAY_TOP_OFFSET: f64 = 46.0;

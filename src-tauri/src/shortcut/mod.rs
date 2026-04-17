@@ -96,6 +96,47 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
     }
 }
 
+/// Register the confirm-paste shortcut (called when a screenshot capture is
+/// staged). Stays registered only for the brief window between capture and
+/// paste/cancel so combos like Cmd+V pass through normally the rest of the
+/// time. Idempotent — re-staging drops any stale registration first.
+pub fn register_confirm_paste_shortcut(app: &AppHandle) {
+    let binding = match settings::get_bindings(app)
+        .get("confirm_screenshot_paste")
+        .cloned()
+    {
+        Some(b) => b,
+        None => return,
+    };
+    if binding.current_binding.is_empty() {
+        return;
+    }
+    // Drop any stale registration (from a previous stage that wasn't pasted
+    // or from a binding change) so re-registering can't fail with "already
+    // in use".
+    let _ = unregister_shortcut(app, binding.clone());
+    if let Err(e) = register_shortcut(app, binding) {
+        warn!("Failed to register confirm-paste shortcut: {}", e);
+    }
+}
+
+/// Unregister the confirm-paste shortcut (called after paste completes or the
+/// capture is cancelled). Errors are logged at debug level — the shortcut may
+/// already be unregistered if the user never staged anything.
+pub fn unregister_confirm_paste_shortcut(app: &AppHandle) {
+    let binding = match settings::get_bindings(app)
+        .get("confirm_screenshot_paste")
+        .cloned()
+    {
+        Some(b) => b,
+        None => return,
+    };
+    if binding.current_binding.is_empty() {
+        return;
+    }
+    let _ = unregister_shortcut(app, binding);
+}
+
 /// Register a shortcut using the appropriate implementation
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let settings = get_settings(app);
@@ -166,9 +207,11 @@ pub fn change_binding(
         }
     };
 
-    // If this is the cancel binding, just update the settings and return
-    // It's managed dynamically, so we don't register/unregister here
-    if id == "cancel" {
+    // Dynamically-registered bindings (cancel, confirm_screenshot_paste) are
+    // only hot for a short window (while recording / while a capture is
+    // staged). Persist the new value but don't register it globally — the
+    // next stage/record event handles that.
+    if id == "cancel" || id == "confirm_screenshot_paste" {
         if let Some(mut b) = settings.bindings.get(&id).cloned() {
             b.current_binding = binding;
             settings.bindings.insert(id.clone(), b.clone());
@@ -249,6 +292,11 @@ pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, Stri
 #[tauri::command]
 #[specta::specta]
 pub fn suspend_binding(app: AppHandle, id: String) -> Result<(), String> {
+    // Dynamically-registered shortcuts aren't globally hot outside their
+    // active window, so there's nothing to suspend.
+    if id == "cancel" || id == "confirm_screenshot_paste" {
+        return Ok(());
+    }
     if let Some(b) = settings::get_bindings(&app).get(&id).cloned() {
         if let Err(e) = unregister_shortcut(&app, b) {
             error!("suspend_binding error for id '{}': {}", id, e);
@@ -262,6 +310,11 @@ pub fn suspend_binding(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub fn resume_binding(app: AppHandle, id: String) -> Result<(), String> {
+    // See suspend_binding — dynamically-registered shortcuts must stay cold
+    // until the app re-registers them at the right moment.
+    if id == "cancel" || id == "confirm_screenshot_paste" {
+        return Ok(());
+    }
     if let Some(b) = settings::get_bindings(&app).get(&id).cloned() {
         if let Err(e) = register_shortcut(&app, b) {
             error!("resume_binding error for id '{}': {}", id, e);
@@ -396,8 +449,8 @@ fn unregister_all_shortcuts(app: &AppHandle, implementation: KeyboardImplementat
     let bindings = settings::get_bindings(app);
 
     for (id, binding) in bindings {
-        // Skip cancel shortcut as it's dynamically registered
-        if id == "cancel" {
+        // Skip dynamically-registered shortcuts
+        if id == "cancel" || id == "confirm_screenshot_paste" {
             continue;
         }
 
@@ -425,8 +478,8 @@ fn register_all_shortcuts_for_implementation(
     let mut current_settings = settings::get_settings(app);
 
     for (id, default_binding) in &default_bindings {
-        // Skip cancel shortcut as it's dynamically registered
-        if id == "cancel" {
+        // Skip dynamically-registered shortcuts
+        if id == "cancel" || id == "confirm_screenshot_paste" {
             continue;
         }
 

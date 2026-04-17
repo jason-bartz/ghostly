@@ -376,6 +376,11 @@ pub struct AppSettings {
     /// runs once. See lib.rs autostart args for the full rationale.
     #[serde(default)]
     pub start_hidden_default_flipped: bool,
+    /// Marker for the Cmd+V default on `confirm_screenshot_paste`. When false,
+    /// the migration upgrades an empty/legacy-unbound binding to cmd+v one
+    /// time, then sets this true so it won't override a user's explicit clear.
+    #[serde(default)]
+    pub confirm_paste_default_set: bool,
     #[serde(default = "default_autostart_enabled")]
     pub autostart_enabled: bool,
     #[serde(default = "default_model")]
@@ -1108,18 +1113,19 @@ pub fn get_default_settings() -> AppSettings {
         },
     );
 
-    // Confirm-paste shortcut for staged screenshot captures. Unbound by default
-    // so the user can pick a combo that doesn't conflict with their target apps.
+    // Confirm-paste shortcut for staged screenshot captures. Defaults to Cmd+V
+    // but is only registered while a capture is actually staged — normal Cmd+V
+    // remains unaffected the rest of the time. Users can still rebind or clear.
     bindings.insert(
         "confirm_screenshot_paste".to_string(),
         ShortcutBinding {
             id: "confirm_screenshot_paste".to_string(),
             name: "Paste Staged Capture".to_string(),
             description:
-                "Pastes the staged screenshot + transcription into the focused text field. Trigger this after capturing with 'Screenshot + Dictate'."
+                "Pastes the staged screenshot + transcription into the focused text field. Active only while a capture is staged — your normal Cmd+V is unaffected otherwise."
                     .to_string(),
-            default_binding: "".to_string(),
-            current_binding: "".to_string(),
+            default_binding: "cmd+v".to_string(),
+            current_binding: "cmd+v".to_string(),
         },
     );
     bindings.insert(
@@ -1174,6 +1180,7 @@ pub fn get_default_settings() -> AppSettings {
         // Fresh installs are already on the new default, so mark the
         // migration done — only pre-0.1.7 stored settings need it.
         start_hidden_default_flipped: true,
+        confirm_paste_default_set: true,
         autostart_enabled: default_autostart_enabled(),
         selected_model: "".to_string(),
         always_on_microphone: false,
@@ -1370,6 +1377,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     changed |= ensure_category_style_defaults(&mut settings);
     changed |= migrate_seen_ide_hint_ids(&mut settings);
     changed |= migrate_start_hidden_default(&mut settings);
+    changed |= migrate_confirm_paste_default(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1394,6 +1402,28 @@ fn migrate_start_hidden_default(settings: &mut AppSettings) -> bool {
     }
     settings.start_hidden = false;
     settings.start_hidden_default_flipped = true;
+    true
+}
+
+/// Pre-this-version `confirm_screenshot_paste` shipped as unbound by default,
+/// so anyone who installed the screenshot-dictate build without reading the
+/// hint ended up with no way to paste. Now that we register the shortcut only
+/// while a capture is staged, it's safe to default to Cmd+V. Upgrade any
+/// binding still sitting at the old empty default; leave explicit user values
+/// alone. Flag gates this so we don't trample a user who later clears it.
+fn migrate_confirm_paste_default(settings: &mut AppSettings) -> bool {
+    if settings.confirm_paste_default_set {
+        return false;
+    }
+    if let Some(binding) = settings.bindings.get_mut("confirm_screenshot_paste") {
+        if binding.current_binding.is_empty() {
+            binding.current_binding = "cmd+v".to_string();
+        }
+        if binding.default_binding.is_empty() {
+            binding.default_binding = "cmd+v".to_string();
+        }
+    }
+    settings.confirm_paste_default_set = true;
     true
 }
 
@@ -1524,6 +1554,7 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     changed |= ensure_category_style_defaults(&mut settings);
     changed |= migrate_seen_ide_hint_ids(&mut settings);
     changed |= migrate_start_hidden_default(&mut settings);
+    changed |= migrate_confirm_paste_default(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(

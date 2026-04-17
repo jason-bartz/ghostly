@@ -1410,6 +1410,11 @@ impl ShortcutAction for TranscribeAction {
                                         >>();
                                         staged.set(png.clone(), transcription.clone());
 
+                                        // Arm the paste shortcut now that there's something
+                                        // to paste. It stays hot until ConfirmScreenshotPasteAction
+                                        // fires or cancel_staged_capture clears it.
+                                        crate::shortcut::register_confirm_paste_shortcut(&ah);
+
                                         // Look up the user's confirm shortcut so the overlay
                                         // can display it as a hint.
                                         let confirm_shortcut = settings_snapshot
@@ -1722,10 +1727,18 @@ impl ShortcutAction for ConfirmScreenshotPasteAction {
         let capture = match state.take() {
             Some(c) => c,
             None => {
+                // Shortcut fired without a staged capture — either we were
+                // slow to unregister or the user pressed the combo after
+                // clearing. Drop the registration so normal Cmd+V works.
                 debug!("Confirm screenshot paste: no staged capture");
+                crate::shortcut::unregister_confirm_paste_shortcut(app);
                 return;
             }
         };
+
+        // Release the shortcut before performing the paste so the paste
+        // action's own Cmd+V simulation isn't captured by our handler.
+        crate::shortcut::unregister_confirm_paste_shortcut(app);
 
         // Reads the `image_paste_uses_shift` flag off the matched built-in
         // profile, if any. VS Code is the only current case — Copilot Chat
