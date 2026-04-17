@@ -14,9 +14,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const openModal = useUpdaterStore((s) => s.openModal);
   const restartNow = useUpdaterStore((s) => s.restartNow);
 
-  const Separator = () => (
-    <span className="text-text-faint">{"•"}</span>
-  );
+  const Separator = () => <span className="text-text-faint">{"•"}</span>;
 
   if (status === "downloading") {
     const percent = progress?.percent ?? 0;

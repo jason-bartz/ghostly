@@ -91,10 +91,6 @@ pub struct LLMPrompt {
     pub id: String,
     pub name: String,
     pub prompt: String,
-    /// Optional global keyboard shortcut for this prompt (e.g. "ctrl+1").
-    /// When set, pressing this shortcut triggers a transcription using this prompt.
-    #[serde(default)]
-    pub shortcut: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -845,43 +841,36 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
             id: "default_improve_transcriptions".to_string(),
             name: "Improve Transcriptions".to_string(),
             prompt: "Clean this transcript:\n1. Fix spelling, capitalization, and punctuation errors\n2. Convert number words to digits (twenty-five → 25, ten percent → 10%, five dollars → $5)\n3. Replace spoken punctuation with symbols (period → ., comma → ,, question mark → ?)\n4. Remove filler words (um, uh, like as filler)\n5. Keep the language in the original version (if it was french, keep it in french for example)\n6. Format lists: if the text contains explicit enumeration (first/second/third, one/two/three, number one/two, bullet point one/two) or a clear sequence of items, format them as a proper bulleted or numbered list using markdown (- item or 1. item)\n\nPreserve exact meaning and word order. Do not paraphrase or reorder content.\n\nReturn only the cleaned transcript.\n\nTranscript:\n${output}".to_string(),
-            shortcut: None,
         },
         LLMPrompt {
             id: "builtin_developer".to_string(),
             name: "Developer".to_string(),
             prompt: "You are a developer assistant. Clean this voice transcription for a coding context:\n1. Format identifiers: detect spoken camelCase (\"my variable\" → myVariable), snake_case (\"my function\" → my_function), and UPPER_CASE constants\n2. Format CLI syntax: convert spoken commands to code (\"git force push\" → git push --force, \"make directory\" → mkdir, \"pipe to grep\" → | grep)\n3. Convert spoken symbols: \"dot\" → \".\", \"slash\" → \"/\", \"double colon\" → \"::\", \"arrow\" → \"->\", \"fat arrow\" → \"=>\"\n4. Fix punctuation: add semicolons, brackets where spoken (\"open paren\" → \"(\", \"close bracket\" → \"]\")\n5. Preserve technical terms exactly (React, Kubernetes, PostgreSQL, TypeScript, etc.)\n6. Remove filler words only\n\nReturn only the cleaned text.\n\nTranscript:\n${output}".to_string(),
-            shortcut: None,
         },
         LLMPrompt {
             id: "builtin_ai_prompt".to_string(),
             name: "AI Prompt Rewriter".to_string(),
             prompt: "You rewrite rambly spoken instructions into clean prompts for AI coding assistants (Cursor, Claude Code, Windsurf, v0).\n\nRestructure the input into this shape when the content supports it:\n- **Goal:** one sentence describing what to build, fix, or change\n- **Context:** files, functions, libraries, or constraints the user mentioned\n- **Acceptance:** observable criteria for \"done\" — only if the user stated or clearly implied them\n\nRules:\n- Preserve the user's intent exactly. Do not invent requirements, files, or constraints they didn't mention.\n- Preserve technical terms, identifiers, and code fragments verbatim (camelCase, snake_case, file paths, CLI flags).\n- Remove filler words and false starts. Tighten rambling phrasing.\n- If the input is a short one-liner, return a single clean sentence instead of forcing the structure.\n- Return only the rewritten prompt — no preamble, no explanation.\n\nInput:\n${output}".to_string(),
-            shortcut: None,
         },
         LLMPrompt {
             id: "builtin_screenshot_qa".to_string(),
             name: "Screenshot Q&A".to_string(),
             prompt: "You are a vision assistant. The user has attached a screenshot and dictated a request.\n\nRules:\n- Look carefully at the screenshot.\n- Answer the dictated request directly and concisely.\n- If the user asks for code, a prompt, a commit message, or any specific output, return ONLY that output — no preamble, no explanation.\n- If the user asks a general question about the screen, answer plainly in one or two sentences unless more is clearly needed.\n- Preserve any identifiers, file paths, CLI flags, and code fragments verbatim.\n\nDictated request:\n${output}".to_string(),
-            shortcut: None,
         },
         LLMPrompt {
             id: "builtin_email".to_string(),
             name: "Email".to_string(),
             prompt: "Clean this voice transcription for a professional email context:\n1. Fix spelling, capitalization, and grammar\n2. Convert number words to digits where appropriate\n3. Replace spoken punctuation with symbols\n4. Remove filler words (um, uh, like as filler)\n5. Ensure professional tone — fix overly casual phrasing without changing meaning\n6. Add proper sentence structure and paragraph breaks where natural\n\nPreserve meaning exactly. Return only the cleaned text.\n\nTranscript:\n${output}".to_string(),
-            shortcut: None,
         },
         LLMPrompt {
             id: "builtin_casual".to_string(),
             name: "Casual".to_string(),
             prompt: "Clean this voice transcription for casual messaging:\n1. Fix obvious spelling errors only\n2. Replace spoken punctuation with symbols\n3. Remove filler words (um, uh)\n4. Keep it natural and conversational — don't over-formalize\n5. Lowercase is fine where appropriate\n\nPreserve the casual tone. Return only the cleaned text.\n\nTranscript:\n${output}".to_string(),
-            shortcut: None,
         },
         LLMPrompt {
             id: "builtin_structured".to_string(),
             name: "Structured Notes".to_string(),
             prompt: "Clean and structure this voice transcription for note-taking:\n1. Fix spelling, capitalization, and punctuation\n2. Convert number words to digits\n3. Replace spoken punctuation with symbols\n4. Remove filler words\n5. Add bullet points or numbered lists where you detect enumeration (\"first... second... third...\")\n6. Break long sentences into clear, scannable statements\n\nPreserve all meaning. Return only the structured text.\n\nTranscript:\n${output}".to_string(),
-            shortcut: None,
         },
     ]
 }
@@ -889,7 +878,6 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
 /// Ensure all built-in prompts exist in user settings and their text is
 /// up-to-date. Called at settings load time so users always have access to
 /// built-in prompts and receive prompt-text updates automatically.
-/// User-set shortcuts on built-in prompts are preserved.
 fn ensure_builtin_prompts(settings: &mut AppSettings) -> bool {
     let builtins = default_post_process_prompts();
     let mut changed = false;
@@ -905,8 +893,6 @@ fn ensure_builtin_prompts(settings: &mut AppSettings) -> bool {
                 changed = true;
             }
             Some(existing) => {
-                // Sync name and prompt text so built-in updates reach existing
-                // users automatically. The shortcut (user-set) is left alone.
                 if existing.name != builtin.name || existing.prompt != builtin.prompt {
                     debug!("Updating built-in prompt '{}'", builtin.id);
                     existing.name = builtin.name;

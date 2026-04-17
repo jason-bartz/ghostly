@@ -517,7 +517,7 @@
         "title": "Refinement Prompt",
         "selectedPrompt": {
           "title": "Active Prompt",
-          "description": "Prompts define how the AI transforms your transcription. Use ${output} to reference the captured text."
+          "description": "The instructions the AI uses to clean up every transcription. Per-app profiles can override tone and formatting automatically."
         },
         "noPrompts": "No prompts yet",
         "selectPrompt": "Select a prompt",

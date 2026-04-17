@@ -446,8 +446,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::update_post_process_prompt,
             shortcut::delete_post_process_prompt,
             shortcut::set_post_process_selected_prompt,
-            shortcut::set_prompt_shortcut,
-            shortcut::remove_prompt_shortcut,
             shortcut::update_custom_words,
             shortcut::update_custom_word_phonetics,
             shortcut::suspend_binding,

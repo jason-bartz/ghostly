@@ -54,28 +54,6 @@ pub fn init_shortcuts(app: &AppHandle) {
             }
         }
     }
-
-    // Register per-prompt shortcuts after the primary bindings are set up.
-    let settings = settings::get_settings(app);
-    for prompt in &settings.post_process_prompts {
-        if let Some(ref shortcut) = prompt.shortcut {
-            if !shortcut.is_empty() {
-                let binding = ShortcutBinding {
-                    id: format!("prompt_shortcut_{}", prompt.id),
-                    name: format!("Prompt: {}", prompt.name),
-                    description: String::new(),
-                    default_binding: String::new(),
-                    current_binding: shortcut.clone(),
-                };
-                if let Err(e) = register_shortcut(app, binding) {
-                    error!(
-                        "Failed to register prompt shortcut for '{}': {}",
-                        prompt.id, e
-                    );
-                }
-            }
-        }
-    }
 }
 
 /// Register the cancel shortcut (called when recording starts)
@@ -100,41 +78,56 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
 /// staged). Stays registered only for the brief window between capture and
 /// paste/cancel so combos like Cmd+V pass through normally the rest of the
 /// time. Idempotent — re-staging drops any stale registration first.
+///
+/// Spawned on the async runtime because the handy-keys implementation drives
+/// shortcut (un)registration through an mpsc round-trip to its manager
+/// thread. Callers may themselves be running on that manager thread (e.g.
+/// the confirm-paste shortcut's own action handler wants to release the
+/// binding before pasting), in which case a synchronous round-trip would
+/// self-deadlock. Same pattern as register_cancel_shortcut.
 pub fn register_confirm_paste_shortcut(app: &AppHandle) {
-    let binding = match settings::get_bindings(app)
-        .get("confirm_screenshot_paste")
-        .cloned()
-    {
-        Some(b) => b,
-        None => return,
-    };
-    if binding.current_binding.is_empty() {
-        return;
-    }
-    // Drop any stale registration (from a previous stage that wasn't pasted
-    // or from a binding change) so re-registering can't fail with "already
-    // in use".
-    let _ = unregister_shortcut(app, binding.clone());
-    if let Err(e) = register_shortcut(app, binding) {
-        warn!("Failed to register confirm-paste shortcut: {}", e);
-    }
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let binding = match settings::get_bindings(&app_clone)
+            .get("confirm_screenshot_paste")
+            .cloned()
+        {
+            Some(b) => b,
+            None => return,
+        };
+        if binding.current_binding.is_empty() {
+            return;
+        }
+        // Drop any stale registration (from a previous stage that wasn't
+        // pasted or from a binding change) so re-registering can't fail
+        // with "already in use".
+        let _ = unregister_shortcut(&app_clone, binding.clone());
+        if let Err(e) = register_shortcut(&app_clone, binding) {
+            warn!("Failed to register confirm-paste shortcut: {}", e);
+        }
+    });
 }
 
 /// Unregister the confirm-paste shortcut (called after paste completes or the
 /// capture is cancelled). Errors are logged at debug level — the shortcut may
 /// already be unregistered if the user never staged anything.
+///
+/// See register_confirm_paste_shortcut for why this spawns.
 pub fn unregister_confirm_paste_shortcut(app: &AppHandle) {
-    let binding = match settings::get_bindings(app)
-        .get("confirm_screenshot_paste")
-        .cloned()
-    {
-        Some(b) => b,
-        None => return,
-    };
-    if binding.current_binding.is_empty() {
-        return;
-    }
-    let _ = unregister_shortcut(app, binding);
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let binding = match settings::get_bindings(&app_clone)
+            .get("confirm_screenshot_paste")
+            .cloned()
+        {
+            Some(b) => b,
+            None => return,
+        };
+        if binding.current_binding.is_empty() {
+            return;
+        }
+        let _ = unregister_shortcut(&app_clone, binding);
+    });
 }
 
 /// Register a shortcut using the appropriate implementation
@@ -1044,124 +1037,12 @@ pub fn add_post_process_prompt(
         id: id.clone(),
         name,
         prompt,
-        shortcut: None,
     };
 
     settings.post_process_prompts.push(new_prompt.clone());
     settings::write_settings(&app, settings);
 
     Ok(new_prompt)
-}
-
-/// Set (or replace) the global keyboard shortcut for a specific LLM prompt.
-/// When triggered, the shortcut starts a transcription that uses that prompt.
-#[tauri::command]
-#[specta::specta]
-pub fn set_prompt_shortcut(
-    app: AppHandle,
-    prompt_id: String,
-    binding: String,
-) -> Result<(), String> {
-    if binding.trim().is_empty() {
-        return remove_prompt_shortcut(app, prompt_id);
-    }
-
-    let mut settings = settings::get_settings(&app);
-
-    // Use position index to avoid holding a mutable borrow across fallible operations
-    let prompt_idx = settings
-        .post_process_prompts
-        .iter()
-        .position(|p| p.id == prompt_id)
-        .ok_or_else(|| format!("Prompt '{}' not found", prompt_id))?;
-
-    let old_shortcut = settings.post_process_prompts[prompt_idx].shortcut.clone();
-    let new_binding_id = format!("prompt_shortcut_{}", prompt_id);
-    let prompt_name = settings.post_process_prompts[prompt_idx].name.clone();
-
-    // Unregister old shortcut if present
-    if let Some(ref old_binding) = old_shortcut {
-        if !old_binding.is_empty() {
-            let old_sb = ShortcutBinding {
-                id: new_binding_id.clone(),
-                name: format!("Prompt: {}", prompt_name),
-                description: String::new(),
-                default_binding: String::new(),
-                current_binding: old_binding.clone(),
-            };
-            let _ = unregister_shortcut(&app, old_sb);
-        }
-    }
-
-    // Validate new shortcut
-    validate_shortcut_for_implementation(&binding, settings.keyboard_implementation)?;
-
-    // Register new shortcut BEFORE persisting settings so a failed registration
-    // doesn't leave settings pointing to an unregistered binding.
-    let new_sb = ShortcutBinding {
-        id: new_binding_id.clone(),
-        name: format!("Prompt: {}", prompt_name),
-        description: String::new(),
-        default_binding: String::new(),
-        current_binding: binding.clone(),
-    };
-
-    if let Err(e) = register_shortcut(&app, new_sb) {
-        // Re-register the old shortcut so runtime state stays consistent
-        if let Some(ref old_binding) = old_shortcut {
-            if !old_binding.is_empty() {
-                let old_sb = ShortcutBinding {
-                    id: new_binding_id,
-                    name: format!("Prompt: {}", prompt_name),
-                    description: String::new(),
-                    default_binding: String::new(),
-                    current_binding: old_binding.clone(),
-                };
-                if let Err(re_err) = register_shortcut(&app, old_sb) {
-                    error!(
-                        "set_prompt_shortcut: failed to re-register old shortcut after failed change: {}",
-                        re_err
-                    );
-                }
-            }
-        }
-        return Err(e);
-    }
-
-    // Registration succeeded — now persist the updated shortcut
-    settings.post_process_prompts[prompt_idx].shortcut = Some(binding);
-    settings::write_settings(&app, settings);
-
-    Ok(())
-}
-
-/// Remove the keyboard shortcut from a specific LLM prompt.
-#[tauri::command]
-#[specta::specta]
-pub fn remove_prompt_shortcut(app: AppHandle, prompt_id: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-
-    let prompt = settings
-        .post_process_prompts
-        .iter_mut()
-        .find(|p| p.id == prompt_id)
-        .ok_or_else(|| format!("Prompt '{}' not found", prompt_id))?;
-
-    if let Some(old_binding) = prompt.shortcut.take() {
-        if !old_binding.is_empty() {
-            let sb = ShortcutBinding {
-                id: format!("prompt_shortcut_{}", prompt_id),
-                name: format!("Prompt: {}", prompt.name),
-                description: String::new(),
-                default_binding: String::new(),
-                current_binding: old_binding,
-            };
-            let _ = unregister_shortcut(&app, sb);
-        }
-    }
-
-    settings::write_settings(&app, settings);
-    Ok(())
 }
 
 #[tauri::command]

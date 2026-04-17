@@ -33,9 +33,7 @@ export const UpdateCheckRow: React.FC<UpdateCheckRowProps> = ({
 
   const isChecking = status === "checking";
   const isUpdateVisible =
-    status === "available" ||
-    status === "downloading" ||
-    status === "ready";
+    status === "available" || status === "downloading" || status === "ready";
 
   const statusLine = (() => {
     if (isChecking) return t("updater.settings.checking");

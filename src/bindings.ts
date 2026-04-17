@@ -256,29 +256,6 @@ async setPostProcessSelectedPrompt(id: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Set (or replace) the global keyboard shortcut for a specific LLM prompt.
- * When triggered, the shortcut starts a transcription that uses that prompt.
- */
-async setPromptShortcut(promptId: string, binding: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_prompt_shortcut", { promptId, binding }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Remove the keyboard shortcut from a specific LLM prompt.
- */
-async removePromptShortcut(promptId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("remove_prompt_shortcut", { promptId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async updateCustomWords(words: string[]) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("update_custom_words", { words }) };
@@ -1456,7 +1433,15 @@ start_hidden_default_flipped?: boolean;
  * the migration upgrades an empty/legacy-unbound binding to cmd+v one
  * time, then sets this true so it won't override a user's explicit clear.
  */
-confirm_paste_default_set?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
+confirm_paste_default_set?: boolean; 
+/**
+ * Marker for the shortcut-defaults migration that moved transcribe to
+ * `fn` and the edit/screenshot/continuous bindings to the Cmd+Option
+ * family. When false, `migrate_binding_defaults_v2` syncs stored
+ * `default_binding` fields to the new code defaults and upgrades any
+ * `current_binding` that was still sitting on the old default.
+ */
+binding_defaults_v2_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
 /**
  * Optional phonetic ("sounds like") hints keyed by the lowercased custom
  * word. Used as a Soundex override so users can nudge fuzzy-match for
@@ -1602,12 +1587,7 @@ export type ImplementationChangeResult = { success: boolean;
  */
 reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
-export type LLMPrompt = { id: string; name: string; prompt: string; 
-/**
- * Optional global keyboard shortcut for this prompt (e.g. "ctrl+1").
- * When set, pressing this shortcut triggers a transcription using this prompt.
- */
-shortcut?: string | null }
+export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LicenseError = { code: "invalid_key" } | { code: "revoked" } | { code: "device_limit_reached"; limit: number; active_devices: ActiveDevice[] } | { code: "not_activated" } | { code: "network_error"; message: string } | { code: "invalid_token" } | { code: "not_ready" }
 export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"

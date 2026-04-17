@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ghostly",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "identifier": "com.getghostly.desktop",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -51,9 +51,7 @@
     },
     "updater": {
       "active": true,
-      "endpoints": [
-        "https://downloads.try-ghostly.com/updates.json"
-      ],
+      "endpoints": ["https://downloads.try-ghostly.com/updates.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5N0M0MUNBNjA5MDgzMkEKUldRcWc1Qmd5a0Y4cVhyRzdBYmNLMng0c1A4L09Ib1ZQakQ2a3RXZ1B3N0M5RWZFcjYycmNkQnYK"
     }
   }

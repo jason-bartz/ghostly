@@ -144,7 +144,8 @@ export const useUpdaterStore = create<UpdaterState>()((set, get) => ({
           });
         } else if (event.event === "Progress") {
           downloaded += event.data.chunkLength;
-          const percent = total > 0 ? Math.min(100, (downloaded / total) * 100) : 0;
+          const percent =
+            total > 0 ? Math.min(100, (downloaded / total) * 100) : 0;
           set({
             progress: {
               downloaded,
