@@ -15,8 +15,10 @@ import { PaywallModal } from "./components/PaywallModal";
 import Footer from "./components/footer";
 import Onboarding, { AccessibilityOnboarding } from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
+import { UpdateModal } from "./components/update-checker";
 import { useSettings } from "./hooks/useSettings";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useUpdaterStore } from "./stores/updaterStore";
 import { commands } from "@/bindings";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
 
@@ -107,6 +109,15 @@ function App() {
       });
       refreshAudioDevices();
       refreshOutputDevices();
+
+      // Silent update check on launch. Auto-opens the update modal once
+      // per new version (tracked in localStorage); otherwise only the
+      // footer indicator reflects the available update.
+      const checkForUpdates = useUpdaterStore.getState().check;
+      const timer = window.setTimeout(() => {
+        void checkForUpdates({ silent: true });
+      }, 2500);
+      return () => window.clearTimeout(timer);
     }
   }, [onboardingStep, refreshAudioDevices, refreshOutputDevices]);
 
@@ -388,6 +399,7 @@ function App() {
       {/* Fixed footer at bottom */}
       <Footer />
       <PaywallModal />
+      <UpdateModal />
     </div>
   );
 }

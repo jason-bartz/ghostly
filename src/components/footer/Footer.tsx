@@ -31,7 +31,6 @@ const Footer: React.FC = () => {
         {/* Update Status */}
         <div className="flex items-center gap-1.5">
           <UpdateChecker />
-          <span className="text-text-faint">•</span>
           {/* eslint-disable-next-line i18next/no-literal-string */}
           <span className="font-mono tabular-nums text-text-faint">
             v{version}

@@ -1,6 +1,6 @@
 [package]
 name = "ghostly"
-version = "0.1.12"
+version = "0.1.13"
 description = "Ghostly"
 authors = ["Jason Bartz <me@jason-bartz.com>"]
 edition = "2021"
@@ -88,6 +88,8 @@ unicode-segmentation = "1.12"
 ed25519-dalek = { version = "2", features = ["pkcs8"] }
 hex = "0.4"
 tauri-plugin-deep-link = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 url = "2"
 
 [target.'cfg(unix)'.dependencies]
