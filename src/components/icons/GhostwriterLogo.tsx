@@ -1,5 +1,5 @@
 import React from "react";
-import wordmarkSrc from "@/assets/ghostly_wordmark.svg";
+import wordmarkSrc from "@/assets/Ghostly-wordmark.svg";
 
 const GhostlyLogo = ({
   width,

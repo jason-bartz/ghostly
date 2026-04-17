@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/assets/ghostly_wordmark.svg" alt="Ghostly" width="320"><br><br>
+<img src="src/assets/Ghostly-wordmark.svg" alt="Ghostly" width="320"><br><br>
 
 Voice-first typing for macOS.
 
