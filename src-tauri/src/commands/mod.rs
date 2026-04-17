@@ -28,6 +28,9 @@ pub fn cancel_staged_capture(app: AppHandle) {
     {
         state.clear();
     }
+    // Release the paste shortcut — otherwise Cmd+V stays hijacked after the
+    // user discards the capture.
+    crate::shortcut::unregister_confirm_paste_shortcut(&app);
     crate::utils::hide_recording_overlay(&app);
 }
 

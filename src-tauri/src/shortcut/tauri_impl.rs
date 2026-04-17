@@ -20,8 +20,11 @@ pub fn init_shortcuts(app: &AppHandle) {
 
     // Register all default shortcuts, applying user customizations
     for (id, default_binding) in default_bindings {
-        if id == "cancel" {
-            continue; // Skip cancel shortcut, it will be registered dynamically
+        if id == "cancel" || id == "confirm_screenshot_paste" {
+            // Both are dynamically registered — cancel while recording, and
+            // confirm_screenshot_paste while a capture is staged. This keeps
+            // combos like Cmd+V free the rest of the time.
+            continue;
         }
         let binding = user_settings
             .bindings
