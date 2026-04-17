@@ -323,42 +323,6 @@ impl MatchRule {
     }
 }
 
-/// Spoken phrase → keystroke binding, scoped to an individual `Profile`.
-/// Folds the former `IdeCommand` into the profile system so IDE-style voice
-/// automation and app-specific style overrides share one data model.
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
-pub struct KeystrokeCommand {
-    /// Spoken phrase, lowercase. Additional synonyms live in `aliases`.
-    pub phrase: String,
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    /// Keystroke in `voice_commands` format: "enter", "escape", "cmd+enter", ...
-    pub keystroke: String,
-    /// Short description shown on the overlay hint chip.
-    pub description: String,
-}
-
-/// Flatten a profile's keystroke commands to the generic `VoiceCommand` form
-/// used by the voice-command matcher. The description becomes the command
-/// name (what the user sees when matching); aliases become additional phrases.
-pub fn keystroke_commands_to_voice_commands(
-    commands: &[KeystrokeCommand],
-) -> Vec<crate::settings::VoiceCommand> {
-    commands
-        .iter()
-        .map(|c| {
-            let mut phrases = vec![c.phrase.clone()];
-            phrases.extend(c.aliases.iter().cloned());
-            crate::settings::VoiceCommand {
-                name: c.description.clone(),
-                phrases,
-                keystroke: c.keystroke.clone(),
-                enabled: true,
-            }
-        })
-        .collect()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Profile {
     pub id: String,
@@ -390,19 +354,6 @@ pub struct Profile {
     #[serde(default)]
     pub provider_override: Option<String>,
 
-    /// Voice phrase → keystroke bindings merged into the global command pool
-    /// when this profile is active. Empty for apps that don't need app-local
-    /// automation.
-    #[serde(default)]
-    pub keystroke_commands: Vec<KeystrokeCommand>,
-
-    /// When `Some(true)`, a normal dictation into the matching app is
-    /// auto-submitted (paste + Enter). When `Some(false)`, auto-submit is
-    /// explicitly suppressed for the app (e.g. VS Code editor).
-    /// `None` = inherit global auto-submit behavior.
-    #[serde(default)]
-    pub auto_submit: Option<bool>,
-
     /// When true, image paste requires Shift+Cmd+V instead of Cmd+V.
     /// VS Code needs this to attach images to Copilot Chat.
     #[serde(default)]
@@ -427,10 +378,8 @@ pub struct ResolvedOverrides {
     /// cleanup+style combination into the existing post-process pipeline.
     pub composed_prompt: Option<String>,
     pub category_id: Option<CategoryId>,
-    // Note: keystroke_commands, auto_submit, and image_paste_uses_shift are
-    // read directly off `Profile` via `match_builtin_profile()` by their
-    // consumers (clipboard.rs, actions.rs). Kept off ResolvedOverrides to
-    // avoid dead fields — the keystroke and style paths are distinct.
+    // Note: image_paste_uses_shift is read directly off `Profile` via
+    // `match_builtin_profile()` by clipboard.rs.
 }
 
 impl ResolvedOverrides {
@@ -467,15 +416,6 @@ pub fn resolve<'a>(settings: &'a AppSettings, ctx: Option<&AppContext>) -> Optio
         .find(|p| p.match_rules.iter().any(|r| r.matches(ctx)))
 }
 
-fn kcmd(phrase: &str, aliases: &[&str], keystroke: &str, description: &str) -> KeystrokeCommand {
-    KeystrokeCommand {
-        phrase: phrase.to_string(),
-        aliases: aliases.iter().map(|s| s.to_string()).collect(),
-        keystroke: keystroke.to_string(),
-        description: description.to_string(),
-    }
-}
-
 fn cursor_profile() -> Profile {
     Profile {
         id: "builtin_cursor".to_string(),
@@ -491,14 +431,6 @@ fn cursor_profile() -> Profile {
         custom_vocab: vec![],
         append_trailing_space: None,
         provider_override: None,
-        keystroke_commands: vec![
-            kcmd("approve", &["accept", "yes"], "enter", "Accept suggestion"),
-            kcmd("reject", &["no", "cancel"], "escape", "Reject suggestion"),
-            kcmd("accept all", &["apply all"], "cmd+enter", "Apply all edits"),
-            kcmd("next", &[], "tab", "Next suggestion"),
-            kcmd("back", &["previous"], "shift+tab", "Previous suggestion"),
-        ],
-        auto_submit: Some(true),
         image_paste_uses_shift: false,
     }
 }
@@ -528,19 +460,6 @@ fn claude_code_profile() -> Profile {
         custom_vocab: vec![],
         append_trailing_space: None,
         provider_override: None,
-        keystroke_commands: vec![
-            kcmd(
-                "approve",
-                &["accept", "yes", "one"],
-                "1",
-                "Choose option 1 (yes)",
-            ),
-            kcmd("reject", &["no", "two"], "2", "Choose option 2 (no)"),
-            kcmd("three", &[], "3", "Choose option 3"),
-            kcmd("cancel", &["stop"], "escape", "Cancel current prompt"),
-            kcmd("submit", &["send"], "enter", "Submit"),
-        ],
-        auto_submit: Some(true),
         image_paste_uses_shift: false,
     }
 }
@@ -560,14 +479,6 @@ fn windsurf_profile() -> Profile {
         custom_vocab: vec![],
         append_trailing_space: None,
         provider_override: None,
-        keystroke_commands: vec![
-            kcmd("approve", &["accept", "yes"], "enter", "Accept"),
-            kcmd("reject", &["no", "cancel"], "escape", "Reject"),
-            kcmd("accept all", &[], "cmd+enter", "Accept all"),
-            kcmd("next", &[], "tab", "Next"),
-            kcmd("back", &["previous"], "shift+tab", "Previous"),
-        ],
-        auto_submit: Some(true),
         image_paste_uses_shift: false,
     }
 }
@@ -590,23 +501,6 @@ fn vscode_profile() -> Profile {
         custom_vocab: vec![],
         append_trailing_space: None,
         provider_override: None,
-        keystroke_commands: vec![
-            kcmd("approve", &["accept"], "tab", "Accept Copilot suggestion"),
-            kcmd("reject", &["dismiss"], "escape", "Dismiss suggestion"),
-            kcmd("send", &["submit"], "enter", "Send (Copilot Chat)"),
-            kcmd(
-                "command palette",
-                &[],
-                "cmd+shift+p",
-                "Open command palette",
-            ),
-        ],
-        // `None` = inherit global auto-submit. The old IdePreset used
-        // `auto_submit: false` with the same meaning: don't force-override
-        // when the user's global setting is off, since dictation into the
-        // editor shouldn't insert newlines. Copilot Chat auto-submits when
-        // the user opts in globally.
-        auto_submit: None,
         // Copilot Chat requires Shift+Cmd+V for image paste.
         image_paste_uses_shift: true,
     }
@@ -626,12 +520,6 @@ fn replit_profile() -> Profile {
         custom_vocab: vec![],
         append_trailing_space: None,
         provider_override: None,
-        keystroke_commands: vec![
-            kcmd("approve", &["accept", "yes"], "enter", "Accept"),
-            kcmd("reject", &["no", "cancel"], "escape", "Reject"),
-            kcmd("run", &[], "cmd+enter", "Run project"),
-        ],
-        auto_submit: Some(true),
         image_paste_uses_shift: false,
     }
 }

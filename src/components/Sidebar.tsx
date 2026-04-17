@@ -309,8 +309,7 @@ const SidebarMetrics: React.FC = () => {
   const minutesSaved = Math.floor(savedSecs / 60);
   const wpm = seconds > 0 ? Math.round((words / seconds) * 60) : 0;
 
-  const toggle = () =>
-    setRange((r) => (r === "week" ? "lifetime" : "week"));
+  const toggle = () => setRange((r) => (r === "week" ? "lifetime" : "week"));
 
   return (
     <button
@@ -326,9 +325,7 @@ const SidebarMetrics: React.FC = () => {
       <div className="flex items-center justify-between mb-2">
         <p className="uppercase tracking-[0.08em] text-[9px] font-semibold text-text-faint">
           {t(
-            isLifetime
-              ? "sidebar.metrics.allTime"
-              : "sidebar.metrics.thisWeek",
+            isLifetime ? "sidebar.metrics.allTime" : "sidebar.metrics.thisWeek",
           )}
         </p>
         <ArrowLeftRight

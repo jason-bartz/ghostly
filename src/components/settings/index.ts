@@ -35,8 +35,6 @@ export { RecordingRetentionPeriodSelector } from "./RecordingRetentionPeriod";
 export { AutostartToggle } from "./AutostartToggle";
 export { ShowDockIcon } from "./ShowDockIcon";
 export { VoiceEditing } from "./VoiceEditing";
-export { VoiceCommands } from "./VoiceCommands";
-export { IdePresets } from "./IdePresets";
 export { ProfilesSettings } from "./profiles/ProfilesSettings";
 export { StyleSettings } from "./profiles/StyleSettings";
 export { ProfilesEnableToggle } from "./ProfilesEnableToggle";

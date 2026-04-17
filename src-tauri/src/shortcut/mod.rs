@@ -283,8 +283,43 @@ pub fn change_binding(
 #[tauri::command]
 #[specta::specta]
 pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, String> {
-    let binding = settings::get_stored_binding(&app, &id);
-    change_binding(app, id, binding.default_binding)
+    // Always reset to the current code default — not the `default_binding`
+    // field stored with the binding, which can be stale on installs that
+    // predate a default change. The migration in
+    // `migrate_binding_defaults_v2` also syncs the stored field, but reading
+    // the code default directly here guarantees the Reset button always
+    // lands on whatever the app currently ships as the default.
+    let code_default = settings::get_default_settings()
+        .bindings
+        .get(&id)
+        .map(|b| b.default_binding.clone())
+        .ok_or_else(|| format!("No default binding defined for '{}'", id))?;
+
+    if code_default.is_empty() {
+        // Bindings with no default (historically unbound) stay unbound on
+        // reset — but `change_binding` rejects empty strings, so clear the
+        // stored `current_binding` directly.
+        let mut settings = settings::get_settings(&app);
+        if let Some(stored) = settings.bindings.get_mut(&id) {
+            if !stored.current_binding.is_empty() {
+                if let Err(e) = unregister_shortcut(&app, stored.clone()) {
+                    warn!("reset_binding: unregister failed for '{}': {}", id, e);
+                }
+                stored.current_binding = String::new();
+            }
+            stored.default_binding = String::new();
+            let updated = stored.clone();
+            settings::write_settings(&app, settings);
+            return Ok(BindingResponse {
+                success: true,
+                binding: Some(updated),
+                error: None,
+            });
+        }
+        return Err(format!("Binding '{}' not found", id));
+    }
+
+    change_binding(app, id, code_default)
 }
 
 /// Temporarily unregister a binding while the user is editing it in the UI.

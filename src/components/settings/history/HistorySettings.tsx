@@ -42,10 +42,7 @@ import {
 import { useOsType } from "@/hooks/useOsType";
 import { formatDateTime } from "@/utils/dateFormat";
 import { AudioPlayer } from "../../ui/AudioPlayer";
-import {
-  DateRangePicker,
-  type DateRange,
-} from "../../ui/DateRangePicker";
+import { DateRangePicker, type DateRange } from "../../ui/DateRangePicker";
 import { HistoryLimit } from "../HistoryLimit";
 import { RecordingRetentionPeriodSelector } from "../RecordingRetentionPeriod";
 import { useSettings } from "@/hooks/useSettings";
@@ -180,7 +177,9 @@ export const HistorySettings: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSearchMode =
-    searchQuery.trim().length > 0 || selectedTags.length > 0 || dateRange !== null;
+    searchQuery.trim().length > 0 ||
+    selectedTags.length > 0 ||
+    dateRange !== null;
 
   const refreshAllTags = useCallback(async () => {
     try {
@@ -877,10 +876,7 @@ export const HistorySettings: React.FC = () => {
         <ToolbarButton
           onClick={() => setShowRetention((v) => !v)}
           active={showRetention}
-          title={t(
-            "settings.history.storageGroup",
-            "Storage & retention",
-          )}
+          title={t("settings.history.storageGroup", "Storage & retention")}
         >
           <Settings2 className="w-4 h-4" />
         </ToolbarButton>
@@ -935,11 +931,15 @@ export const HistorySettings: React.FC = () => {
         <div className="flex items-center gap-1.5">
           <Calendar className="w-3.5 h-3.5 text-text-faint shrink-0" />
           <span className="pill pill-accent">
-            {dateRange.start.toLocaleDateString(i18n.language)} – {dateRange.end.toLocaleDateString(i18n.language)}
+            {dateRange.start.toLocaleDateString(i18n.language)} –{" "}
+            {dateRange.end.toLocaleDateString(i18n.language)}
             <button
               onClick={() => setDateRange(null)}
               className="hover:text-logo-primary/70 cursor-pointer"
-              title={t("settings.history.dateFilter.clear", "Clear date filter")}
+              title={t(
+                "settings.history.dateFilter.clear",
+                "Clear date filter",
+              )}
             >
               <X className="w-3 h-3" />
             </button>
@@ -961,7 +961,8 @@ export const HistorySettings: React.FC = () => {
               type="checkbox"
               checked={allVisibleSelected}
               ref={(el) => {
-                if (el) el.indeterminate = !allVisibleSelected && anyVisibleSelected;
+                if (el)
+                  el.indeterminate = !allVisibleSelected && anyVisibleSelected;
               }}
               onChange={toggleSelectAllVisible}
               className="w-4 h-4 accent-logo-primary cursor-pointer"
@@ -1007,9 +1008,7 @@ export const HistorySettings: React.FC = () => {
         </div>
       )}
 
-      <div className="surface-card-inlay overflow-visible">
-        {content}
-      </div>
+      <div className="surface-card-inlay overflow-visible">{content}</div>
     </div>
   );
 };
@@ -1056,7 +1055,14 @@ const EntryMoreMenu: React.FC<{
   generating: boolean;
   retrying: boolean;
   hasTranscription: boolean;
-}> = ({ onGenerate, onRetranscribe, onDelete, generating, retrying, hasTranscription }) => {
+}> = ({
+  onGenerate,
+  onRetranscribe,
+  onDelete,
+  generating,
+  retrying,
+  hasTranscription,
+}) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1367,29 +1373,30 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
 
       {!retrying && (
         <div className="flex items-center gap-1.5 flex-wrap">
-          {entry.source_app && (() => {
-            const appInfo = getAppInfoByName(entry.source_app);
-            const colors = appInfo ? categoryColors[appInfo.category] : null;
-            return (
-              <span
-                className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium border ${
-                  colors
-                    ? `${colors.chipBg} ${colors.chipBorder} ${colors.chipText}`
-                    : "bg-white/[0.04] border-hairline-strong text-text-muted"
-                }`}
-                title={t("settings.history.sourceApp", "Captured in")}
-              >
-                {appInfo && (
-                  <img
-                    src={appInfo.icon}
-                    alt=""
-                    className="w-3.5 h-3.5 rounded-[3px] shrink-0"
-                  />
-                )}
-                {appInfo?.label ?? entry.source_app}
-              </span>
-            );
-          })()}
+          {entry.source_app &&
+            (() => {
+              const appInfo = getAppInfoByName(entry.source_app);
+              const colors = appInfo ? categoryColors[appInfo.category] : null;
+              return (
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium border ${
+                    colors
+                      ? `${colors.chipBg} ${colors.chipBorder} ${colors.chipText}`
+                      : "bg-white/[0.04] border-hairline-strong text-text-muted"
+                  }`}
+                  title={t("settings.history.sourceApp", "Captured in")}
+                >
+                  {appInfo && (
+                    <img
+                      src={appInfo.icon}
+                      alt=""
+                      className="w-3.5 h-3.5 rounded-[3px] shrink-0"
+                    />
+                  )}
+                  {appInfo?.label ?? entry.source_app}
+                </span>
+              );
+            })()}
           {tags.map((tag) => (
             <span
               key={tag.name}

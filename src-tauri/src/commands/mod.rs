@@ -266,45 +266,6 @@ pub fn get_third_party_notices(app: AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Failed to read notices at {:?}: {}", path, e))
 }
 
-/// Mark the one-time IDE hint as seen for the given preset id. Idempotent.
-#[tauri::command]
-#[specta::specta]
-pub fn mark_ide_hint_seen(app: AppHandle, preset_id: String) -> Result<(), String> {
-    let mut settings = get_settings(&app);
-    if !settings.seen_ide_hints.iter().any(|id| id == &preset_id) {
-        settings.seen_ide_hints.push(preset_id);
-        write_settings(&app, settings);
-    }
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn set_ide_presets_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = get_settings(&app);
-    settings.ide_presets_enabled = enabled;
-    write_settings(&app, settings);
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn set_ide_auto_submit(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = get_settings(&app);
-    settings.ide_auto_submit = enabled;
-    write_settings(&app, settings);
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn reset_seen_ide_hints(app: AppHandle) -> Result<(), String> {
-    let mut settings = get_settings(&app);
-    settings.seen_ide_hints.clear();
-    write_settings(&app, settings);
-    Ok(())
-}
-
 /// Record that the user has accepted the EULA at `version`. The app will not
 /// prompt again until `CURRENT_EULA_VERSION` differs from the stored value.
 #[tauri::command]

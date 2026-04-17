@@ -50,9 +50,7 @@ const selectStyles: StylesConfig<SelectOption, false> = {
     minHeight: 32,
     borderRadius: 8,
     borderColor: state.isFocused ? "var(--color-accent)" : neutralBorder,
-    boxShadow: state.isFocused
-      ? "0 0 0 2px rgba(167, 139, 250, 0.2)"
-      : "none",
+    boxShadow: state.isFocused ? "0 0 0 2px rgba(167, 139, 250, 0.2)" : "none",
     backgroundColor: state.isFocused ? focusBackground : baseBackground,
     fontSize: "13px",
     color: "var(--color-text)",
@@ -108,7 +106,9 @@ const selectStyles: StylesConfig<SelectOption, false> = {
       : state.isFocused
         ? "rgba(255, 255, 255, 0.04)"
         : "transparent",
-    color: state.isSelected ? "var(--color-accent-bright)" : "var(--color-text)",
+    color: state.isSelected
+      ? "var(--color-accent-bright)"
+      : "var(--color-text)",
     cursor: state.isDisabled ? "not-allowed" : base.cursor,
     opacity: state.isDisabled ? 0.5 : 1,
     fontSize: "13px",

@@ -201,6 +201,7 @@
         "none": "No shortcuts configured",
         "notFound": "Shortcut not found",
         "pressKeys": "Press keys...",
+        "resetTooltip": "Reset to default shortcut",
         "bindings": {
           "transcribe": {
             "name": "Record & Transcribe",
@@ -746,20 +747,8 @@
         "trailingSpaceInherit": "Inherit",
         "trailingSpaceOn": "Always append",
         "trailingSpaceOff": "Never append",
-        "autoSubmit": "Auto-submit",
-        "autoSubmitHint": "Press Enter after pasting so the prompt fires hands-free.",
-        "autoSubmitInherit": "Inherit global",
-        "autoSubmitOn": "Force on",
-        "autoSubmitOff": "Force off",
         "imagePasteShift": "Image paste uses Shift+Cmd+V",
-        "imagePasteShiftHint": "Needed for apps like VS Code Copilot Chat that expect Shift+Cmd+V for attachments.",
-        "keystrokes": "Voice commands",
-        "keystrokesHint": "Phrase \u2192 keystroke bindings that apply only when this profile is active. Merged with your global voice commands.",
-        "keystrokePhrasePlaceholder": "e.g. approve",
-        "keystrokeBindingPlaceholder": "cmd+enter",
-        "keystrokeDescriptionPlaceholder": "Short description",
-        "addKeystroke": "Add command",
-        "removeKeystroke": "Remove command"
+        "imagePasteShiftHint": "Needed for apps like VS Code Copilot Chat that expect Shift+Cmd+V for attachments."
       },
       "rule": {
         "kind": "Rule type",
@@ -867,61 +856,20 @@
       }
     },
     "developer": {
-      "intro": "Tools for vibe-coding with AI IDEs and agents. Ghostly can auto-submit your dictated prompts, recognize \"approve\"/\"reject\" voice commands, and expose a local HTTP API for scripts."
-    },
-    "idePresets": {
-      "title": "IDE presets",
-      "enable": {
-        "title": "Enable IDE presets",
-        "description": "Detect supported IDEs and agent CLIs (Cursor, Claude Code, Windsurf, VS Code, Replit) and surface context-aware voice commands."
-      },
+      "intro": "Two features that turn dictation into a full hands-free workflow for AI IDEs, chat apps, and anywhere else you type to submit.",
       "autoSubmit": {
-        "title": "Auto-submit in detected IDEs",
-        "description": "In chat-like IDEs, press Enter after pasting so your dictated prompt is sent automatically. VS Code is excluded by default since the editor is not a chat surface."
+        "sectionTitle": "Auto-submit after dictation",
+        "sectionDescription": "After you stop speaking, Ghostly can press Enter or ⌘-Enter for you.",
+        "worksEverywhere": "Works in any app that sends on Enter or ⌘-Enter — Claude Code, Cursor, ChatGPT, Slack, iMessage, Discord, Linear, and more."
       },
-      "detect": {
-        "title": "Detect current app",
-        "description": "Check which preset (if any) matches the app you're currently focused on.",
-        "button": "Detect",
-        "matched": "Matched: {{name}}",
-        "none": "No preset matched the frontmost app."
-      },
-      "list": {
-        "title": "Preset packs",
-        "description": "Phrases are merged into voice-command matching automatically when the matching app is focused."
-      },
-      "badges": {
-        "autoSubmit": "Auto-submit",
-        "seen": "Hint shown"
-      },
-      "resetHints": {
-        "title": "Reset onscreen hints",
-        "description": "Show the one-time command hint again the next time you record in each IDE.",
-        "button": "Reset hints"
-      },
-      "hintsReset": "Hints reset. They'll show again on your next recording in each IDE.",
-      "detectFailed": "Couldn't detect the frontmost app. Grant Accessibility permissions if needed."
-    },
-    "voiceCommands": {
-      "title": "Voice commands",
-      "enable": {
-        "title": "Enable voice commands",
-        "description": "Map short spoken phrases (\"approve\", \"reject\") to keystrokes (Enter, Escape). Useful for AI agent control in Cursor, Claude Code, and similar tools."
-      },
-      "list": {
-        "title": "Commands",
-        "description": "Toggle or remove commands. Commands run when the voice-command shortcut is used."
-      },
-      "empty": "No voice commands configured.",
-      "remove": "Remove",
-      "missingFields": "Name, phrases, and keystroke are required.",
-      "add": {
-        "title": "Add a command",
-        "description": "Keystroke format: \"enter\", \"escape\", \"tab\", \"shift+tab\", \"cmd+s\", or a single character.",
-        "namePlaceholder": "Name (e.g. Approve)",
-        "phrasesPlaceholder": "Phrases, comma-separated (e.g. approve, yes, accept)",
-        "keystrokePlaceholder": "Keystroke (e.g. enter)",
-        "button": "Add command"
+      "smartVocab": {
+        "sectionTitle": "Smart vocabulary",
+        "sectionDescription": "Ghostly swaps vocabulary based on the app you're dictating into.",
+        "body": "Your Dictionary lets you teach Ghostly words for each context — coding terms in an IDE, work jargon in Slack, email phrasing in Mail — so transcription picks the right word automatically.",
+        "exampleCoding": "Coding in Cursor → React, TypeScript, shadcn, pnpm, Supabase",
+        "exampleWork": "Messaging in Slack → teammate names, project codewords, internal acronyms",
+        "exampleEmail": "Writing in Mail → formal phrasing, client names",
+        "manageDictionary": "Manage dictionary"
       }
     },
     "voiceEditing": {

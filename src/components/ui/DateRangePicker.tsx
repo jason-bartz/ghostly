@@ -47,9 +47,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const today = startOfDay(new Date());
-  const [viewMonth, setViewMonth] = useState(
-    value?.start ?? today,
-  );
+  const [viewMonth, setViewMonth] = useState(value?.start ?? today);
   const [pickStart, setPickStart] = useState<Date | null>(null);
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
 
@@ -89,11 +87,10 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
     onClose();
   };
 
-  const previewStart =
-    pickStart ?? value?.start ?? null;
+  const previewStart = pickStart ?? value?.start ?? null;
   const previewEnd = pickStart
-    ? hoverDate ?? pickStart
-    : value?.end ?? null;
+    ? (hoverDate ?? pickStart)
+    : (value?.end ?? null);
   const [rangeS, rangeE] =
     previewStart && previewEnd
       ? previewEnd.getTime() >= previewStart.getTime()
@@ -167,9 +164,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       {(value || pickStart) && (
         <div className="mt-2 pt-2 border-t border-mid-gray/15 flex justify-between items-center">
           {pickStart && (
-            <span className="text-xs text-mid-gray/60">
-              Select end date...
-            </span>
+            <span className="text-xs text-mid-gray/60">Select end date...</span>
           )}
           <button
             onClick={() => {

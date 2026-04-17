@@ -16,24 +16,11 @@ type StagedPayload = {
   confirmShortcut: string;
 };
 
-type IdeHint = {
-  id: string;
-  name: string;
-  commands: Array<{
-    phrase: string;
-    aliases: string[];
-    keystroke: string;
-    description: string;
-  }>;
-};
-
 type EditChip = {
   id: string;
   label: string;
   instruction: string;
 };
-
-const HINT_DURATION_MS = 4500;
 
 function formatKeystroke(ks: string): string {
   return ks
@@ -63,11 +50,9 @@ const RecordingOverlay: React.FC = () => {
   const [levels, setLevels] = useState<number[]>(Array(14).fill(0));
   const smoothedLevelsRef = useRef<number[]>(Array(16).fill(0));
   const [peakLevel, setPeakLevel] = useState<number>(0);
-  const [hint, setHint] = useState<IdeHint | null>(null);
   const [staged, setStaged] = useState<StagedPayload | null>(null);
   const [editChips, setEditChips] = useState<EditChip[] | null>(null);
   const [pendingChipId, setPendingChipId] = useState<string | null>(null);
-  const hintTimerRef = useRef<number | null>(null);
   const direction = getLanguageDirection(i18n.language);
 
   useEffect(() => {
@@ -125,29 +110,16 @@ const RecordingOverlay: React.FC = () => {
         },
       );
 
-      // One-time IDE hint: show for a few seconds, then mark as seen so it
-      // doesn't appear again for this preset.
-      const unlistenHint = await listen<IdeHint>("ide-hint", (event) => {
-        const payload = event.payload;
-        setHint(payload);
-        if (hintTimerRef.current) {
-          window.clearTimeout(hintTimerRef.current);
-        }
-        hintTimerRef.current = window.setTimeout(() => {
-          setHint(null);
-        }, HINT_DURATION_MS);
-        commands.markIdeHintSeen(payload.id).catch(() => {
-          // Non-fatal: worst case the hint shows again next session.
-        });
-      });
-
       // Edit-mode chips appear when the user triggers the edit shortcut.
       // Speaking an instruction falls through to the voice-edit pipeline;
       // clicking a chip runs `apply_edit_chip` against the focused field.
-      const unlistenEditMode = await listen<EditChip[]>("edit-mode", (event) => {
-        setEditChips(event.payload);
-        setPendingChipId(null);
-      });
+      const unlistenEditMode = await listen<EditChip[]>(
+        "edit-mode",
+        (event) => {
+          setEditChips(event.payload);
+          setPendingChipId(null);
+        },
+      );
 
       // Chip action finished — Rust will also drive hide-overlay, but we
       // clear the pending state here so the UI doesn't stay stuck if timing
@@ -163,7 +135,6 @@ const RecordingOverlay: React.FC = () => {
         unlistenHide();
         unlistenLevel();
         unlistenStaged();
-        unlistenHint();
         unlistenEditMode();
         unlistenEditDone();
       };
@@ -259,25 +230,7 @@ const RecordingOverlay: React.FC = () => {
             })}
           </div>
         )}
-        {state === "recording" && !editChips && hint && (
-          <div
-            className="ide-hint state-fade"
-            title={`${hint.name} voice commands`}
-          >
-            <span className="ide-hint-name">{hint.name}</span>
-            <span className="ide-hint-sep">·</span>
-            {hint.commands.slice(0, 2).map((c, i) => (
-              <React.Fragment key={c.phrase}>
-                {i > 0 && <span className="ide-hint-dot"> / </span>}
-                <span className="ide-hint-phrase">"{c.phrase}"</span>
-                <span className="ide-hint-key">
-                  {formatKeystroke(c.keystroke)}
-                </span>
-              </React.Fragment>
-            ))}
-          </div>
-        )}
-        {state === "recording" && !editChips && !hint && (
+        {state === "recording" && !editChips && (
           <div className="bars-container state-fade">
             {levels.map((v, i) => (
               <div

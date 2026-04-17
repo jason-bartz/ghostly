@@ -76,8 +76,6 @@ export const ProfilesSettings: React.FC = () => {
       custom_vocab: [],
       append_trailing_space: null,
       provider_override: null,
-      keystroke_commands: [],
-      auto_submit: null,
       image_paste_uses_shift: false,
     };
     const res = await commands.addProfile(profile);
@@ -119,10 +117,6 @@ export const ProfilesSettings: React.FC = () => {
       prompt_id: null,
       custom_vocab: [...b.custom_vocab],
       match_rules: b.match_rules.map((r) => ({ ...r })),
-      keystroke_commands: b.keystroke_commands.map((k) => ({
-        ...k,
-        aliases: [...k.aliases],
-      })),
     };
     const res = await commands.addProfile(profile);
     if (res.status === "error") {

@@ -23,7 +23,8 @@ export const ContinuousDictation: React.FC<Props> = ({
   const { t } = useTranslation();
   const { getSetting, updateSetting, isUpdating } = useSettings();
 
-  const enabled = (getSetting("continuous_dictation_enabled") as boolean) ?? false;
+  const enabled =
+    (getSetting("continuous_dictation_enabled") as boolean) ?? false;
   const silenceMs = (getSetting("continuous_silence_ms") as number) ?? 900;
   const maxMs = (getSetting("continuous_max_segment_ms") as number) ?? 20000;
   const minMs = (getSetting("continuous_min_segment_ms") as number) ?? 400;
@@ -31,8 +32,7 @@ export const ContinuousDictation: React.FC<Props> = ({
     (getSetting("continuous_submit_phrase_enabled") as boolean) ?? false;
   const submitPhrase =
     (getSetting("continuous_submit_phrase") as string) ?? "send it";
-  const submitKey =
-    (getSetting("continuous_submit_key") as string) ?? "enter";
+  const submitKey = (getSetting("continuous_submit_key") as string) ?? "enter";
 
   const [armed, setArmed] = useState(false);
 
@@ -41,12 +41,9 @@ export const ContinuousDictation: React.FC<Props> = ({
     commands.isContinuousDictationArmed().then((v) => {
       if (active) setArmed(v);
     });
-    const unlisten = listen<boolean>(
-      "continuous-dictation-armed",
-      (evt) => {
-        if (active) setArmed(!!evt.payload);
-      },
-    );
+    const unlisten = listen<boolean>("continuous-dictation-armed", (evt) => {
+      if (active) setArmed(!!evt.payload);
+    });
     return () => {
       active = false;
       unlisten.then((u) => u());
@@ -96,12 +93,16 @@ export const ContinuousDictation: React.FC<Props> = ({
 
           <Slider
             value={silenceMs}
-            onChange={(v) => updateSetting("continuous_silence_ms", Math.round(v))}
+            onChange={(v) =>
+              updateSetting("continuous_silence_ms", Math.round(v))
+            }
             min={300}
             max={2500}
             step={50}
             label={t("settings.advanced.continuousDictation.silenceLabel")}
-            description={t("settings.advanced.continuousDictation.silenceDescription")}
+            description={t(
+              "settings.advanced.continuousDictation.silenceDescription",
+            )}
             descriptionMode={descriptionMode}
             grouped={grouped}
             formatValue={(v) => `${Math.round(v)} ms`}
@@ -109,12 +110,16 @@ export const ContinuousDictation: React.FC<Props> = ({
 
           <Slider
             value={minMs}
-            onChange={(v) => updateSetting("continuous_min_segment_ms", Math.round(v))}
+            onChange={(v) =>
+              updateSetting("continuous_min_segment_ms", Math.round(v))
+            }
             min={0}
             max={1500}
             step={50}
             label={t("settings.advanced.continuousDictation.minLabel")}
-            description={t("settings.advanced.continuousDictation.minDescription")}
+            description={t(
+              "settings.advanced.continuousDictation.minDescription",
+            )}
             descriptionMode={descriptionMode}
             grouped={grouped}
             formatValue={(v) => `${Math.round(v)} ms`}
@@ -122,12 +127,16 @@ export const ContinuousDictation: React.FC<Props> = ({
 
           <Slider
             value={maxMs}
-            onChange={(v) => updateSetting("continuous_max_segment_ms", Math.round(v))}
+            onChange={(v) =>
+              updateSetting("continuous_max_segment_ms", Math.round(v))
+            }
             min={5000}
             max={60000}
             step={1000}
             label={t("settings.advanced.continuousDictation.maxLabel")}
-            description={t("settings.advanced.continuousDictation.maxDescription")}
+            description={t(
+              "settings.advanced.continuousDictation.maxDescription",
+            )}
             descriptionMode={descriptionMode}
             grouped={grouped}
             formatValue={(v) => `${(v / 1000).toFixed(0)} s`}
@@ -139,9 +148,7 @@ export const ContinuousDictation: React.FC<Props> = ({
               updateSetting("continuous_submit_phrase_enabled", v)
             }
             isUpdating={isUpdating("continuous_submit_phrase_enabled")}
-            label={t(
-              "settings.advanced.continuousDictation.submitPhraseLabel",
-            )}
+            label={t("settings.advanced.continuousDictation.submitPhraseLabel")}
             description={t(
               "settings.advanced.continuousDictation.submitPhraseDescription",
             )}

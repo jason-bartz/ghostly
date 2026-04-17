@@ -210,8 +210,7 @@ export const DictionarySettings: React.FC = () => {
   }, [customWords, phonetics, query, sort]);
 
   const allVisibleSelected =
-    displayedWords.length > 0 &&
-    displayedWords.every((w) => selected.has(w));
+    displayedWords.length > 0 && displayedWords.every((w) => selected.has(w));
   const anyVisibleSelected = displayedWords.some((w) => selected.has(w));
   const toggleSelectAllVisible = () =>
     setSelected((prev) => {
@@ -632,10 +631,7 @@ export const DictionarySettings: React.FC = () => {
                       "settings.dictionary.vocabulary.noMatches",
                       "No words match your search.",
                     )
-                  : t(
-                      "settings.dictionary.vocabulary.empty",
-                      "No words yet.",
-                    )}
+                  : t("settings.dictionary.vocabulary.empty", "No words yet.")}
               </p>
             ) : (
               <div className="flex flex-col gap-1">
@@ -747,10 +743,7 @@ const CategoryTagToggle: React.FC<CategoryTagToggleProps> = ({
         hasAny
           ? t("settings.dictionary.tags.scoped", {
               cats: selected
-                .map(
-                  (id) =>
-                    CATEGORY_TAGS.find((c) => c.id === id)?.full ?? id,
-                )
+                .map((id) => CATEGORY_TAGS.find((c) => c.id === id)?.full ?? id)
                 .join(", "),
             })
           : t("settings.dictionary.tags.global", "Applies everywhere")

@@ -7,11 +7,7 @@ import { Button } from "../../ui/Button";
 import { Textarea } from "../../ui/Textarea";
 import { StyleCard } from "./StyleCard";
 import { STYLE_SAMPLES } from "./styleSamples";
-import type {
-  CategoryId,
-  CategoryStyleLike,
-  StyleId,
-} from "./types";
+import type { CategoryId, CategoryStyleLike, StyleId } from "./types";
 import { styleCommands } from "@/lib/styleBindings";
 import { STYLE_CATEGORY_APPS } from "@/lib/appIcons";
 
@@ -21,23 +17,24 @@ interface CategoryTabProps {
   onChanged: (next: CategoryStyleLike[]) => void;
 }
 
-const PRESET_STYLES: Array<{ id: StyleId; titleKey: string; subKey: string }> = [
-  {
-    id: "formal",
-    titleKey: "settings.style.presets.formal.title",
-    subKey: "settings.style.presets.formal.subtitle",
-  },
-  {
-    id: "casual",
-    titleKey: "settings.style.presets.casual.title",
-    subKey: "settings.style.presets.casual.subtitle",
-  },
-  {
-    id: "excited",
-    titleKey: "settings.style.presets.excited.title",
-    subKey: "settings.style.presets.excited.subtitle",
-  },
-];
+const PRESET_STYLES: Array<{ id: StyleId; titleKey: string; subKey: string }> =
+  [
+    {
+      id: "formal",
+      titleKey: "settings.style.presets.formal.title",
+      subKey: "settings.style.presets.formal.subtitle",
+    },
+    {
+      id: "casual",
+      titleKey: "settings.style.presets.casual.title",
+      subKey: "settings.style.presets.casual.subtitle",
+    },
+    {
+      id: "excited",
+      titleKey: "settings.style.presets.excited.title",
+      subKey: "settings.style.presets.excited.subtitle",
+    },
+  ];
 
 export const CategoryTab: React.FC<CategoryTabProps> = ({
   category,
@@ -167,7 +164,9 @@ export const CategoryTab: React.FC<CategoryTabProps> = ({
           />
         ))}
         <StyleCard
-          title={style.custom_style_name || t("settings.style.presets.custom.title")}
+          title={
+            style.custom_style_name || t("settings.style.presets.custom.title")
+          }
           subtitle={t("settings.style.presets.custom.subtitle")}
           sample={
             style.custom_style_prompt?.trim() ||
