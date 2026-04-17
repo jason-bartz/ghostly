@@ -1,8 +1,18 @@
 use rustfft::{num_complex::Complex32, Fft, FftPlanner};
 use std::sync::Arc;
 
-const DB_MIN: f32 = -55.0;
-const DB_MAX: f32 = -8.0;
+// Size of the visible dB window beneath the tracked peak. Keeps the
+// spectral shape intact while normalizing baseline loudness across devices.
+const DB_RANGE: f32 = 40.0;
+// Adaptive peak tracking: fast attack (rises quickly to new loud speech)
+// and slow release (stays stable across short pauses).
+const PEAK_ATTACK: f32 = 0.15;
+const PEAK_RELEASE: f32 = 0.002;
+// Floor the peak so a silent room doesn't collapse the range onto ambient
+// noise — quiet mics should still *look* quiet when nobody's speaking.
+const PEAK_FLOOR: f32 = -25.0;
+// Noise gate offset above the tracked per-bucket noise floor.
+const GATE_MARGIN_DB: f32 = 4.0;
 const GAIN: f32 = 1.3;
 const CURVE_POWER: f32 = 0.7;
 
@@ -12,6 +22,7 @@ pub struct AudioVisualiser {
     bucket_ranges: Vec<(usize, usize)>,
     fft_input: Vec<Complex32>,
     noise_floor: Vec<f32>,
+    peak_db: f32,
     buffer: Vec<f32>,
     window_size: usize,
     buckets: usize,
@@ -71,6 +82,7 @@ impl AudioVisualiser {
             bucket_ranges,
             fft_input: vec![Complex32::new(0.0, 0.0); window_size],
             noise_floor: vec![-40.0; buckets], // Initialize to reasonable noise floor
+            peak_db: PEAK_FLOOR,
             buffer: Vec::with_capacity(window_size * 2),
             window_size,
             buckets,
@@ -101,15 +113,16 @@ impl AudioVisualiser {
         // Perform FFT
         self.fft.process(&mut self.fft_input);
 
-        // Compute power spectrum and bucket levels
-        let mut buckets = vec![0.0; self.buckets];
+        // Pass 1: compute per-bucket dB, track the frame's max for peak updates,
+        // and adapt the per-bucket noise floor when we're sitting below signal.
+        let mut bucket_dbs = vec![-80.0f32; self.buckets];
+        let mut frame_max_db = f32::NEG_INFINITY;
 
         for (bucket_idx, &(start_bin, end_bin)) in self.bucket_ranges.iter().enumerate() {
             if start_bin >= end_bin || end_bin > self.fft_input.len() / 2 {
                 continue;
             }
 
-            // Calculate average power in this frequency range
             let mut power_sum = 0.0;
             for bin_idx in start_bin..end_bin {
                 let magnitude = self.fft_input[bin_idx].norm();
@@ -118,22 +131,49 @@ impl AudioVisualiser {
 
             let avg_power = power_sum / (end_bin - start_bin) as f32;
 
-            // Convert to dB with proper scaling
             let db = if avg_power > 1e-12 {
                 20.0 * (avg_power.sqrt() / self.window_size as f32).log10()
             } else {
-                -80.0 // Very low floor for zero power
+                -80.0
             };
+
+            bucket_dbs[bucket_idx] = db;
+            if db > frame_max_db {
+                frame_max_db = db;
+            }
 
             // Only update noise floor when signal is quiet (below current floor + 10dB)
             if db < self.noise_floor[bucket_idx] + 10.0 {
-                const NOISE_ALPHA: f32 = 0.001; // Very slow adaptation
+                const NOISE_ALPHA: f32 = 0.001;
                 self.noise_floor[bucket_idx] =
                     NOISE_ALPHA * db + (1.0 - NOISE_ALPHA) * self.noise_floor[bucket_idx];
             }
+        }
 
-            // Map configurable dB range to 0-1 with gain and curve shaping
-            let normalized = ((db - DB_MIN) / (DB_MAX - DB_MIN)).clamp(0.0, 1.0);
+        // Adaptive peak: fast attack up, slow release down, clamped so silence
+        // can't drag the range down onto the noise floor.
+        let alpha = if frame_max_db > self.peak_db {
+            PEAK_ATTACK
+        } else {
+            PEAK_RELEASE
+        };
+        self.peak_db = alpha * frame_max_db + (1.0 - alpha) * self.peak_db;
+        if self.peak_db < PEAK_FLOOR {
+            self.peak_db = PEAK_FLOOR;
+        }
+
+        // Pass 2: normalize each bucket against the peak-relative window, with
+        // a soft noise gate so ambient room tone doesn't light up the bars.
+        let db_max = self.peak_db;
+        let db_min = self.peak_db - DB_RANGE;
+        let mut buckets = vec![0.0; self.buckets];
+
+        for (bucket_idx, &db) in bucket_dbs.iter().enumerate() {
+            let gate = self.noise_floor[bucket_idx] + GATE_MARGIN_DB;
+            if db < gate {
+                continue;
+            }
+            let normalized = ((db - db_min) / (db_max - db_min)).clamp(0.0, 1.0);
             buckets[bucket_idx] = (normalized * GAIN).powf(CURVE_POWER).clamp(0.0, 1.0);
         }
 
@@ -152,5 +192,6 @@ impl AudioVisualiser {
         self.buffer.clear();
         // Reset noise floor to initial values
         self.noise_floor.fill(-40.0);
+        self.peak_db = PEAK_FLOOR;
     }
 }

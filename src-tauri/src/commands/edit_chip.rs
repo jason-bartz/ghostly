@@ -1,16 +1,13 @@
-//! `apply_edit_chip` — handles the click path for the edit-mode chip strip.
+//! Edit-mode entry points for the chip strip shown under the edit shortcut.
 //!
-//! When the user clicks a chip (Shorten / Lengthen / Fix grammar / Rephrase)
-//! while the edit overlay is open, we:
-//!   1. Cancel the nascent recording that was started by the edit shortcut.
-//!   2. Read the focused field's text via Cmd+A → Cmd+C round-trip.
-//!   3. Send it to the voice-edit LLM with the chip's canned instruction.
-//!   4. Select-all + paste the revised text, replacing what was there.
-//!   5. Restore the user's original clipboard.
+//! Two paths share the same underlying LLM edit of the focused field:
+//!   • `apply_edit_chip` — user clicks a chip; canned instruction applied.
+//!   • `edit_focused_field_with_instruction` — user speaks; transcription is
+//!     used as the instruction. Called by the transcribe pipeline when the
+//!     edit shortcut fires and no prior session entry is available to target.
 //!
-//! This is the Superhuman-style affordance — the voice path (record, speak
-//! instruction, edit last transcript) still exists in parallel through the
-//! normal voice-edit pipeline.
+//! Both read the focused field with Cmd+A → Cmd+C, send it to the voice-edit
+//! LLM, select-all + paste the revised text, and restore the user's clipboard.
 
 use crate::actions::voice_edit_via_llm;
 use crate::clipboard::{paste_with_options, PasteOptions};
@@ -65,6 +62,111 @@ fn fail(app: &AppHandle, message: impl Into<String>) {
     crate::tray::change_tray_icon(app, crate::tray::TrayIconState::Idle);
 }
 
+/// Shared worker for both the chip-click and voice-speech edit paths.
+/// Reads the focused field, runs the voice-edit LLM with `instruction`, and
+/// pastes the revised text back. Returns the revised text on success so
+/// callers can audit it (e.g. save to history). Restores the user's clipboard
+/// on both success and failure.
+///
+/// Does NOT cancel recording, hide overlays, or emit UI events — callers
+/// decide how to frame the operation in the overlay.
+pub(crate) async fn edit_focused_field_with_instruction(
+    app: &AppHandle,
+    instruction: &str,
+) -> Result<String, String> {
+    let clipboard = app.clipboard();
+    let saved_clipboard = clipboard.read_text().unwrap_or_default();
+
+    // Read focused field: Cmd+A → Cmd+C → read pasteboard. Clearing the
+    // clipboard first lets us distinguish "Cmd+C actually copied something"
+    // from "the field was empty or not focusable."
+    let original_text = {
+        let enigo_state = app
+            .try_state::<EnigoState>()
+            .ok_or_else(|| "Enigo state not initialized".to_string())?;
+        let mut enigo = enigo_state
+            .0
+            .lock()
+            .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
+
+        let _ = clipboard.write_text("");
+        std::thread::sleep(Duration::from_millis(20));
+
+        send_select_all(&mut enigo)
+            .map_err(|e| format!("Couldn't select text in focused field: {}", e))?;
+        std::thread::sleep(Duration::from_millis(40));
+        send_copy(&mut enigo)
+            .map_err(|e| format!("Couldn't copy text from focused field: {}", e))?;
+        drop(enigo);
+
+        std::thread::sleep(Duration::from_millis(CLIPBOARD_READ_DELAY_MS));
+        clipboard.read_text().unwrap_or_default()
+    };
+
+    if original_text.trim().is_empty() {
+        let _ = clipboard.write_text(&saved_clipboard);
+        return Err(
+            "No text in the focused field. Click into a text field with content first.".to_string(),
+        );
+    }
+
+    info!(
+        "edit_focused_field: read {} chars from focused field",
+        original_text.chars().count()
+    );
+
+    let settings = get_settings(app);
+    let app_ctx = crate::frontmost::current().ok().flatten();
+    let overrides = profiles::resolve_with_builtins(&settings, app_ctx.as_ref());
+
+    if !settings.has_working_llm() {
+        let _ = clipboard.write_text(&saved_clipboard);
+        return Err(
+            "No AI provider configured. Set one up in Settings → AI Refinement.".to_string(),
+        );
+    }
+
+    let revised = match voice_edit_via_llm(&settings, &original_text, instruction, &overrides).await
+    {
+        Some(t) => t,
+        None => {
+            let _ = clipboard.write_text(&saved_clipboard);
+            return Err("AI refinement returned nothing. Please try again.".to_string());
+        }
+    };
+
+    // Paste the revised text over a fresh select-all so we replace whatever
+    // the user had. The paste helper writes to the clipboard; we restore the
+    // user's original clipboard afterwards.
+    let paste_result: Result<(), String> = {
+        let enigo_state = app
+            .try_state::<EnigoState>()
+            .ok_or_else(|| "Enigo state not initialized".to_string())?;
+        {
+            let mut enigo = enigo_state
+                .0
+                .lock()
+                .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
+            send_select_all(&mut enigo)?;
+        }
+        std::thread::sleep(Duration::from_millis(40));
+
+        let opts = PasteOptions {
+            append_trailing_space: Some(false),
+            replace_prior_chars: None,
+            suppress_auto_submit: true,
+        };
+        paste_with_options(revised.clone(), app.clone(), opts)
+    };
+
+    std::thread::sleep(Duration::from_millis(60));
+    let _ = clipboard.write_text(&saved_clipboard);
+
+    paste_result
+        .map(|()| revised)
+        .map_err(|e| format!("Couldn't paste revised text: {}", e))
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn apply_edit_chip(app: AppHandle, chip_id: String) -> Result<(), String> {
@@ -101,117 +203,8 @@ pub async fn apply_edit_chip(app: AppHandle, chip_id: String) -> Result<(), Stri
     // panel width and hide which chip the user chose.
     crate::tray::change_tray_icon(&app, crate::tray::TrayIconState::Transcribing);
 
-    // Save the user's clipboard so we can restore it once we're done
-    // pretending to use it as a conveyor belt.
-    let clipboard = app.clipboard();
-    let saved_clipboard = clipboard.read_text().unwrap_or_default();
-
-    // Read focused field: Cmd+A → Cmd+C → read pasteboard.
-    let original_text = {
-        let enigo_state = app
-            .try_state::<EnigoState>()
-            .ok_or_else(|| "Enigo state not initialized".to_string())?;
-        let mut enigo = enigo_state
-            .0
-            .lock()
-            .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
-
-        // Clear the clipboard first so we can tell the difference between
-        // "Cmd+C actually copied something" and "the field was empty or not
-        // focusable." Otherwise a stale clipboard would look like success.
-        let _ = clipboard.write_text("");
-        std::thread::sleep(Duration::from_millis(20));
-
-        send_select_all(&mut enigo).map_err(|e| {
-            fail(
-                &app,
-                format!("Couldn't select text in focused field: {}", e),
-            );
-            e
-        })?;
-        std::thread::sleep(Duration::from_millis(40));
-        send_copy(&mut enigo).map_err(|e| {
-            fail(
-                &app,
-                format!("Couldn't copy text from focused field: {}", e),
-            );
-            e
-        })?;
-        drop(enigo);
-
-        std::thread::sleep(Duration::from_millis(CLIPBOARD_READ_DELAY_MS));
-        clipboard.read_text().unwrap_or_default()
-    };
-
-    if original_text.trim().is_empty() {
-        let _ = clipboard.write_text(&saved_clipboard);
-        fail(
-            &app,
-            "No text in the focused field. Click into a text field with content first.",
-        );
-        return Err("No text in focused field".to_string());
-    }
-
-    info!(
-        "apply_edit_chip: read {} chars from focused field",
-        original_text.chars().count()
-    );
-
-    let settings = get_settings(&app);
-    let app_ctx = crate::frontmost::current().ok().flatten();
-    let overrides = profiles::resolve_with_builtins(&settings, app_ctx.as_ref());
-
-    // Early guards: must have an LLM configured.
-    if !settings.has_working_llm() {
-        let _ = clipboard.write_text(&saved_clipboard);
-        fail(
-            &app,
-            "No AI provider configured. Set one up in Settings → AI Refinement.",
-        );
-        return Err("No LLM configured".to_string());
-    }
-
-    let revised = match voice_edit_via_llm(&settings, &original_text, instruction, &overrides).await
-    {
-        Some(t) => t,
-        None => {
-            let _ = clipboard.write_text(&saved_clipboard);
-            fail(&app, "AI refinement returned nothing. Please try again.");
-            return Err("LLM returned no content".to_string());
-        }
-    };
-
-    // Paste the revised text over a fresh select-all so we replace whatever
-    // the user had. The paste helper writes to the clipboard; we restore the
-    // user's original clipboard afterwards.
-    let paste_result: Result<(), String> = {
-        let enigo_state = app
-            .try_state::<EnigoState>()
-            .ok_or_else(|| "Enigo state not initialized".to_string())?;
-        // Select-all must happen outside the paste helper's Enigo lock.
-        {
-            let mut enigo = enigo_state
-                .0
-                .lock()
-                .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
-            send_select_all(&mut enigo)?;
-        }
-        std::thread::sleep(Duration::from_millis(40));
-
-        let opts = PasteOptions {
-            append_trailing_space: Some(false),
-            replace_prior_chars: None,
-            suppress_auto_submit: true,
-        };
-        paste_with_options(revised, app.clone(), opts)
-    };
-
-    // Always restore the user's clipboard, even on paste failure.
-    std::thread::sleep(Duration::from_millis(60));
-    let _ = clipboard.write_text(&saved_clipboard);
-
-    match paste_result {
-        Ok(()) => {
+    match edit_focused_field_with_instruction(&app, instruction).await {
+        Ok(_revised) => {
             info!("apply_edit_chip: paste completed");
             crate::overlay::emit_edit_chip_done(&app);
             utils::hide_recording_overlay(&app);
@@ -219,8 +212,8 @@ pub async fn apply_edit_chip(app: AppHandle, chip_id: String) -> Result<(), Stri
             Ok(())
         }
         Err(e) => {
-            error!("apply_edit_chip: paste failed: {}", e);
-            fail(&app, format!("Couldn't paste revised text: {}", e));
+            error!("apply_edit_chip: {}", e);
+            fail(&app, e.clone());
             Err(e)
         }
     }

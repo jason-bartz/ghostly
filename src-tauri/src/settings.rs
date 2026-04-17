@@ -519,7 +519,7 @@ pub struct AppSettings {
     pub custom_word_categories: HashMap<String, Vec<crate::profiles::CategoryId>>,
 
     // --- Voice editing loop (Feature B) ---
-    #[serde(default)]
+    #[serde(default = "default_voice_editing_enabled")]
     pub voice_editing_enabled: bool,
     #[serde(default = "default_session_buffer_size")]
     pub session_buffer_size: usize,
@@ -566,9 +566,9 @@ pub struct AppSettings {
 }
 
 /// Bump this string when the EULA text changes in a way that requires users
-/// to re-accept. Format: `YYYY-MM-DD` matching the "Last updated" date at the
+/// to re-accept. Format: `MMDDYYYY` matching the "Last updated" date at the
 /// top of `EULA.md`.
-pub const CURRENT_EULA_VERSION: &str = "2026-04-14";
+pub const CURRENT_EULA_VERSION: &str = "04172026";
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
@@ -585,6 +585,10 @@ impl Default for VoiceEditReplaceStrategy {
     fn default() -> Self {
         VoiceEditReplaceStrategy::SelectAndPaste
     }
+}
+
+fn default_voice_editing_enabled() -> bool {
+    true
 }
 
 fn default_session_buffer_size() -> usize {
@@ -1170,7 +1174,7 @@ pub fn get_default_settings() -> AppSettings {
         category_styles: crate::profiles::default_category_styles(),
         auto_cleanup_level: crate::profiles::AutoCleanupLevel::default(),
         custom_word_categories: HashMap::new(),
-        voice_editing_enabled: false,
+        voice_editing_enabled: default_voice_editing_enabled(),
         session_buffer_size: default_session_buffer_size(),
         session_idle_timeout_secs: default_session_idle_timeout_secs(),
         voice_edit_replace_strategy: VoiceEditReplaceStrategy::default(),

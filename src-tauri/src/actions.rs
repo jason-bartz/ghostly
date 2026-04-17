@@ -655,10 +655,10 @@ fn maybe_voice_edit_context(
     app_ctx: Option<&crate::frontmost::AppContext>,
     force: bool,
 ) -> Option<(SessionEntry, VoiceEditReplaceStrategy)> {
-    if !settings.voice_editing_enabled {
-        return None;
-    }
     if !force {
+        if !settings.voice_editing_enabled {
+            return None;
+        }
         if !settings.voice_edit_prefix_detection {
             return None;
         }
@@ -1523,11 +1523,60 @@ impl ShortcutAction for TranscribeAction {
                                     }
                                     None => {
                                         warn!(
-                                            "Voice-edit LLM call returned nothing; falling back to normal paste"
+                                            "Voice-edit LLM call returned nothing; falling back to focused-field edit"
                                         );
-                                        // fall through to normal pipeline
+                                        // fall through to focused-field fallback below
                                     }
                                 }
+                            }
+
+                            // Explicit edit shortcut fired but the voice-edit path didn't
+                            // produce a result (no prior session entry, or LLM returned
+                            // nothing). Treat the transcription as an instruction and apply
+                            // it to the focused field — same pathway as the click-chip
+                            // flow, but with the user's spoken instruction.
+                            if force_voice_edit && binding_id == "edit_last_transcription" {
+                                show_processing_overlay(&ah);
+                                match crate::commands::edit_chip::edit_focused_field_with_instruction(
+                                    &ah,
+                                    &transcription,
+                                )
+                                .await
+                                {
+                                    Ok(revised) => {
+                                        if wav_saved {
+                                            let source_app = rm.take_source_app();
+                                            if let Err(err) = hm.save_entry(
+                                                file_name,
+                                                transcription.clone(),
+                                                true,
+                                                Some(revised),
+                                                Some(VOICE_EDIT_SYSTEM_PROMPT.to_string()),
+                                                source_app,
+                                            ) {
+                                                error!(
+                                                    "Failed to save focused-field edit history: {}",
+                                                    err
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Focused-field edit failed: {}", e);
+                                        #[derive(Clone, serde::Serialize)]
+                                        struct PostProcessFailedEvent {
+                                            message: String,
+                                        }
+                                        let _ = ah.emit(
+                                            "post-process-failed",
+                                            PostProcessFailedEvent { message: e },
+                                        );
+                                    }
+                                }
+                                crate::overlay::emit_edit_chip_done(&ah);
+                                utils::hide_recording_overlay(&ah);
+                                change_tray_icon(&ah, TrayIconState::Idle);
+                                return;
                             }
 
                             if post_process {
