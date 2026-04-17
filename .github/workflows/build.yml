@@ -199,6 +199,77 @@ jobs:
             --content-type "application/x-apple-diskimage" \
             --cache-control "public, max-age=300"
 
+      - name: Publish updater manifest + bundle to Cloudflare R2
+        if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin' && inputs.release-id
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TARBALL=$(find src-tauri/target -name "*.app.tar.gz" -type f | head -1)
+          SIG=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f | head -1)
+          if [ -z "$TARBALL" ] || [ -z "$SIG" ]; then
+            echo "Updater artifacts not found."
+            echo "  tarball: '$TARBALL'"
+            echo "  sig:     '$SIG'"
+            echo "Confirm TAURI_SIGNING_PRIVATE_KEY is set and the updater plugin is configured in tauri.conf.json."
+            exit 1
+          fi
+          SIG_CONTENTS=$(cat "$SIG")
+          ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+
+          VERSIONED_KEY="releases/v${VERSION}/Ghostly-darwin-aarch64.app.tar.gz"
+          LATEST_KEY="Ghostly-darwin-aarch64.app.tar.gz"
+
+          echo "Uploading versioned bundle: s3://$R2_BUCKET/$VERSIONED_KEY"
+          aws s3 cp "$TARBALL" "s3://$R2_BUCKET/$VERSIONED_KEY" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type "application/gzip" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          echo "Uploading latest alias: s3://$R2_BUCKET/$LATEST_KEY"
+          aws s3 cp "$TARBALL" "s3://$R2_BUCKET/$LATEST_KEY" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type "application/gzip" \
+            --cache-control "public, max-age=300"
+
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          NOTES=$(gh release view "v${VERSION}" --json body -q .body 2>/dev/null || echo "")
+          TARBALL_URL="https://downloads.try-ghostly.com/${VERSIONED_KEY}"
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "$NOTES" \
+            --arg pub_date "$PUB_DATE" \
+            --arg signature "$SIG_CONTENTS" \
+            --arg url "$TARBALL_URL" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": {
+                  signature: $signature,
+                  url: $url
+                }
+              }
+            }' > updates.json
+
+          echo "Manifest contents:"
+          cat updates.json
+
+          echo "Uploading manifest: s3://$R2_BUCKET/updates.json"
+          aws s3 cp updates.json "s3://$R2_BUCKET/updates.json" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60"
+
       - name: Sync version on try-ghostly landing page
         if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin' && inputs.release-id
         shell: bash

@@ -9,6 +9,8 @@
     "deep-link:default",
     "store:default",
     "dialog:default",
+    "updater:default",
+    "process:default",
     "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",

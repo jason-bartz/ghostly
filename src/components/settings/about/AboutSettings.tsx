@@ -7,6 +7,7 @@ import { AppDataDirectory } from "../AppDataDirectory";
 import { AppLanguageSelector } from "../AppLanguageSelector";
 import { LogDirectory } from "../debug";
 import { LegalViewer } from "./LegalViewer";
+import { UpdateCheckRow } from "./UpdateCheckRow";
 import { commands } from "@/bindings";
 
 type ViewerKind = "eula" | "notices" | null;
@@ -50,6 +51,7 @@ export const AboutSettings: React.FC = () => {
           {/* eslint-disable-next-line i18next/no-literal-string */}
           <span className="text-sm font-mono">v{version}</span>
         </SettingContainer>
+        <UpdateCheckRow currentVersion={version} />
         <AppDataDirectory descriptionMode="tooltip" grouped={true} />
         <LogDirectory grouped={true} />
       </SettingsGroup>

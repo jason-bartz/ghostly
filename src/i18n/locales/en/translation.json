@@ -958,7 +958,39 @@
   },
   "footer": {
     "downloadingModel": "Downloading {{model}}...",
-    "downloadLatest": "Download latest"
+    "downloadLatest": "Download latest",
+    "updateAvailable": "Update available",
+    "updateDownloading": "Downloading update…",
+    "updateReady": "Restart to update"
+  },
+  "updater": {
+    "modal": {
+      "title": "A new version of Ghostly is available",
+      "subtitle": "v{{current}} → v{{next}}",
+      "notesHeading": "What's new",
+      "notesEmpty": "Release notes will appear here.",
+      "installButton": "Download & Install",
+      "installing": "Downloading…",
+      "installed": "Update ready — restart now",
+      "restartButton": "Restart Now",
+      "laterButton": "Remind Me Later",
+      "skipButton": "Skip This Version",
+      "errorTitle": "Couldn't download update",
+      "errorRetry": "Try Again",
+      "progress": "{{percent}}%"
+    },
+    "settings": {
+      "title": "Software Updates",
+      "description": "Ghostly checks for new versions automatically each time it starts.",
+      "checkButton": "Check for Updates",
+      "checking": "Checking…",
+      "upToDate": "You're on the latest version (v{{version}}).",
+      "available": "Version {{version}} is available.",
+      "viewButton": "View Update",
+      "lastCheckedLabel": "Last checked: {{when}}",
+      "lastCheckedNever": "Last checked: never",
+      "checkFailed": "Couldn't reach the update server. Check your internet connection and try again."
+    }
   },
   "common": {
     "loading": "Loading...",
