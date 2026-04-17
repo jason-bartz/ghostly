@@ -210,16 +210,30 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.get-version.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle/macos"
+          echo "Bundle dir listing:"
+          ls -la "$BUNDLE_DIR" || true
+          echo "---"
+
           TARBALL=$(find src-tauri/target -name "*.app.tar.gz" -type f | head -1)
-          SIG=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f | head -1)
-          if [ -z "$TARBALL" ] || [ -z "$SIG" ]; then
-            echo "Updater artifacts not found."
-            echo "  tarball: '$TARBALL'"
-            echo "  sig:     '$SIG'"
-            echo "Confirm TAURI_SIGNING_PRIVATE_KEY is set and the updater plugin is configured in tauri.conf.json."
+          if [ -z "$TARBALL" ]; then
+            echo "Tarball not found under src-tauri/target"
             exit 1
+          fi
+
+          SIG=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f | head -1)
+          if [ -z "$SIG" ]; then
+            echo "Sig file missing — signing tarball with TAURI_SIGNING_PRIVATE_KEY"
+            bun tauri signer sign "$TARBALL"
+            SIG="${TARBALL}.sig"
+            if [ ! -f "$SIG" ]; then
+              echo "Signing failed; no .sig produced at $SIG"
+              exit 1
+            fi
           fi
           SIG_CONTENTS=$(cat "$SIG")
           ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
