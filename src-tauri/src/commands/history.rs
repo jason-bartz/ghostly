@@ -6,6 +6,7 @@ use crate::managers::{
         WordCorrection,
     },
     transcription::TranscriptionManager,
+    usage::UsageManager,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -519,8 +520,12 @@ pub async fn toggle_word_correction(
 pub async fn get_transcription_stats(
     _app: AppHandle,
     history_manager: State<'_, Arc<HistoryManager>>,
+    usage_manager: State<'_, Arc<UsageManager>>,
 ) -> Result<TranscriptionStats, String> {
-    history_manager.get_stats().map_err(|e| e.to_string())
+    let counters = usage_manager.lifetime_achievement_counters();
+    history_manager
+        .get_stats(counters)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

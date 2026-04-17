@@ -195,6 +195,16 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         Arc::new(HistoryManager::new(app_handle).expect("Failed to initialize history manager"));
     let usage_manager = Arc::new(UsageManager::new());
 
+    // One-time backfill of the v3 achievements counters from the history DB.
+    // `backfill_achievements` is idempotent and only overwrites when the DB
+    // value is larger, so running it every launch is safe; the cost is one
+    // small aggregate query. Users upgrading from a build that only tracked
+    // these stats in the DB get a seamless merge.
+    match history_manager.achievements_backfill_seed() {
+        Ok((count, longest)) => usage_manager.backfill_achievements(count, longest),
+        Err(e) => log::warn!("Achievements backfill seed failed: {e}"),
+    }
+
     // Apply accelerator preferences before any model loads
     managers::transcription::apply_accelerator_settings(app_handle);
 

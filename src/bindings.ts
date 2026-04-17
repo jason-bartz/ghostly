@@ -1081,8 +1081,10 @@ async detectFrontmostApp() : Promise<Result<AppContext | null, string>> {
 }
 },
 /**
- * Returns the id of the built-in profile matching the frontmost app, or
- * null when nothing matches.
+ * Returns the id of the built-in profile that matches the frontmost app,
+ * or `None` if no built-in matches. Lets the Vibe Coding tab show "this
+ * app has voice commands available" without re-implementing the Rust
+ * detection heuristics in TypeScript.
  */
 async detectBuiltinProfileId() : Promise<Result<string | null, string>> {
     try {
@@ -1476,12 +1478,19 @@ historyUpdatePayload: "history-update-payload"
 
 export type ActiveDevice = { machine_id: string | null; machine_name?: string | null; activated_at: number | null; last_validated_at: number | null }
 export type AppContext = { bundleId: string | null; processName: string | null; windowClass: string | null; exePath: string | null; windowTitle: string | null }
-export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
+export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; 
+/**
+ * Marker for the 0.1.7 `start_hidden` default flip. When false, the
+ * migration in `migrate_start_hidden_default` will reset `start_hidden`
+ * to false (matching the new default) and set this to true so it only
+ * runs once. See lib.rs autostart args for the full rationale.
+ */
+start_hidden_default_flipped?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
 /**
  * Optional phonetic ("sounds like") hints keyed by the lowercased custom
  * word. Used as a Soundex override so users can nudge fuzzy-match for
  * proper nouns whose spelling diverges from pronunciation
- * (e.g. "Siobhan" -> "shavawn"). Not sent to Whisper as initial_prompt.
+ * (e.g. "Siobhan" -> "shavawn").
  */
 custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
 /**
@@ -1639,6 +1648,24 @@ export type ImplementationChangeResult = { success: boolean;
  */
 reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
+/**
+ * Spoken phrase → keystroke binding, scoped to an individual `Profile`.
+ * Folds the former `IdeCommand` into the profile system so IDE-style voice
+ * automation and app-specific style overrides share one data model.
+ */
+export type KeystrokeCommand = { 
+/**
+ * Spoken phrase, lowercase. Additional synonyms live in `aliases`.
+ */
+phrase: string; aliases?: string[]; 
+/**
+ * Keystroke in `voice_commands` format: "enter", "escape", "cmd+enter", ...
+ */
+keystroke: string; 
+/**
+ * Short description shown on the overlay hint chip.
+ */
+description: string }
 export type LLMPrompt = { id: string; name: string; prompt: string; 
 /**
  * Optional global keyboard shortcut for this prompt (e.g. "ctrl+1").
@@ -1700,30 +1727,30 @@ custom_vocab?: string[];
 /**
  * Override trailing-space setting. `None` = inherit.
  */
-append_trailing_space?: boolean | null;
+append_trailing_space?: boolean | null; 
 /**
  * Override post-process provider id (e.g. switch to Apple Intelligence for Slack).
  * `None` = inherit.
  */
-provider_override?: string | null;
+provider_override?: string | null; 
 /**
  * Voice phrase → keystroke bindings merged into the global command pool
- * when this profile is active.
+ * when this profile is active. Empty for apps that don't need app-local
+ * automation.
  */
-keystroke_commands?: KeystrokeCommand[];
+keystroke_commands?: KeystrokeCommand[]; 
 /**
- * Some(true) forces auto-submit, Some(false) explicitly suppresses, None
- * inherits the global setting.
+ * When `Some(true)`, a normal dictation into the matching app is
+ * auto-submitted (paste + Enter). When `Some(false)`, auto-submit is
+ * explicitly suppressed for the app (e.g. VS Code editor).
+ * `None` = inherit global auto-submit behavior.
  */
-auto_submit?: boolean | null;
+auto_submit?: boolean | null; 
 /**
  * When true, image paste requires Shift+Cmd+V instead of Cmd+V.
+ * VS Code needs this to attach images to Copilot Chat.
  */
 image_paste_uses_shift?: boolean }
-/**
- * Spoken phrase → keystroke binding, scoped to an individual Profile.
- */
-export type KeystrokeCommand = { phrase: string; aliases?: string[]; keystroke: string; description: string }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
 export type SecretMap = Partial<{ [key in string]: string }>
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
