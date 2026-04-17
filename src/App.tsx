@@ -54,6 +54,20 @@ function App() {
     checkOnboardingStatus();
   }, []);
 
+  // Cross-component navigation: any settings component can fire
+  // `ghostly:navigate` to jump to another sidebar section.
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const section = (e as CustomEvent<{ section?: string }>).detail?.section;
+      if (!section) return;
+      if (section in SECTIONS_CONFIG) {
+        setCurrentSection(section as SidebarSection);
+      }
+    };
+    window.addEventListener("ghostly:navigate", onNavigate);
+    return () => window.removeEventListener("ghostly:navigate", onNavigate);
+  }, []);
+
   // Resolve EULA gate state on mount. Show the gate if the accepted version
   // on disk doesn't match the current EULA version shipped in this build.
   useEffect(() => {

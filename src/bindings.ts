@@ -1416,41 +1416,6 @@ async openPaymentLink() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Mark the one-time IDE hint as seen for the given preset id. Idempotent.
- */
-async markIdeHintSeen(presetId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("mark_ide_hint_seen", { presetId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setIdePresetsEnabled(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_ide_presets_enabled", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setIdeAutoSubmit(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_ide_auto_submit", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async resetSeenIdeHints() : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("reset_seen_ide_hints") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async applyEditChip(chipId: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("apply_edit_chip", { chipId }) };
@@ -1485,7 +1450,13 @@ export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding
  * to false (matching the new default) and set this to true so it only
  * runs once. See lib.rs autostart args for the full rationale.
  */
-start_hidden_default_flipped?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
+start_hidden_default_flipped?: boolean; 
+/**
+ * Marker for the Cmd+V default on `confirm_screenshot_paste`. When false,
+ * the migration upgrades an empty/legacy-unbound binding to cmd+v one
+ * time, then sets this true so it won't override a user's explicit clear.
+ */
+confirm_paste_default_set?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
 /**
  * Optional phonetic ("sounds like") hints keyed by the lowercased custom
  * word. Used as a Soundex override so users can nudge fuzzy-match for
@@ -1553,24 +1524,7 @@ custom_word_categories?: Partial<{ [key in string]: CategoryId[] }>; voice_editi
 /**
  * Opt-in experimental: regex prefix detection in addition to the shortcut.
  */
-voice_edit_prefix_detection?: boolean; rest_api_enabled?: boolean; rest_api_port?: number; voice_commands_enabled?: boolean; voice_commands?: VoiceCommand[]; 
-/**
- * When true, Ghostly detects supported IDEs/agent CLIs (Cursor, Claude
- * Code, Windsurf, VS Code, Replit) and surfaces a one-time hint chip in
- * the overlay plus context-aware voice-command matching.
- */
-ide_presets_enabled?: boolean; 
-/**
- * Preset IDs the user has already been shown the hint for. Used to make
- * the onscreen hint strictly one-time per app.
- */
-seen_ide_hints?: string[]; 
-/**
- * When true, dictation into a detected IDE with `auto_submit: true`
- * presses Enter after paste regardless of the global `auto_submit`
- * setting. This is what makes "auto populate AND auto send" work.
- */
-ide_auto_submit?: boolean; 
+voice_edit_prefix_detection?: boolean; rest_api_enabled?: boolean; rest_api_port?: number; 
 /**
  * When true, speaking a correction phrase deletes the last transcription.
  * No AI required — pure regex word-boundary replacement.
@@ -1648,24 +1602,6 @@ export type ImplementationChangeResult = { success: boolean;
  */
 reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
-/**
- * Spoken phrase → keystroke binding, scoped to an individual `Profile`.
- * Folds the former `IdeCommand` into the profile system so IDE-style voice
- * automation and app-specific style overrides share one data model.
- */
-export type KeystrokeCommand = { 
-/**
- * Spoken phrase, lowercase. Additional synonyms live in `aliases`.
- */
-phrase: string; aliases?: string[]; 
-/**
- * Keystroke in `voice_commands` format: "enter", "escape", "cmd+enter", ...
- */
-keystroke: string; 
-/**
- * Short description shown on the overlay hint chip.
- */
-description: string }
 export type LLMPrompt = { id: string; name: string; prompt: string; 
 /**
  * Optional global keyboard shortcut for this prompt (e.g. "ctrl+1").
@@ -1734,19 +1670,6 @@ append_trailing_space?: boolean | null;
  */
 provider_override?: string | null; 
 /**
- * Voice phrase → keystroke bindings merged into the global command pool
- * when this profile is active. Empty for apps that don't need app-local
- * automation.
- */
-keystroke_commands?: KeystrokeCommand[]; 
-/**
- * When `Some(true)`, a normal dictation into the matching app is
- * auto-submitted (paste + Enter). When `Some(false)`, auto-submit is
- * explicitly suppressed for the app (e.g. VS Code editor).
- * `None` = inherit global auto-submit behavior.
- */
-auto_submit?: boolean | null; 
-/**
  * When true, image paste requires Shift+Cmd+V instead of Cmd+V.
  * VS Code needs this to attach images to Copilot Chat.
  */
@@ -1778,23 +1701,6 @@ resets_at_unix: number; lifetime_seconds: number; words_this_week: number; lifet
  */
 time_saved_secs_this_week: number; time_saved_secs_lifetime: number; history: UsageWeek[] }
 export type UsageWeek = { week_start_iso: string; seconds: number; words: number; hit_limit: boolean }
-export type VoiceCommand = { 
-/**
- * Display label for settings UI.
- */
-name: string; 
-/**
- * Trigger phrases. Matched case-insensitively against the normalized
- * transcription as whole strings (not substrings).
- */
-phrases: string[]; 
-/**
- * Keystroke to inject. Format: "enter", "escape", "shift+tab", "cmd+s",
- * "y". Modifiers: ctrl/shift/alt/option/cmd/meta. Keys: named (enter,
- * escape, tab, space, backspace, delete, up/down/left/right, home, end,
- * pageup, pagedown, f1-f12) or a single character.
- */
-keystroke: string; enabled?: boolean }
 export type VoiceEditReplaceStrategy = 
 /**
  * Select prior pasted text (Shift+Left×N) then paste replacement.

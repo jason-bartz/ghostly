@@ -87,22 +87,6 @@ pub struct ShortcutBinding {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
-pub struct VoiceCommand {
-    /// Display label for settings UI.
-    pub name: String,
-    /// Trigger phrases. Matched case-insensitively against the normalized
-    /// transcription as whole strings (not substrings).
-    pub phrases: Vec<String>,
-    /// Keystroke to inject. Format: "enter", "escape", "shift+tab", "cmd+s",
-    /// "y". Modifiers: ctrl/shift/alt/option/cmd/meta. Keys: named (enter,
-    /// escape, tab, space, backspace, delete, up/down/left/right, home, end,
-    /// pageup, pagedown, f1-f12) or a single character.
-    pub keystroke: String,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct LLMPrompt {
     pub id: String,
     pub name: String,
@@ -381,6 +365,13 @@ pub struct AppSettings {
     /// time, then sets this true so it won't override a user's explicit clear.
     #[serde(default)]
     pub confirm_paste_default_set: bool,
+    /// Marker for the shortcut-defaults migration that moved transcribe to
+    /// `fn` and the edit/screenshot/continuous bindings to the Cmd+Option
+    /// family. When false, `migrate_binding_defaults_v2` syncs stored
+    /// `default_binding` fields to the new code defaults and upgrades any
+    /// `current_binding` that was still sitting on the old default.
+    #[serde(default)]
+    pub binding_defaults_v2_migrated: bool,
     #[serde(default = "default_autostart_enabled")]
     pub autostart_enabled: bool,
     #[serde(default = "default_model")]
@@ -545,28 +536,6 @@ pub struct AppSettings {
     pub rest_api_enabled: bool,
     #[serde(default = "default_rest_api_port")]
     pub rest_api_port: u16,
-
-    // --- Voice commands (agent control) ---
-    #[serde(default)]
-    pub voice_commands_enabled: bool,
-    #[serde(default = "default_voice_commands")]
-    pub voice_commands: Vec<VoiceCommand>,
-
-    // --- IDE presets (one-time hint + contextual auto-submit) ---
-    /// When true, Ghostly detects supported IDEs/agent CLIs (Cursor, Claude
-    /// Code, Windsurf, VS Code, Replit) and surfaces a one-time hint chip in
-    /// the overlay plus context-aware voice-command matching.
-    #[serde(default = "default_true")]
-    pub ide_presets_enabled: bool,
-    /// Preset IDs the user has already been shown the hint for. Used to make
-    /// the onscreen hint strictly one-time per app.
-    #[serde(default)]
-    pub seen_ide_hints: Vec<String>,
-    /// When true, dictation into a detected IDE with `auto_submit: true`
-    /// presses Enter after paste regardless of the global `auto_submit`
-    /// setting. This is what makes "auto populate AND auto send" work.
-    #[serde(default = "default_true")]
-    pub ide_auto_submit: bool,
 
     // --- Correction phrases (Feature D) ---
     /// When true, speaking a correction phrase deletes the last transcription.
@@ -962,46 +931,6 @@ fn default_correction_phrases() -> Vec<String> {
     vec!["scratch that".to_string()]
 }
 
-fn default_voice_commands() -> Vec<VoiceCommand> {
-    vec![
-        VoiceCommand {
-            name: "Approve".to_string(),
-            phrases: vec![
-                "approve".to_string(),
-                "accept".to_string(),
-                "yes".to_string(),
-                "okay".to_string(),
-                "confirm".to_string(),
-            ],
-            keystroke: "enter".to_string(),
-            enabled: true,
-        },
-        VoiceCommand {
-            name: "Reject".to_string(),
-            phrases: vec![
-                "reject".to_string(),
-                "decline".to_string(),
-                "no".to_string(),
-                "cancel".to_string(),
-            ],
-            keystroke: "escape".to_string(),
-            enabled: true,
-        },
-        VoiceCommand {
-            name: "Next".to_string(),
-            phrases: vec!["next".to_string()],
-            keystroke: "tab".to_string(),
-            enabled: true,
-        },
-        VoiceCommand {
-            name: "Back".to_string(),
-            phrases: vec!["back".to_string(), "previous".to_string()],
-            keystroke: "shift+tab".to_string(),
-            enabled: true,
-        },
-    ]
-}
-
 fn default_typing_tool() -> TypingTool {
     TypingTool::Auto
 }
@@ -1065,14 +994,24 @@ fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
 pub fn get_default_settings() -> AppSettings {
+    // macOS uses `fn` (single key, push-to-talk friendly) with HandyKeys impl.
+    // Other platforms and the Tauri fallback can't fire on `fn` alone.
     #[cfg(target_os = "windows")]
     let default_shortcut = "ctrl+space";
     #[cfg(target_os = "macos")]
-    let default_shortcut = "option+space";
+    let default_shortcut = "fn";
     #[cfg(target_os = "linux")]
     let default_shortcut = "ctrl+space";
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let default_shortcut = "alt+space";
+
+    // "Ghostly commands" family on macOS: Cmd+Option+<letter>. Avoids bare Cmd
+    // shortcuts (C/V/X/S/Z/A/W/Q/T/N) and Apple's Cmd+Shift+3/4/5 screenshots.
+    // `cmd+option+d` is reserved (hide/show Dock), so continuous uses K.
+    #[cfg(target_os = "macos")]
+    let default_screenshot_shortcut = "cmd+option+s";
+    #[cfg(not(target_os = "macos"))]
+    let default_screenshot_shortcut = "";
 
     let mut bindings = HashMap::new();
     bindings.insert(
@@ -1085,21 +1024,6 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: default_shortcut.to_string(),
         },
     );
-    // Voice command shortcut — unbound by default; user opts in.
-    bindings.insert(
-        "voice_command".to_string(),
-        ShortcutBinding {
-            id: "voice_command".to_string(),
-            name: "Voice Command".to_string(),
-            description:
-                "Records a short phrase and maps it to a keystroke (e.g. \"approve\" → Enter) instead of pasting text. Great for AI agent control in Cursor, Claude Code, and similar tools."
-                    .to_string(),
-            default_binding: "".to_string(),
-            current_binding: "".to_string(),
-        },
-    );
-
-    // Screenshot + dictate shortcut — unbound by default so users opt in explicitly.
     bindings.insert(
         "transcribe_with_screenshot".to_string(),
         ShortcutBinding {
@@ -1108,8 +1032,8 @@ pub fn get_default_settings() -> AppSettings {
             description:
                 "Captures the screen and records your question, then stages them. Focus a text field and trigger 'Paste Staged Capture' to drop the screenshot and text into the app."
                     .to_string(),
-            default_binding: "".to_string(),
-            current_binding: "".to_string(),
+            default_binding: default_screenshot_shortcut.to_string(),
+            current_binding: default_screenshot_shortcut.to_string(),
         },
     );
 
@@ -1138,9 +1062,12 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: "escape".to_string(),
         },
     );
-    // Voice-edit shortcut — unbound by default so users opt in explicitly.
-    // Arm/disarm for hands-free continuous dictation. Unbound by default;
-    // the feature is dev-mode gated and the user explicitly opts in.
+    // Continuous dictation arm/disarm. K = "keep listening"; avoids
+    // Cmd+Option+D (Dock) and Cmd+Option+M (minimize).
+    #[cfg(target_os = "macos")]
+    let default_continuous_shortcut = "cmd+option+k";
+    #[cfg(not(target_os = "macos"))]
+    let default_continuous_shortcut = "";
     bindings.insert(
         "toggle_continuous_dictation".to_string(),
         ShortcutBinding {
@@ -1149,14 +1076,18 @@ pub fn get_default_settings() -> AppSettings {
             description:
                 "Arms or disarms hands-free continuous dictation. When armed, the microphone stays hot and Ghostly transcribes each utterance automatically on silence."
                     .to_string(),
-            default_binding: "".to_string(),
-            current_binding: "".to_string(),
+            default_binding: default_continuous_shortcut.to_string(),
+            current_binding: default_continuous_shortcut.to_string(),
         },
     );
 
-    // Default: fn+ctrl — sits right next to the transcribe key on a MacBook
-    // so the edit action feels like a natural sibling of the record action.
-    let default_edit_shortcut = "ctrl+fn";
+    // Edit-last shortcut. E = Edit; the old `ctrl+fn` default collided with
+    // `fn` transcribe because pressing fn first fires transcribe before ctrl
+    // lands and switches the shortcut to the edit combo.
+    #[cfg(target_os = "macos")]
+    let default_edit_shortcut = "cmd+option+e";
+    #[cfg(not(target_os = "macos"))]
+    let default_edit_shortcut = "";
     bindings.insert(
         "edit_last_transcription".to_string(),
         ShortcutBinding {
@@ -1181,6 +1112,7 @@ pub fn get_default_settings() -> AppSettings {
         // migration done — only pre-0.1.7 stored settings need it.
         start_hidden_default_flipped: true,
         confirm_paste_default_set: true,
+        binding_defaults_v2_migrated: true,
         autostart_enabled: default_autostart_enabled(),
         selected_model: "".to_string(),
         always_on_microphone: false,
@@ -1245,11 +1177,6 @@ pub fn get_default_settings() -> AppSettings {
         voice_edit_prefix_detection: false,
         rest_api_enabled: false,
         rest_api_port: default_rest_api_port(),
-        voice_commands_enabled: false,
-        voice_commands: default_voice_commands(),
-        ide_presets_enabled: true,
-        seen_ide_hints: Vec::new(),
-        ide_auto_submit: true,
         correction_phrases_enabled: true,
         correction_phrases: default_correction_phrases(),
         eula_accepted_version: None,
@@ -1375,9 +1302,9 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_builtin_prompts(&mut settings);
     changed |= ensure_category_style_defaults(&mut settings);
-    changed |= migrate_seen_ide_hint_ids(&mut settings);
     changed |= migrate_start_hidden_default(&mut settings);
     changed |= migrate_confirm_paste_default(&mut settings);
+    changed |= migrate_binding_defaults_v2(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1427,28 +1354,40 @@ fn migrate_confirm_paste_default(settings: &mut AppSettings) -> bool {
     true
 }
 
-/// Migrate legacy `seen_ide_hints` entries from the bare preset ids
-/// ("cursor", "claude_code", "windsurf", "vscode", "replit") to the
-/// `builtin_*` profile ids introduced when IDE presets folded into the
-/// profile system. Without this, existing users would see the one-time
-/// hint chip again after upgrading.
-fn migrate_seen_ide_hint_ids(settings: &mut AppSettings) -> bool {
-    let mut changed = false;
-    for id in settings.seen_ide_hints.iter_mut() {
-        let new_id = match id.as_str() {
-            "cursor" => Some("builtin_cursor"),
-            "claude_code" => Some("builtin_claude_code"),
-            "windsurf" => Some("builtin_windsurf"),
-            "vscode" => Some("builtin_vscode"),
-            "replit" => Some("builtin_replit"),
-            _ => None,
-        };
-        if let Some(next) = new_id {
-            *id = next.to_string();
-            changed = true;
-        }
+/// One-shot migration that upgrades pre-existing installs to the new shortcut
+/// defaults (transcribe=fn, Cmd+Option family for edit/screenshot/continuous).
+///
+/// For each binding whose code default has changed:
+/// - If the user's `current_binding` still matches their old stored
+///   `default_binding`, treat them as "on the default" and move them to the
+///   new default.
+/// - Otherwise, leave `current_binding` alone — the user picked it — but
+///   still update the stored `default_binding` field so the Reset button
+///   lands on the new default.
+///
+/// Gated by `binding_defaults_v2_migrated` so that a user who later sets
+/// their edit binding back to `ctrl+fn` deliberately doesn't get pulled off
+/// it on the next launch.
+fn migrate_binding_defaults_v2(settings: &mut AppSettings) -> bool {
+    if settings.binding_defaults_v2_migrated {
+        return false;
     }
-    changed
+    let code_defaults = get_default_settings().bindings;
+    for (id, code_default) in code_defaults {
+        let Some(stored) = settings.bindings.get_mut(&id) else {
+            continue;
+        };
+        if stored.default_binding == code_default.default_binding {
+            continue;
+        }
+        // "User was on the default" — upgrade them to the new default.
+        if stored.current_binding == stored.default_binding {
+            stored.current_binding = code_default.default_binding.clone();
+        }
+        stored.default_binding = code_default.default_binding;
+    }
+    settings.binding_defaults_v2_migrated = true;
+    true
 }
 
 /// Backfill any missing category_styles entries so the Style system always
@@ -1552,9 +1491,9 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_builtin_prompts(&mut settings);
     changed |= ensure_category_style_defaults(&mut settings);
-    changed |= migrate_seen_ide_hint_ids(&mut settings);
     changed |= migrate_start_hidden_default(&mut settings);
     changed |= migrate_confirm_paste_default(&mut settings);
+    changed |= migrate_binding_defaults_v2(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1592,14 +1531,6 @@ pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
     let settings = get_settings(app);
 
     settings.bindings
-}
-
-pub fn get_stored_binding(app: &AppHandle, id: &str) -> ShortcutBinding {
-    let bindings = get_bindings(app);
-
-    let binding = bindings.get(id).unwrap().clone();
-
-    binding
 }
 
 pub fn get_history_limit(app: &AppHandle) -> usize {

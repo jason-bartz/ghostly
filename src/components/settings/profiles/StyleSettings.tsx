@@ -16,11 +16,7 @@ import { styleCommands } from "@/lib/styleBindings";
 import { CategoryTab } from "./CategoryTab";
 import { AutoCleanupTab } from "./AutoCleanupTab";
 import { AdvancedRules } from "./AdvancedRules";
-import type {
-  AutoCleanupLevel,
-  CategoryId,
-  CategoryStyleLike,
-} from "./types";
+import type { AutoCleanupLevel, CategoryId, CategoryStyleLike } from "./types";
 
 type TabKey = CategoryId | "cleanup" | "advanced";
 
@@ -120,11 +116,7 @@ export const StyleSettings: React.FC = () => {
                   type="button"
                   onClick={() => setActiveTab(key)}
                   className={`relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap
-                    ${
-                      active
-                        ? "text-text"
-                        : "text-text/60 hover:text-text"
-                    }`}
+                    ${active ? "text-text" : "text-text/60 hover:text-text"}`}
                 >
                   <Icon className="w-4 h-4" />
                   <span>{t(labelKey)}</span>

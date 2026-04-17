@@ -21,11 +21,11 @@ use crate::utils::{
     self, emit_transcription_preview, show_processing_overlay, show_recording_overlay,
     show_transcribing_overlay,
 };
-use crate::voice_commands;
 use crate::TranscriptionCoordinator;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
 use log::{debug, error, warn};
 use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -62,9 +62,6 @@ struct TranscribeAction {
     /// of prefix detection. Used by the dedicated "edit last transcription"
     /// shortcut so users can revise without risking false positives on content.
     force_voice_edit: bool,
-    /// When true, the transcription is matched against the user's voice-command
-    /// list and, on match, the mapped keystroke is injected instead of pasting.
-    voice_command_mode: bool,
     /// When true, captures a screenshot on start() and routes the transcription
     /// through a vision-capable LLM with the image attached.
     capture_screenshot: bool,
@@ -79,6 +76,60 @@ const TRANSCRIPTION_FIELD: &str = "transcription";
 /// Strip invisible Unicode characters that some LLMs may insert
 fn strip_invisible_chars(s: &str) -> String {
     s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
+}
+
+/// Small on-device models — notably Apple Intelligence — sometimes ignore the
+/// "return only the cleaned text" rule and prefix their response with a
+/// conversational preamble like `Sure! Here's the cleaned-up text:\n\n"..."`.
+/// Strip the preamble and any wrapping quotes it brought along, but only when
+/// both signals are present so normal dictation that happens to start with
+/// "Here's..." isn't damaged.
+static LLM_PREAMBLE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(concat!(
+        r"(?i)^\s*",
+        r"(?:",
+        // Variant 1: optional lead ("Sure!", "Okay,", etc.) + here's/here is/below is/this is ... : \n+
+        r"(?:sure|okay|alright|got it|certainly|of course|absolutely|yes|here you go)[,.!]?\s+",
+        r"(?:here(?:'s| is)|below is|this is)[^\n]*:\s*\n+",
+        r"|",
+        // Variant 2: bare "Here's the <adjective> text:" with no lead-in
+        r"here(?:'s| is)\s+(?:the|your|a|an)\s+",
+        r"(?:cleaned|cleaned-up|cleanup|rewritten|revised|edited|formatted|corrected|final|processed|polished|refined|updated)",
+        r"[^\n]*:\s*\n+",
+        r")",
+    ))
+    .expect("valid llm preamble regex")
+});
+
+fn strip_llm_preamble(s: &str) -> String {
+    let Some(m) = LLM_PREAMBLE_RE.find(s) else {
+        return s.to_string();
+    };
+    let after = s[m.end()..].trim();
+
+    // Preamble was present; the AI often wraps the actual content in matching
+    // straight or curly double quotes. Strip them if they wrap the entire
+    // remainder. Only runs in the preamble-matched branch so we don't strip
+    // legitimate user-dictated quotes when there's no preamble signal.
+    let chars: Vec<char> = after.chars().collect();
+    if chars.len() >= 2 {
+        let first = chars[0];
+        let last = chars[chars.len() - 1];
+        let is_wrapped = matches!((first, last), ('"', '"') | ('\u{201C}', '\u{201D}'));
+        if is_wrapped {
+            return chars[1..chars.len() - 1]
+                .iter()
+                .collect::<String>()
+                .trim()
+                .to_string();
+        }
+    }
+    after.to_string()
+}
+
+/// Combined cleanup applied to raw LLM output before it's displayed or pasted.
+fn clean_llm_output(s: &str) -> String {
+    strip_llm_preamble(&strip_invisible_chars(s))
 }
 
 /// Event payload emitted when AI refinement fails for a real reason (network,
@@ -265,7 +316,7 @@ async fn post_process_transcription(
                         debug!("Apple Intelligence returned an empty response");
                         return None;
                     }
-                    let result = strip_invisible_chars(&result);
+                    let result = clean_llm_output(&result);
                     // Hallucination guard: on-device Apple Intelligence
                     // occasionally answers the transcription as a question
                     // instead of cleaning it, producing output many times
@@ -347,7 +398,7 @@ async fn post_process_transcription(
                         if let Some(transcription_value) =
                             json.get(TRANSCRIPTION_FIELD).and_then(|t| t.as_str())
                         {
-                            let result = strip_invisible_chars(transcription_value);
+                            let result = clean_llm_output(transcription_value);
                             debug!(
                                 "Structured output post-processing succeeded for provider '{}'. Output length: {} chars",
                                 provider.id,
@@ -412,7 +463,7 @@ async fn post_process_transcription(
     .await
     {
         Ok(Some(content)) => {
-            let content = strip_invisible_chars(&content);
+            let content = clean_llm_output(&content);
             debug!(
                 "LLM post-processing succeeded for provider '{}'. Output length: {} chars",
                 provider.id,
@@ -502,7 +553,7 @@ async fn post_process_transcription_streaming(
 
     match result {
         Ok(text) => {
-            let cleaned = strip_invisible_chars(&text);
+            let cleaned = clean_llm_output(&text);
             if cleaned.trim().is_empty() {
                 emit_post_process_failed(
                     app,
@@ -751,7 +802,7 @@ pub(crate) async fn voice_edit_via_llm(
             let token_limit = model.trim().parse::<i32>().unwrap_or(0);
             return apple_intelligence::process_text_with_system_prompt("", &bundled, token_limit)
                 .ok()
-                .map(|s| strip_invisible_chars(&s))
+                .map(|s| clean_llm_output(&s))
                 .filter(|s| !s.trim().is_empty());
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
@@ -793,13 +844,13 @@ pub(crate) async fn voice_edit_via_llm(
         {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(s) = json.get("revised_text").and_then(|v| v.as_str()) {
-                    let cleaned = strip_invisible_chars(s);
+                    let cleaned = clean_llm_output(s);
                     if !cleaned.trim().is_empty() {
                         return Some(cleaned);
                     }
                 }
             }
-            let cleaned = strip_invisible_chars(&content);
+            let cleaned = clean_llm_output(&content);
             if !cleaned.trim().is_empty() {
                 return Some(cleaned);
             }
@@ -819,7 +870,7 @@ pub(crate) async fn voice_edit_via_llm(
     .await
     {
         Ok(Some(content)) => {
-            let cleaned = strip_invisible_chars(&content);
+            let cleaned = clean_llm_output(&content);
             if cleaned.trim().is_empty() {
                 None
             } else {
@@ -917,7 +968,7 @@ async fn screenshot_qa_via_llm(
     .await
     {
         Ok(Some(content)) => {
-            let cleaned = strip_invisible_chars(&content);
+            let cleaned = clean_llm_output(&content);
             if cleaned.trim().is_empty() {
                 error!("Screenshot Q&A: LLM returned empty content");
                 emit_screenshot_qa_failed(
@@ -991,29 +1042,6 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string();
         change_tray_icon(app, TrayIconState::Recording);
         show_recording_overlay(app);
-
-        // Emit one-time IDE hint chip if the frontmost app matches a built-in
-        // profile that carries keystroke commands. Skip when the overlay is
-        // disabled — the hint has nowhere to render.
-        {
-            let settings_for_hint = get_settings(app);
-            if settings_for_hint.ide_presets_enabled
-                && settings_for_hint.overlay_position != crate::settings::OverlayPosition::None
-            {
-                if let Ok(Some(ctx)) = crate::frontmost::current() {
-                    if let Some(profile) = crate::profiles::match_builtin_profile(&ctx) {
-                        if !profile.keystroke_commands.is_empty()
-                            && !settings_for_hint
-                                .seen_ide_hints
-                                .iter()
-                                .any(|id| id == &profile.id)
-                        {
-                            crate::overlay::emit_ide_hint(app, &profile);
-                        }
-                    }
-                }
-            }
-        }
 
         // When the dedicated edit shortcut is used, show a clickable chip
         // strip (Shorten / Lengthen / Fix grammar / Rephrase). Clicking a chip
@@ -1154,7 +1182,6 @@ impl ShortcutAction for TranscribeAction {
         let force_voice_edit = self.force_voice_edit;
         let capture_screenshot = self.capture_screenshot;
         let captured_image_slot = Arc::clone(&self.captured_image);
-        let voice_command_mode = self.voice_command_mode;
 
         tauri::async_runtime::spawn(async move {
             let _guard = FinishGuard(ah.clone());
@@ -1248,11 +1275,9 @@ impl ShortcutAction for TranscribeAction {
                             // Runtime post-process decision: force-on from the
                             // action (e.g. edit_last_transcription), else auto —
                             // on whenever an LLM is connected and this isn't a
-                            // voice-command or screenshot flow.
+                            // screenshot flow.
                             let post_process = force_post_process
-                                || (!voice_command_mode
-                                    && !capture_screenshot
-                                    && settings_snapshot.has_working_llm());
+                                || (!capture_screenshot && settings_snapshot.has_working_llm());
                             let app_ctx = frontmost::current().ok().flatten();
                             let mut overrides = profiles::resolve_with_builtins(
                                 &settings_snapshot,
@@ -1321,60 +1346,6 @@ impl ShortcutAction for TranscribeAction {
                                 }
                                 utils::hide_recording_overlay(&ah);
                                 change_tray_icon(&ah, TrayIconState::Idle);
-                                return;
-                            }
-
-                            // Voice-command branch: match transcription to a configured phrase;
-                            // on match, inject the mapped keystroke instead of pasting.
-                            if voice_command_mode {
-                                if !settings_snapshot.voice_commands_enabled {
-                                    warn!("Voice command shortcut pressed but voice_commands_enabled is false");
-                                }
-                                // Merge the user's configured commands with the matched
-                                // built-in profile's keystroke commands (if any) so built-in
-                                // IDE automation works out of the box without user setup.
-                                let mut merged_commands = settings_snapshot.voice_commands.clone();
-                                if settings_snapshot.ide_presets_enabled {
-                                    if let Ok(Some(ctx)) = crate::frontmost::current() {
-                                        if let Some(profile) =
-                                            crate::profiles::match_builtin_profile(&ctx)
-                                        {
-                                            merged_commands.extend(
-                                                crate::profiles::keystroke_commands_to_voice_commands(
-                                                    &profile.keystroke_commands,
-                                                ),
-                                            );
-                                        }
-                                    }
-                                }
-                                let matched =
-                                    voice_commands::find_match(&transcription, &merged_commands);
-                                match matched {
-                                    Some(cmd) => {
-                                        debug!(
-                                            "Voice command matched: '{}' → '{}'",
-                                            cmd.name, cmd.keystroke
-                                        );
-                                        let keystroke = cmd.keystroke.clone();
-                                        let ah_clone = ah.clone();
-                                        let _ = ah.run_on_main_thread(move || {
-                                            if let Err(e) = voice_commands::execute_keystroke(
-                                                &ah_clone, &keystroke,
-                                            ) {
-                                                error!("Voice command keystroke failed: {}", e);
-                                                let _ = ah_clone.emit("paste-error", ());
-                                            }
-                                            utils::hide_recording_overlay(&ah_clone);
-                                            change_tray_icon(&ah_clone, TrayIconState::Idle);
-                                        });
-                                    }
-                                    None => {
-                                        warn!("Voice command: no match for '{}'", transcription);
-                                        let _ = ah.emit("paste-error", ());
-                                        utils::hide_recording_overlay(&ah);
-                                        change_tray_icon(&ah, TrayIconState::Idle);
-                                    }
-                                }
                                 return;
                             }
 
@@ -1812,7 +1783,6 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
         Arc::new(TranscribeAction {
             post_process: false,
             force_voice_edit: false,
-            voice_command_mode: false,
             capture_screenshot: false,
             captured_image: Arc::new(Mutex::new(None)),
         }) as Arc<dyn ShortcutAction>,
@@ -1822,7 +1792,6 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
         Arc::new(TranscribeAction {
             post_process: true,
             force_voice_edit: true,
-            voice_command_mode: false,
             capture_screenshot: false,
             captured_image: Arc::new(Mutex::new(None)),
         }) as Arc<dyn ShortcutAction>,
@@ -1832,18 +1801,7 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
         Arc::new(TranscribeAction {
             post_process: false,
             force_voice_edit: false,
-            voice_command_mode: false,
             capture_screenshot: true,
-            captured_image: Arc::new(Mutex::new(None)),
-        }) as Arc<dyn ShortcutAction>,
-    );
-    map.insert(
-        "voice_command".to_string(),
-        Arc::new(TranscribeAction {
-            post_process: false,
-            force_voice_edit: false,
-            voice_command_mode: true,
-            capture_screenshot: false,
             captured_image: Arc::new(Mutex::new(None)),
         }) as Arc<dyn ShortcutAction>,
     );
@@ -1862,3 +1820,56 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     );
     map
 });
+
+#[cfg(test)]
+mod tests {
+    use super::strip_llm_preamble;
+
+    #[test]
+    fn strips_sure_heres_preamble_with_quoted_body() {
+        let input = "Sure! Here's the cleaned-up text:\n\n\"Pick up bread.\"";
+        assert_eq!(strip_llm_preamble(input), "Pick up bread.");
+    }
+
+    #[test]
+    fn strips_bare_heres_preamble() {
+        let input = "Here's the cleaned text:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_curly_quotes_when_preamble_matched() {
+        let input = "Okay, here is the transcript:\n\n\u{201C}Hello.\u{201D}";
+        assert_eq!(strip_llm_preamble(input), "Hello.");
+    }
+
+    #[test]
+    fn preserves_content_without_preamble() {
+        let input = "Pick up bread.";
+        assert_eq!(strip_llm_preamble(input), "Pick up bread.");
+    }
+
+    #[test]
+    fn preserves_real_content_that_happens_to_start_with_here_is() {
+        let input = "Here is the bug I found in line 12.";
+        assert_eq!(strip_llm_preamble(input), input);
+    }
+
+    #[test]
+    fn preserves_user_dictated_quotes_when_no_preamble() {
+        let input = "\"quote this verbatim\"";
+        assert_eq!(strip_llm_preamble(input), input);
+    }
+
+    #[test]
+    fn strips_preamble_without_quotes() {
+        let input = "Sure, here's the cleaned-up version:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_multiline_body_preserving_internal_content() {
+        let input = "Sure! Here's the cleaned text:\n\n\"Line one.\nLine two.\"";
+        assert_eq!(strip_llm_preamble(input), "Line one.\nLine two.");
+    }
+}

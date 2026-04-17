@@ -457,33 +457,6 @@ pub fn emit_transcription_preview(app_handle: &AppHandle, text: &str) {
     }
 }
 
-/// Emits a one-time IDE-command hint payload to the overlay so the user
-/// learns which voice commands are available in the currently detected IDE.
-/// The overlay decides rendering (chip, auto-dismiss timing).
-///
-/// Payload shape is deliberately narrow: only the fields the overlay renders
-/// (id, name, commands). Built-in profiles carry more than the overlay needs
-/// (auto-submit hints, image-paste quirks) — those are plumbed through the
-/// profile resolver in other consumers, not broadcast to the overlay.
-pub fn emit_ide_hint(app_handle: &AppHandle, profile: &crate::profiles::Profile) {
-    #[derive(serde::Serialize, Clone)]
-    struct Payload<'a> {
-        id: &'a str,
-        name: &'a str,
-        commands: &'a [crate::profiles::KeystrokeCommand],
-    }
-    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        let _ = overlay_window.emit(
-            "ide-hint",
-            Payload {
-                id: &profile.id,
-                name: &profile.name,
-                commands: &profile.keystroke_commands,
-            },
-        );
-    }
-}
-
 /// Tell the overlay to render the edit-mode chip strip (Shorten / Lengthen /
 /// Fix grammar / Rephrase). The chips are clickable: clicking one invokes
 /// `apply_edit_chip`, which reads the focused field's text and rewrites it

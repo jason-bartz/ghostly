@@ -15,13 +15,6 @@ export interface MatchRuleLike {
   value: string;
 }
 
-export interface KeystrokeCommandLike {
-  phrase: string;
-  aliases: string[];
-  keystroke: string;
-  description: string;
-}
-
 export interface ProfileLike {
   id: string;
   name: string;
@@ -32,9 +25,6 @@ export interface ProfileLike {
   custom_vocab: string[];
   append_trailing_space: boolean | null;
   provider_override: string | null;
-  keystroke_commands: KeystrokeCommandLike[];
-  /** `null` = inherit global auto-submit. `true`/`false` = explicit override. */
-  auto_submit: boolean | null;
   image_paste_uses_shift: boolean;
 }
 

@@ -32,7 +32,6 @@ mod transcription_coordinator;
 mod tray;
 mod tray_i18n;
 mod utils;
-mod voice_commands;
 
 pub use cli::CliArgs;
 #[cfg(debug_assertions)]
@@ -586,10 +585,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::license::get_device_list,
             commands::license::activate_from_session,
             commands::license::open_payment_link,
-            commands::mark_ide_hint_seen,
-            commands::set_ide_presets_enabled,
-            commands::set_ide_auto_submit,
-            commands::reset_seen_ide_hints,
             commands::edit_chip::apply_edit_chip,
         ])
         .events(collect_events![managers::history::HistoryUpdatePayload,])

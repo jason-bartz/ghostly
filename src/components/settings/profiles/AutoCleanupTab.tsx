@@ -8,7 +8,12 @@ interface AutoCleanupTabProps {
   onLevelChanged: (next: AutoCleanupLevel) => void | Promise<void>;
 }
 
-const LEVELS: Array<{ id: AutoCleanupLevel; titleKey: string; subKey: string; sampleKey: string }> = [
+const LEVELS: Array<{
+  id: AutoCleanupLevel;
+  titleKey: string;
+  subKey: string;
+  sampleKey: string;
+}> = [
   {
     id: "none",
     titleKey: "settings.style.cleanup.none.title",

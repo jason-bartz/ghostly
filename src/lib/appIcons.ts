@@ -88,7 +88,14 @@ export interface AppIconInfo {
  */
 export const categoryColors: Record<
   AppCategory,
-  { bg: string; border: string; text: string; chipBg: string; chipBorder: string; chipText: string }
+  {
+    bg: string;
+    border: string;
+    text: string;
+    chipBg: string;
+    chipBorder: string;
+    chipText: string;
+  }
 > = {
   developer: {
     bg: "bg-emerald-600",
@@ -137,9 +144,17 @@ const byProfileId: Record<string, AppIconInfo> = {
   builtin_github: { icon: github, category: "developer" },
   builtin_terminal: { icon: terminal, category: "developer" },
   // CLI — runs inside a terminal window; use the terminal icon.
-  builtin_claude_code: { icon: terminal, category: "developer", label: "Claude Code" },
+  builtin_claude_code: {
+    icon: terminal,
+    category: "developer",
+    label: "Claude Code",
+  },
   // Windsurf ships no bundled icon in this repo; fall back to terminal.
-  builtin_windsurf: { icon: terminal, category: "developer", label: "Windsurf" },
+  builtin_windsurf: {
+    icon: terminal,
+    category: "developer",
+    label: "Windsurf",
+  },
   builtin_slack: { icon: slack, category: "casual" },
   builtin_discord: { icon: discord, category: "casual" },
   builtin_imessage: { icon: messages, category: "casual" },
@@ -161,7 +176,11 @@ const byProfileId: Record<string, AppIconInfo> = {
  * Keys are lowercase for case-insensitive matching.
  */
 const byDisplayName: Record<string, AppIconInfo> = {
-  "visual studio code": { icon: vscode, category: "developer", label: "VS Code" },
+  "visual studio code": {
+    icon: vscode,
+    category: "developer",
+    label: "VS Code",
+  },
   "vs code": { icon: vscode, category: "developer" },
   code: { icon: vscode, category: "developer", label: "VS Code" },
   electron: { icon: vscode, category: "developer", label: "VS Code" },
@@ -207,4 +226,3 @@ export function getAppInfoByProfileId(profileId: string): AppIconInfo | null {
 export function getAppInfoByName(displayName: string): AppIconInfo | null {
   return byDisplayName[displayName.toLowerCase()] ?? null;
 }
-

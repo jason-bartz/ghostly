@@ -282,6 +282,7 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
         <ResetButton
           onClick={() => resetBinding(shortcutId)}
           disabled={isUpdating(`binding_${shortcutId}`)}
+          ariaLabel={t("settings.general.shortcut.resetTooltip")}
         />
       </div>
     </SettingContainer>

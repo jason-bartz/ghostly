@@ -52,7 +52,10 @@ function errorKey(err: LicenseError): string {
   }
 }
 
-function formatExpires(unix: number | null, t: (k: string, o?: Record<string, unknown>) => string): string {
+function formatExpires(
+  unix: number | null,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string {
   if (unix === null) return "";
   const now = Math.floor(Date.now() / 1000);
   const diff = unix - now;
@@ -226,7 +229,11 @@ export const LicenseSettings: React.FC = () => {
         <>
           <SettingsGroup title={t("license.activeTitle")}>
             <div className="p-4 space-y-3 text-sm">
-              <Row label={t("license.keyLabel")} value={state.key_masked ?? ""} mono />
+              <Row
+                label={t("license.keyLabel")}
+                value={state.key_masked ?? ""}
+                mono
+              />
               {state.email !== null && (
                 <Row label={t("license.email")} value={state.email} />
               )}
@@ -353,7 +360,9 @@ const DevicesSection: React.FC<DevicesSectionProps> = ({
   if (devices === null) {
     return (
       <div className="p-4 flex items-center justify-between">
-        <p className="text-sm text-mid-gray">{t("license.deviceListUnavailable")}</p>
+        <p className="text-sm text-mid-gray">
+          {t("license.deviceListUnavailable")}
+        </p>
         <Button variant="secondary" size="sm" onClick={onRefresh}>
           {t("license.retry")}
         </Button>
@@ -374,7 +383,9 @@ const DevicesSection: React.FC<DevicesSectionProps> = ({
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="truncate font-medium text-sm">{d.machine_name}</p>
+                  <p className="truncate font-medium text-sm">
+                    {d.machine_name}
+                  </p>
                   {isCurrent && (
                     <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-logo-primary/15 text-logo-primary">
                       {t("license.currentDevice")}
@@ -415,7 +426,9 @@ interface RowProps {
 
 const Row: React.FC<RowProps> = ({ label, value, mono }) => (
   <div className="flex items-start justify-between gap-4">
-    <p className="text-xs text-mid-gray uppercase tracking-wide pt-0.5">{label}</p>
+    <p className="text-xs text-mid-gray uppercase tracking-wide pt-0.5">
+      {label}
+    </p>
     <p className={`text-sm text-right ${mono ? "font-mono" : ""}`}>{value}</p>
   </div>
 );

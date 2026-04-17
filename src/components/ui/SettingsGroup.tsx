@@ -23,8 +23,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
         ? ""
         : "section-band";
 
-  const cardClass =
-    variant === "flat" ? "surface-card" : "surface-card-inlay";
+  const cardClass = variant === "flat" ? "surface-card" : "surface-card-inlay";
 
   return (
     <div className={variant === "flat" ? "space-y-2" : bandClass}>

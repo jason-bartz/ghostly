@@ -732,27 +732,7 @@ pub fn paste_with_options(
         }
     }
 
-    // A matched built-in profile (Cursor/Claude Code/Windsurf/Replit) can
-    // force auto-submit even when the user's global setting is off: dictating
-    // into those IDEs should paste AND press Enter so the prompt fires
-    // without touching the keyboard. `auto_submit: Some(false)` would
-    // explicitly suppress; `None` means inherit the global setting.
-    let profile_auto_submit: Option<bool> =
-        if settings.ide_presets_enabled && settings.ide_auto_submit {
-            crate::frontmost::current()
-                .ok()
-                .flatten()
-                .and_then(|ctx| crate::profiles::match_builtin_profile(&ctx))
-                .and_then(|profile| profile.auto_submit)
-        } else {
-            None
-        };
-    let effective_auto_submit = match profile_auto_submit {
-        Some(explicit) => explicit || settings.auto_submit,
-        None => settings.auto_submit,
-    };
-
-    if !options.suppress_auto_submit && should_send_auto_submit(effective_auto_submit, paste_method)
+    if !options.suppress_auto_submit && should_send_auto_submit(settings.auto_submit, paste_method)
     {
         std::thread::sleep(Duration::from_millis(50));
         send_return_key(&mut enigo, settings.auto_submit_key)?;
