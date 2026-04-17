@@ -1,6 +1,6 @@
 # Ghostly End User License Agreement
 
-**Last updated: 2026-04-14**
+**Last updated: 04172026**
 
 This End User License Agreement ("Agreement") is a legal agreement between you ("You") and Jason Bartz ("Licensor") for the Ghostly software product, including the compiled application, updates, and accompanying documentation (collectively, the "Software").
 
@@ -61,5 +61,3 @@ This Agreement, together with the `THIRD_PARTY_NOTICES.md` and any referenced Pr
 ---
 
 **Contact:** support@try-ghostly.com
-
-> **Note:** This EULA is a starting template and is not legal advice. Have a lawyer review before shipping to customers — especially sections 8, 10, and any consumer-protection carve-outs required in jurisdictions where You distribute.
