@@ -6,7 +6,7 @@ import "./RecordingOverlay.css";
 import { commands } from "@/bindings";
 import i18n, { syncLanguageFromSettings } from "@/i18n";
 import { getLanguageDirection } from "@/lib/utils/rtl";
-import logoSrc from "@/assets/ghostly_logo.svg";
+import logoSrc from "@/assets/Ghostly-logo.svg";
 
 type OverlayState = "recording" | "transcribing" | "processing" | "staged";
 
