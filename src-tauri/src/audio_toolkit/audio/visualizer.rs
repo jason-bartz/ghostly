@@ -18,6 +18,14 @@ const PEAK_FLOOR: f32 = -50.0;
 const GATE_MARGIN_DB: f32 = 4.0;
 const GAIN: f32 = 1.3;
 const CURVE_POWER: f32 = 0.7;
+// Warmup window after reset during which the noise floor adapts quickly
+// and bidirectionally to whatever the actual ambient level is. Built-in
+// laptop mics vary widely, and the slow steady-state tracking takes
+// several seconds to converge from the -40 dB initialization — long
+// enough that early speech stays below the gate and the waveform
+// appears dead for the first few seconds of a recording.
+const WARMUP_FRAMES: u32 = 100;
+const WARMUP_NOISE_ALPHA: f32 = 0.1;
 
 pub struct AudioVisualiser {
     fft: Arc<dyn Fft<f32>>,
@@ -29,6 +37,7 @@ pub struct AudioVisualiser {
     buffer: Vec<f32>,
     window_size: usize,
     buckets: usize,
+    frames_since_reset: u32,
 }
 
 impl AudioVisualiser {
@@ -89,6 +98,7 @@ impl AudioVisualiser {
             buffer: Vec::with_capacity(window_size * 2),
             window_size,
             buckets,
+            frames_since_reset: 0,
         }
     }
 
@@ -145,16 +155,25 @@ impl AudioVisualiser {
                 frame_max_db = db;
             }
 
-            // Only update noise floor when signal is within 2 dB of (or below)
-            // the current floor. A wider window (e.g. +10) lets persistent
-            // quiet speech drag the floor up until the gate blocks it — bad
-            // for built-in mics where speech already sits close to ambient.
-            if db < self.noise_floor[bucket_idx] + 2.0 {
+            // Two regimes for the noise floor:
+            //   - Warmup: adapt fast and bidirectionally so the floor snaps to
+            //     real ambient within ~1 second. Without this, early speech
+            //     sits below the -40 dB initialization gate and the waveform
+            //     appears dead for the first few seconds.
+            //   - Steady state: only track when signal is near/below the
+            //     floor, slowly. This prevents persistent quiet speech from
+            //     dragging the floor up and closing the gate on itself.
+            if self.frames_since_reset < WARMUP_FRAMES {
+                self.noise_floor[bucket_idx] = WARMUP_NOISE_ALPHA * db
+                    + (1.0 - WARMUP_NOISE_ALPHA) * self.noise_floor[bucket_idx];
+            } else if db < self.noise_floor[bucket_idx] + 2.0 {
                 const NOISE_ALPHA: f32 = 0.001;
                 self.noise_floor[bucket_idx] =
                     NOISE_ALPHA * db + (1.0 - NOISE_ALPHA) * self.noise_floor[bucket_idx];
             }
         }
+
+        self.frames_since_reset = self.frames_since_reset.saturating_add(1);
 
         // Adaptive peak: fast attack up, slow release down, clamped so silence
         // can't drag the range down onto the noise floor.
@@ -199,5 +218,6 @@ impl AudioVisualiser {
         // Reset noise floor to initial values
         self.noise_floor.fill(-40.0);
         self.peak_db = PEAK_FLOOR;
+        self.frames_since_reset = 0;
     }
 }
