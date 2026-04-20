@@ -61,19 +61,26 @@ fn paste_via_clipboard(
         }
     }
 
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    // Restore original clipboard content
-    // On Wayland, prefer wl-copy for better compatibility
-    #[cfg(target_os = "linux")]
-    if is_wayland() && is_wl_copy_available() {
-        let _ = write_clipboard_via_wl_copy(&clipboard_content);
-    } else {
+    // Restore the original clipboard content on a background thread.
+    // Cmd+V is asynchronous — the target app reads the clipboard some time
+    // after the keystroke, often 100-300ms later. Restoring inline races
+    // the app's paste handler; if we lose the race, the prior clipboard
+    // content is pasted instead of the transcription, and because the
+    // prior content is now back in the clipboard, every subsequent
+    // transcription repeats the same paste.
+    let app_handle_for_restore = app_handle.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        let clipboard = app_handle_for_restore.clipboard();
+        #[cfg(target_os = "linux")]
+        if is_wayland() && is_wl_copy_available() {
+            let _ = write_clipboard_via_wl_copy(&clipboard_content);
+        } else {
+            let _ = clipboard.write_text(&clipboard_content);
+        }
+        #[cfg(not(target_os = "linux"))]
         let _ = clipboard.write_text(&clipboard_content);
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    let _ = clipboard.write_text(&clipboard_content);
+    });
 
     Ok(())
 }

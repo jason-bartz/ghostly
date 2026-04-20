@@ -88,15 +88,21 @@ pub fn paste_image(
         crate::input::send_paste_ctrl_v(&mut enigo)?;
     }
 
-    // Drop enigo lock before sleeping
+    // Drop enigo lock before returning
     drop(enigo);
 
-    std::thread::sleep(Duration::from_millis(50));
-
-    // Restore previous text clipboard
-    if let Err(e) = clipboard.write_text(&saved_text) {
-        error!("Failed to restore clipboard after image paste: {}", e);
-    }
+    // Restore the original clipboard content on a background thread.
+    // Cmd+V is asynchronous — restoring inline can race the target app's
+    // paste handler, causing the previous clipboard content to be pasted
+    // instead of the image we just placed on the pasteboard.
+    let app_handle_for_restore = app_handle.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        let clipboard = app_handle_for_restore.clipboard();
+        if let Err(e) = clipboard.write_text(&saved_text) {
+            error!("Failed to restore clipboard after image paste: {}", e);
+        }
+    });
 
     Ok(())
 }
