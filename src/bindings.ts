@@ -993,6 +993,30 @@ async listAllHistoryTags() : Promise<Result<string[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async deleteHistoryTagGlobally(name: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_history_tag_globally", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setHistoryTagRule(name: string, strict: boolean) : Promise<Result<TagRule, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_history_tag_rule", { name, strict }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listHistoryTagRules() : Promise<Result<TagRule[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_history_tag_rules") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async filterHistoryEntries(query: string | null, tagNames: string[], limit: number | null, startTs: number | null, endTs: number | null) : Promise<Result<HistoryEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("filter_history_entries", { query, tagNames, limit, startTs, endTs }) };
@@ -1578,6 +1602,12 @@ export type GpuDeviceOption = { id: number; name: string; total_vram_mb: number 
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; user_title: string | null; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean; source_app?: string | null; tags?: HistoryTag[] }
 export type HistoryTag = { name: string; auto: boolean }
 export type HistoryUpdatePayload = { action: "added"; entry: HistoryEntry } | { action: "updated"; entry: HistoryEntry } | { action: "deleted"; id: number } | { action: "toggled"; id: number }
+/**
+ * Per-tag behaviour toggles. `name` is stored lowercase; the UI carries the
+ * canonical display casing on the tag itself. Rules are keyed by
+ * `LOWER(name)` so renaming casing on entries never drops the rule.
+ */
+export type TagRule = { name: string; strict: boolean }
 /**
  * Result of changing keyboard implementation
  */

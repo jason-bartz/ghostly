@@ -11,6 +11,7 @@ use crate::llm_client;
 use crate::settings::{AppSettings, APPLE_INTELLIGENCE_PROVIDER_ID};
 use log::{debug, error, warn};
 use serde::Deserialize;
+use std::collections::HashSet;
 
 const BASE_SYSTEM_PROMPT: &str = "You generate concise metadata for a voice transcription. \
 Given the transcribed text, return a JSON object with two fields: \
@@ -66,6 +67,7 @@ pub async fn generate(
     settings: &AppSettings,
     transcription: &str,
     existing_tags: &[String],
+    strict_tags: &[String],
 ) -> Option<GeneratedMetadata> {
     let trimmed = transcription.trim();
     if trimmed.is_empty() {
@@ -128,7 +130,7 @@ pub async fn generate(
                     return None;
                 }
             };
-            return parse_metadata(&content, existing_tags);
+            return parse_metadata(&content, existing_tags, strict_tags, trimmed);
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
@@ -211,10 +213,37 @@ pub async fn generate(
         }
     };
 
-    parse_metadata(&content, existing_tags)
+    parse_metadata(&content, existing_tags, strict_tags, trimmed)
 }
 
-fn parse_metadata(content: &str, existing_tags: &[String]) -> Option<GeneratedMetadata> {
+/// True if any whitespace-separated token in `text` starts with `needle`
+/// (case-insensitive, ASCII-punctuation-stripped). This matches "bug",
+/// "bugs", "bugged", "bugging", "buggy" when the user tags something strict
+/// as "bug" — close enough in practice for voice transcriptions. Kept
+/// deliberately simple instead of reaching for a full stemmer so the
+/// behaviour stays predictable.
+fn text_contains_word(text: &str, needle: &str) -> bool {
+    let needle = needle.trim().to_lowercase();
+    if needle.is_empty() {
+        return false;
+    }
+    for raw in text.split_whitespace() {
+        let token = raw
+            .trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase();
+        if token.starts_with(&needle) {
+            return true;
+        }
+    }
+    false
+}
+
+fn parse_metadata(
+    content: &str,
+    existing_tags: &[String],
+    strict_tags: &[String],
+    transcription: &str,
+) -> Option<GeneratedMetadata> {
     // Some providers wrap JSON in markdown fences; strip them before parsing.
     let cleaned = strip_json_fences(content.trim());
     let parsed: AiMetadata = match serde_json::from_str(cleaned) {
@@ -239,11 +268,26 @@ fn parse_metadata(content: &str, existing_tags: &[String]) -> Option<GeneratedMe
         .iter()
         .map(|t| (t.trim().to_lowercase(), t.clone()))
         .collect();
+    let strict_set: HashSet<String> = strict_tags
+        .iter()
+        .map(|t| t.trim().to_lowercase())
+        .collect();
     let mut seen = std::collections::HashSet::new();
     let tags: Vec<String> = parsed
         .tags
         .into_iter()
         .filter_map(|t| canonical.get(&t.trim().to_lowercase()).cloned())
+        .filter(|t| {
+            let key = t.trim().to_lowercase();
+            if strict_set.contains(&key) && !text_contains_word(transcription, &key) {
+                debug!(
+                    "AI metadata: dropping strict tag '{}' — word not present in transcription",
+                    t
+                );
+                return false;
+            }
+            true
+        })
         .filter(|t| seen.insert(t.clone()))
         .take(5)
         .collect();
