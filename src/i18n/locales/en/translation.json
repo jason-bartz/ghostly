@@ -568,7 +568,14 @@
         "autoApplied": "Auto-applied by AI",
         "addFilter": "Filter by tag",
         "removeFilter": "Remove filter",
-        "clearFilters": "Clear"
+        "clearFilters": "Clear",
+        "filterOrConfigure": "Click to filter · right-click for options",
+        "strictFilterTitle": "Strict match — right-click for options",
+        "strictBadge": "Strict",
+        "strictToggle": "Strict match (word must appear)",
+        "deleteFromAll": "Delete tag from all notes",
+        "deleteTitle": "Delete tag",
+        "deleteConfirm": "Remove the \"{{name}}\" tag from every note? This cannot be undone."
       },
       "ai": {
         "generate": "Generate title & tags with AI",

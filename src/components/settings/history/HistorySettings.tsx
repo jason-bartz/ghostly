@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 import {
+  ask,
   open as openDialog,
   save as saveDialog,
 } from "@tauri-apps/plugin-dialog";
@@ -18,6 +19,7 @@ import {
   FileJson,
   FolderOpen,
   Loader2,
+  Lock,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -171,6 +173,13 @@ export const HistorySettings: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  // Keyed by LOWER(tag) so lookups survive casing drift between entries.
+  const [strictTags, setStrictTags] = useState<Set<string>>(new Set());
+  const [tagMenu, setTagMenu] = useState<{
+    name: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [searchResults, setSearchResults] = useState<HistoryEntry[] | null>(
     null,
   );
@@ -183,8 +192,20 @@ export const HistorySettings: React.FC = () => {
 
   const refreshAllTags = useCallback(async () => {
     try {
-      const result = await commands.listAllHistoryTags();
-      if (result.status === "ok") setAllTags(result.data);
+      const [tagsResult, rulesResult] = await Promise.all([
+        commands.listAllHistoryTags(),
+        commands.listHistoryTagRules(),
+      ]);
+      if (tagsResult.status === "ok") setAllTags(tagsResult.data);
+      if (rulesResult.status === "ok") {
+        setStrictTags(
+          new Set(
+            rulesResult.data
+              .filter((r) => r.strict)
+              .map((r) => r.name.toLowerCase()),
+          ),
+        );
+      }
     } catch (error) {
       console.error("Failed to load tag list:", error);
     }
@@ -543,6 +564,72 @@ export const HistorySettings: React.FC = () => {
     );
   };
 
+  // Close the filter-bar tag context menu on any outside click or Escape.
+  useEffect(() => {
+    if (!tagMenu) return;
+    const handleDown = () => setTagMenu(null);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTagMenu(null);
+    };
+    window.addEventListener("mousedown", handleDown);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handleDown);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [tagMenu]);
+
+  const toggleTagStrict = async (name: string) => {
+    const key = name.toLowerCase();
+    const nextStrict = !strictTags.has(key);
+    setStrictTags((prev) => {
+      const next = new Set(prev);
+      if (nextStrict) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+    try {
+      const result = await commands.setHistoryTagRule(name, nextStrict);
+      if (result.status !== "ok") {
+        toast.error(String(result.error));
+        refreshAllTags();
+      }
+    } catch (error) {
+      console.error("Failed to update tag rule:", error);
+      toast.error(String(error));
+      refreshAllTags();
+    }
+  };
+
+  const deleteTagGlobally = async (name: string) => {
+    const confirmed = await ask(
+      t(
+        "settings.history.tags.deleteConfirm",
+        'Remove the "{{name}}" tag from every note? This cannot be undone.',
+        { name },
+      ),
+      {
+        title: t("settings.history.tags.deleteTitle", "Delete tag"),
+        kind: "warning",
+      },
+    );
+    if (!confirmed) return;
+    try {
+      const result = await commands.deleteHistoryTagGlobally(name);
+      if (result.status === "ok") {
+        setSelectedTags((prev) =>
+          prev.filter((t) => t.toLowerCase() !== name.toLowerCase()),
+        );
+        refreshAllTags();
+      } else {
+        toast.error(String(result.error));
+      }
+    } catch (error) {
+      console.error("Failed to delete tag:", error);
+      toast.error(String(error));
+    }
+  };
+
   const retryHistoryEntry = async (id: number) => {
     const result = await commands.retryHistoryEntryTranscription(id);
     if (result.status !== "ok") {
@@ -756,6 +843,54 @@ export const HistorySettings: React.FC = () => {
 
   return (
     <div className="w-full flex flex-col gap-3 pt-1">
+      {tagMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] rounded-md border border-hairline-strong bg-surface-inlay shadow-lg py-1 text-sm"
+          style={{ left: tagMenu.x, top: tagMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              toggleTagStrict(tagMenu.name);
+              setTagMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-white/[0.04]"
+          >
+            <Check
+              width={14}
+              height={14}
+              className={
+                strictTags.has(tagMenu.name.toLowerCase())
+                  ? "opacity-100"
+                  : "opacity-0"
+              }
+            />
+            <span>
+              {t(
+                "settings.history.tags.strictToggle",
+                "Strict match (word must appear)",
+              )}
+            </span>
+          </button>
+          <div className="my-1 h-px bg-hairline-strong" />
+          <button
+            onClick={() => {
+              const name = tagMenu.name;
+              setTagMenu(null);
+              deleteTagGlobally(name);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10"
+          >
+            <Trash2 width={14} height={14} />
+            <span>
+              {t(
+                "settings.history.tags.deleteFromAll",
+                "Delete tag from all notes",
+              )}
+            </span>
+          </button>
+        </div>
+      )}
       {/* Toolbar: search + sort + actions — all 32px tall for a clean grid */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1 min-w-0">
@@ -901,17 +1036,41 @@ export const HistorySettings: React.FC = () => {
           <TagIcon className="w-3.5 h-3.5 text-text-faint shrink-0" />
           {allTags.map((tag) => {
             const active = selectedTags.includes(tag);
+            const strict = strictTags.has(tag.toLowerCase());
             return (
               <button
                 key={tag}
                 onClick={() => toggleFilterTag(tag)}
-                className={`pill pill-interactive ${active ? "pill-accent" : ""}`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setTagMenu({ name: tag, x: e.clientX, y: e.clientY });
+                }}
+                className={`pill pill-interactive inline-flex items-center gap-1 ${active ? "pill-accent" : ""}`}
                 title={
-                  active
-                    ? t("settings.history.tags.removeFilter", "Remove filter")
-                    : t("settings.history.tags.addFilter", "Filter by tag")
+                  strict
+                    ? t(
+                        "settings.history.tags.strictFilterTitle",
+                        "Strict match — right-click for options",
+                      )
+                    : active
+                      ? t("settings.history.tags.removeFilter", "Remove filter")
+                      : t(
+                          "settings.history.tags.filterOrConfigure",
+                          "Click to filter · right-click for options",
+                        )
                 }
               >
+                {strict && (
+                  <Lock
+                    width={10}
+                    height={10}
+                    className="opacity-70 shrink-0"
+                    aria-label={t(
+                      "settings.history.tags.strictBadge",
+                      "Strict",
+                    )}
+                  />
+                )}
                 {tag}
               </button>
             );
