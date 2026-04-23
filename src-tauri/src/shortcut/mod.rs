@@ -660,11 +660,8 @@ pub fn change_selected_language_setting(app: AppHandle, language: String) -> Res
     Ok(())
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    let parsed = match position.as_str() {
+fn parse_overlay_position(position: &str) -> OverlayPosition {
+    match position {
         "none" => OverlayPosition::None,
         "top_left" => OverlayPosition::TopLeft,
         "top" | "top_center" => OverlayPosition::TopCenter,
@@ -679,11 +676,34 @@ pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Resu
             );
             OverlayPosition::BottomCenter
         }
-    };
-    settings.overlay_position = parsed;
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.overlay_position = parse_overlay_position(&position);
     settings::write_settings(&app, settings);
 
     // Update overlay position without recreating window
+    crate::utils::update_overlay_position(&app);
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_staged_overlay_position_setting(
+    app: AppHandle,
+    position: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.staged_overlay_position = parse_overlay_position(&position);
+    settings::write_settings(&app, settings);
+
+    // Update overlay position without recreating window — only takes effect
+    // if the overlay is currently in staged state.
     crate::utils::update_overlay_position(&app);
 
     Ok(())

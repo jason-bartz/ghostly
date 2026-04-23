@@ -5,13 +5,24 @@ import { SettingContainer } from "../ui/SettingContainer";
 import { useSettings } from "../../hooks/useSettings";
 import type { OverlayPosition } from "@/bindings";
 
+type OverlaySettingKey = "overlay_position" | "staged_overlay_position";
+
 interface ShowOverlayProps {
   descriptionMode?: "inline" | "tooltip";
   grouped?: boolean;
+  settingKey?: OverlaySettingKey;
+  titleKey?: string;
+  descriptionKey?: string;
 }
 
 export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
-  ({ descriptionMode = "tooltip", grouped = false }) => {
+  ({
+    descriptionMode = "tooltip",
+    grouped = false,
+    settingKey = "overlay_position",
+    titleKey = "settings.advanced.overlay.title",
+    descriptionKey = "settings.advanced.overlay.description",
+  }) => {
     const { t } = useTranslation();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
@@ -43,13 +54,13 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
       },
     ];
 
-    const selectedPosition = (getSetting("overlay_position") ||
+    const selectedPosition = (getSetting(settingKey) ||
       "bottom_center") as OverlayPosition;
 
     return (
       <SettingContainer
-        title={t("settings.advanced.overlay.title")}
-        description={t("settings.advanced.overlay.description")}
+        title={t(titleKey)}
+        description={t(descriptionKey)}
         descriptionMode={descriptionMode}
         grouped={grouped}
       >
@@ -57,9 +68,9 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
           options={overlayOptions}
           selectedValue={selectedPosition}
           onSelect={(value) =>
-            updateSetting("overlay_position", value as OverlayPosition)
+            updateSetting(settingKey, value as OverlayPosition)
           }
-          disabled={isUpdating("overlay_position")}
+          disabled={isUpdating(settingKey)}
         />
       </SettingContainer>
     );

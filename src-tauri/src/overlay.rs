@@ -1,7 +1,14 @@
 use crate::input;
 use crate::settings;
 use crate::settings::OverlayPosition;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+
+/// True while the overlay is displaying the staged screenshot+dictation
+/// preview. Used so `calculate_overlay_position` and `update_overlay_position`
+/// read the separate `staged_overlay_position` setting instead of the normal
+/// recording-pill position. Reset when the overlay hides.
+static IS_STAGED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(not(target_os = "macos"))]
 use log::debug;
@@ -77,7 +84,12 @@ fn update_gtk_layer_shell_anchors(overlay_window: &tauri::webview::WebviewWindow
         // Try to get the GTK window from the Tauri webview
         if let Ok(gtk_window) = window_clone.gtk_window() {
             let settings = settings::get_settings(window_clone.app_handle());
-            let (anchor_top, anchor_left, anchor_right) = match settings.overlay_position {
+            let position = if IS_STAGED.load(Ordering::Relaxed) {
+                settings.staged_overlay_position
+            } else {
+                settings.overlay_position
+            };
+            let (anchor_top, anchor_left, anchor_right) = match position {
                 OverlayPosition::TopLeft => (true, true, false),
                 OverlayPosition::TopCenter => (true, false, false),
                 OverlayPosition::TopRight => (true, false, true),
@@ -236,6 +248,11 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
     let monitor_height = monitor.size().height as f64 / scale;
 
     let settings = settings::get_settings(app_handle);
+    let position = if IS_STAGED.load(Ordering::Relaxed) {
+        settings.staged_overlay_position
+    } else {
+        settings.overlay_position
+    };
 
     // Read the overlay's actual current size so centering follows whatever
     // state it's in (compact, staged, edit-mode). Fall back to the default
@@ -255,7 +272,7 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
     let y_top = monitor_y + OVERLAY_TOP_OFFSET;
     let y_bottom = monitor_y + monitor_height - current_h - OVERLAY_BOTTOM_OFFSET;
 
-    let (x, y) = match settings.overlay_position {
+    let (x, y) = match position {
         OverlayPosition::TopLeft => (x_left, y_top),
         OverlayPosition::TopCenter => (x_center, y_top),
         OverlayPosition::TopRight => (x_right, y_top),
@@ -366,9 +383,19 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
 }
 
 fn show_overlay_state(app_handle: &AppHandle, state: &str) {
+    // Flip the staged flag first so the position lookup below picks the right
+    // setting. Must happen before reading `settings` so `None` gating uses the
+    // correct field too.
+    IS_STAGED.store(state == "staged", Ordering::Relaxed);
+
     // Check if overlay should be shown based on position setting
     let settings = settings::get_settings(app_handle);
-    if settings.overlay_position == OverlayPosition::None {
+    let effective_position = if state == "staged" {
+        settings.staged_overlay_position
+    } else {
+        settings.overlay_position
+    };
+    if effective_position == OverlayPosition::None {
         return;
     }
 
@@ -453,6 +480,10 @@ pub fn update_overlay_position(app_handle: &AppHandle) {
 
 /// Hides the recording overlay window with fade-out animation
 pub fn hide_recording_overlay(app_handle: &AppHandle) {
+    // Reset the staged flag so the next show_overlay_state() call starts fresh
+    // and doesn't accidentally read staged_overlay_position for a plain recording.
+    IS_STAGED.store(false, Ordering::Relaxed);
+
     // Always hide the overlay regardless of settings - if setting was changed while recording,
     // we still want to hide it properly
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {

@@ -355,7 +355,7 @@
       },
       "overlay": {
         "title": "Overlay Position",
-        "description": "Where the recording / screenshot-preview overlay sits on screen. Pick a corner to keep it clear of the area you're typing in.",
+        "description": "Where the recording pill sits on screen during normal dictation. Pick a corner to keep it clear of the area you're typing in.",
         "options": {
           "none": "None",
           "top_left": "Top left",
@@ -365,6 +365,10 @@
           "bottom_center": "Bottom center",
           "bottom_right": "Bottom right"
         }
+      },
+      "stagedOverlay": {
+        "title": "Screenshot & Dictation Overlay Position",
+        "description": "Where the screenshot + dictation preview sits while you focus a target field to paste into."
       },
       "pasteMethod": {
         "title": "How to Insert Text",
