@@ -1,13 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { commands } from "@/bindings";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 export const PaywallModal: React.FC = () => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [resetsAtUnix, setResetsAtUnix] = useState<number | null>(null);
   const [limitMinutes, setLimitMinutes] = useState<number>(30);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   useEffect(() => {
     const unlisten = listen("usage-limit-reached", async () => {
@@ -45,12 +57,19 @@ export const PaywallModal: React.FC = () => {
       onClick={() => setOpen(false)}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="paywall-title"
         className="surface-card-inlay !rounded-2xl max-w-md w-full mx-4 p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
           <span className="tag-pill mb-3">{t("sidebar.usage")}</span>
-          <h2 className="text-xl font-display tracking-tight text-text mt-2">
+          <h2
+            id="paywall-title"
+            className="text-xl font-display tracking-tight text-text mt-2"
+          >
             {t("paywall.title")}
           </h2>
         </div>

@@ -1075,7 +1075,8 @@
     "accept": "Accept & Continue",
     "decline": "Decline & Quit",
     "loadError": "Failed to load the license agreement.",
-    "version": "Version {{version}}"
+    "version": "Version {{version}}",
+    "scrollProgressLabel": "Reading progress"
   },
   "usage": {
     "loadError": "Unable to load usage statistics.",

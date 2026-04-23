@@ -71,6 +71,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
                   )}
                   disabled={state.isBaseUrlUpdating}
                   className="min-w-[380px]"
+                  ariaLabel={t("settings.postProcessing.api.baseUrl.title")}
                 />
               </div>
             </SettingContainer>
@@ -92,6 +93,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
                 )}
                 disabled={state.isApiKeyUpdating}
                 className="min-w-[320px]"
+                ariaLabel={t("settings.postProcessing.api.apiKey.title")}
               />
             </div>
           </SettingContainer>
