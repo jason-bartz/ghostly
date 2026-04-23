@@ -61,6 +61,15 @@ const OVERLAY_BOTTOM_OFFSET: f64 = 80.0;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 const OVERLAY_BOTTOM_OFFSET: f64 = 40.0;
 
+/// Horizontal inset from the screen edge when the overlay is anchored to the
+/// left or right. The panel is wider than its visible content (transparent
+/// halo for the shadow), so the visible rectangle ends up this many points
+/// plus the halo inside the screen edge.
+#[cfg(target_os = "macos")]
+const OVERLAY_SIDE_OFFSET: f64 = 12.0;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+const OVERLAY_SIDE_OFFSET: f64 = 8.0;
+
 #[cfg(target_os = "linux")]
 fn update_gtk_layer_shell_anchors(overlay_window: &tauri::webview::WebviewWindow) {
     let window_clone = overlay_window.clone();
@@ -68,16 +77,18 @@ fn update_gtk_layer_shell_anchors(overlay_window: &tauri::webview::WebviewWindow
         // Try to get the GTK window from the Tauri webview
         if let Ok(gtk_window) = window_clone.gtk_window() {
             let settings = settings::get_settings(window_clone.app_handle());
-            match settings.overlay_position {
-                OverlayPosition::Top => {
-                    gtk_window.set_anchor(Edge::Top, true);
-                    gtk_window.set_anchor(Edge::Bottom, false);
-                }
-                OverlayPosition::Bottom | OverlayPosition::None => {
-                    gtk_window.set_anchor(Edge::Bottom, true);
-                    gtk_window.set_anchor(Edge::Top, false);
-                }
-            }
+            let (anchor_top, anchor_left, anchor_right) = match settings.overlay_position {
+                OverlayPosition::TopLeft => (true, true, false),
+                OverlayPosition::TopCenter => (true, false, false),
+                OverlayPosition::TopRight => (true, false, true),
+                OverlayPosition::BottomLeft => (false, true, false),
+                OverlayPosition::BottomCenter | OverlayPosition::None => (false, false, false),
+                OverlayPosition::BottomRight => (false, false, true),
+            };
+            gtk_window.set_anchor(Edge::Top, anchor_top);
+            gtk_window.set_anchor(Edge::Bottom, !anchor_top);
+            gtk_window.set_anchor(Edge::Left, anchor_left);
+            gtk_window.set_anchor(Edge::Right, anchor_right);
         }
     });
 }
@@ -238,12 +249,19 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
         })
         .unwrap_or((OVERLAY_WIDTH, OVERLAY_HEIGHT));
 
-    let x = monitor_x + (monitor_width - current_w) / 2.0;
-    let y = match settings.overlay_position {
-        OverlayPosition::Top => monitor_y + OVERLAY_TOP_OFFSET,
-        OverlayPosition::Bottom | OverlayPosition::None => {
-            monitor_y + monitor_height - current_h - OVERLAY_BOTTOM_OFFSET
-        }
+    let x_center = monitor_x + (monitor_width - current_w) / 2.0;
+    let x_left = monitor_x + OVERLAY_SIDE_OFFSET;
+    let x_right = monitor_x + monitor_width - current_w - OVERLAY_SIDE_OFFSET;
+    let y_top = monitor_y + OVERLAY_TOP_OFFSET;
+    let y_bottom = monitor_y + monitor_height - current_h - OVERLAY_BOTTOM_OFFSET;
+
+    let (x, y) = match settings.overlay_position {
+        OverlayPosition::TopLeft => (x_left, y_top),
+        OverlayPosition::TopCenter => (x_center, y_top),
+        OverlayPosition::TopRight => (x_right, y_top),
+        OverlayPosition::BottomLeft => (x_left, y_bottom),
+        OverlayPosition::BottomRight => (x_right, y_bottom),
+        OverlayPosition::BottomCenter | OverlayPosition::None => (x_center, y_bottom),
     };
 
     Some((x, y))

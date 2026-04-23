@@ -540,8 +540,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::history::remove_history_tag,
             commands::history::list_all_history_tags,
             commands::history::delete_history_tag_globally,
-            commands::history::set_history_tag_rule,
-            commands::history::list_history_tag_rules,
             commands::history::filter_history_entries,
             commands::history::generate_history_metadata,
             helpers::clamshell::is_laptop,

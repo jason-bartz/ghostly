@@ -1001,22 +1001,6 @@ async deleteHistoryTagGlobally(name: string) : Promise<Result<number, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async setHistoryTagRule(name: string, strict: boolean) : Promise<Result<TagRule, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_history_tag_rule", { name, strict }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listHistoryTagRules() : Promise<Result<TagRule[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_history_tag_rules") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async filterHistoryEntries(query: string | null, tagNames: string[], limit: number | null, startTs: number | null, endTs: number | null) : Promise<Result<HistoryEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("filter_history_entries", { query, tagNames, limit, startTs, endTs }) };
@@ -1603,12 +1587,6 @@ export type HistoryEntry = { id: number; file_name: string; timestamp: number; s
 export type HistoryTag = { name: string; auto: boolean }
 export type HistoryUpdatePayload = { action: "added"; entry: HistoryEntry } | { action: "updated"; entry: HistoryEntry } | { action: "deleted"; id: number } | { action: "toggled"; id: number }
 /**
- * Per-tag behaviour toggles. `name` is stored lowercase; the UI carries the
- * canonical display casing on the tag itself. Rules are keyed by
- * `LOWER(name)` so renaming casing on entries never drops the rule.
- */
-export type TagRule = { name: string; strict: boolean }
-/**
  * Result of changing keyboard implementation
  */
 export type ImplementationChangeResult = { success: boolean; 
@@ -1648,7 +1626,7 @@ export type ModelInfo = { id: string; name: string; description: string; filenam
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_15"
 export type OrtAcceleratorSetting = "auto" | "cpu" | "cuda" | "directml" | "rocm"
-export type OverlayPosition = "none" | "top" | "bottom"
+export type OverlayPosition = "none" | "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right"
 export type PaginatedHistory = { entries: HistoryEntry[]; has_more: boolean }
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v" | "external_script"
 export type PermissionAccess = "allowed" | "denied" | "unknown"

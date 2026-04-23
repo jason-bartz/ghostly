@@ -354,11 +354,15 @@
       },
       "overlay": {
         "title": "Overlay Position",
-        "description": "Display visual feedback overlay during recording and transcription. On Linux 'None' is recommended.",
+        "description": "Where the recording / screenshot-preview overlay sits on screen. Pick a corner to keep it clear of the area you're typing in.",
         "options": {
           "none": "None",
-          "bottom": "Bottom",
-          "top": "Top"
+          "top_left": "Top left",
+          "top_center": "Top center",
+          "top_right": "Top right",
+          "bottom_left": "Bottom left",
+          "bottom_center": "Bottom center",
+          "bottom_right": "Bottom right"
         }
       },
       "pasteMethod": {

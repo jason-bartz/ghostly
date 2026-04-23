@@ -11,7 +11,6 @@ use crate::llm_client;
 use crate::settings::{AppSettings, APPLE_INTELLIGENCE_PROVIDER_ID};
 use log::{debug, error, warn};
 use serde::Deserialize;
-use std::collections::HashSet;
 
 const BASE_SYSTEM_PROMPT: &str = "You generate concise metadata for a voice transcription. \
 Given the transcribed text, return a JSON object with two fields: \
@@ -67,7 +66,6 @@ pub async fn generate(
     settings: &AppSettings,
     transcription: &str,
     existing_tags: &[String],
-    strict_tags: &[String],
 ) -> Option<GeneratedMetadata> {
     let trimmed = transcription.trim();
     if trimmed.is_empty() {
@@ -130,7 +128,7 @@ pub async fn generate(
                     return None;
                 }
             };
-            return parse_metadata(&content, existing_tags, strict_tags, trimmed);
+            return parse_metadata(&content, existing_tags, trimmed);
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
@@ -213,15 +211,14 @@ pub async fn generate(
         }
     };
 
-    parse_metadata(&content, existing_tags, strict_tags, trimmed)
+    parse_metadata(&content, existing_tags, trimmed)
 }
 
 /// True if any whitespace-separated token in `text` starts with `needle`
-/// (case-insensitive, ASCII-punctuation-stripped). This matches "bug",
-/// "bugs", "bugged", "bugging", "buggy" when the user tags something strict
-/// as "bug" — close enough in practice for voice transcriptions. Kept
-/// deliberately simple instead of reaching for a full stemmer so the
-/// behaviour stays predictable.
+/// (case-insensitive, ASCII-punctuation-stripped). Matches "bug", "bugs",
+/// "bugged", "bugging", "buggy" for a "bug" tag — close enough in practice
+/// for voice transcriptions. Deliberately simple instead of a stemmer so
+/// the behaviour stays predictable.
 fn text_contains_word(text: &str, needle: &str) -> bool {
     let needle = needle.trim().to_lowercase();
     if needle.is_empty() {
@@ -241,7 +238,6 @@ fn text_contains_word(text: &str, needle: &str) -> bool {
 fn parse_metadata(
     content: &str,
     existing_tags: &[String],
-    strict_tags: &[String],
     transcription: &str,
 ) -> Option<GeneratedMetadata> {
     // Some providers wrap JSON in markdown fences; strip them before parsing.
@@ -262,15 +258,14 @@ fn parse_metadata(
         return None;
     }
 
-    // Only accept tags from the user's existing vocabulary. Case-insensitive
-    // match back to the canonical stored form, drop anything else.
+    // Only accept tags from the user's existing vocabulary, then require the
+    // tag (or a prefix) to literally appear in the transcription. The LLM
+    // treats the vocabulary as a hint and will happily apply a semantically
+    // adjacent tag that the user didn't intend; the word-presence check
+    // keeps auto-tagging grounded in the actual content.
     let canonical: std::collections::HashMap<String, String> = existing_tags
         .iter()
         .map(|t| (t.trim().to_lowercase(), t.clone()))
-        .collect();
-    let strict_set: HashSet<String> = strict_tags
-        .iter()
-        .map(|t| t.trim().to_lowercase())
         .collect();
     let mut seen = std::collections::HashSet::new();
     let tags: Vec<String> = parsed
@@ -279,9 +274,9 @@ fn parse_metadata(
         .filter_map(|t| canonical.get(&t.trim().to_lowercase()).cloned())
         .filter(|t| {
             let key = t.trim().to_lowercase();
-            if strict_set.contains(&key) && !text_contains_word(transcription, &key) {
+            if !text_contains_word(transcription, &key) {
                 debug!(
-                    "AI metadata: dropping strict tag '{}' — word not present in transcription",
+                    "AI metadata: dropping tag '{}' — word not present in transcription",
                     t
                 );
                 return false;

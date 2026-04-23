@@ -22,11 +22,30 @@ jobs:
           echo "Application version from tauri.conf.json: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Read release notes
+        id: read-notes
+        shell: bash
+        run: |
+          NOTES_FILE="release-notes/v${{ steps.get-version.outputs.version }}.md"
+          if [ ! -f "$NOTES_FILE" ]; then
+            echo "error: $NOTES_FILE not found in repo" >&2
+            exit 1
+          fi
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "error: $NOTES_FILE is empty" >&2
+            exit 1
+          fi
+          echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Create Draft Release
         id: create-release
         uses: actions/github-script@v7
+        env:
+          NOTES_PATH: ${{ steps.read-notes.outputs.path }}
         with:
           script: |
+            const fs = require('fs');
+            const body = fs.readFileSync(process.env.NOTES_PATH, 'utf8');
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -34,7 +53,7 @@ jobs:
               name: `v${{ steps.get-version.outputs.version }}`,
               draft: true,
               prerelease: false,
-              generate_release_notes: true
+              body,
             })
             return data.id
 

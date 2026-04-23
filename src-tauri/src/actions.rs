@@ -88,14 +88,41 @@ static LLM_PREAMBLE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(concat!(
         r"(?i)^\s*",
         r"(?:",
-        // Variant 1: optional lead ("Sure!", "Okay,", etc.) + here's/here is/below is/this is ... : \n+
-        r"(?:sure|okay|alright|got it|certainly|of course|absolutely|yes|here you go)[,.!]?\s+",
+        // Variant 1: lead phrase ("Sure!", "Sure thing!", "Okay,", "Of course —", etc.)
+        // + "here's/here is/below is/this is" + anything + ":" + newline.
+        // Up to two short words are allowed between the lead word and "here's"
+        // so "Sure thing!", "Of course then," etc. don't slip through.
+        r"(?:sure|okay|ok|alright|all right|got it|certainly|of course|absolutely|yep|yes|here you go|no problem|my pleasure|happy to help)",
+        r"(?:[\s,.!\-—–]+\w+){0,2}",
+        r"[\s,.!\-—–]+",
         r"(?:here(?:'s| is)|below is|this is)[^\n]*:\s*\n+",
         r"|",
-        // Variant 2: bare "Here's the <adjective> text:" with no lead-in
+        // Variant 2: bare "Here's the <noun>:\n" where <noun> is a word the LLM
+        // uses to label its output. Includes adjective+noun forms like
+        // "cleaned-up text" or "cleaned transcript", plus bare nouns like
+        // "transcript" / "text" / "version".
         r"here(?:'s| is)\s+(?:the|your|a|an)\s+",
+        r"(?:",
+        r"(?:cleaned|cleaned-up|cleanup|rewritten|revised|edited|formatted|corrected|final|processed|polished|refined|updated)\s+",
+        r"(?:transcript|transcription|text|version|result|output|response|note|notes)",
+        r"|",
         r"(?:cleaned|cleaned-up|cleanup|rewritten|revised|edited|formatted|corrected|final|processed|polished|refined|updated)",
+        r"|",
+        r"(?:transcript|transcription|transcribed|text|version|result|output|response)",
+        r")",
         r"[^\n]*:\s*\n+",
+        r"|",
+        // Variant 3: single-line preamble ending with ":" and a space (no newline).
+        // Rarer but happens when the model squashes everything onto one line.
+        // Strict: requires both a lead AND the "cleaned/revised/…" adjective so
+        // legitimate user dictation like "Here's the thing: I'm not sure."
+        // is preserved.
+        r"(?:sure|okay|alright|got it|certainly|of course|absolutely)",
+        r"(?:[\s,.!\-—–]+\w+){0,2}",
+        r"[\s,.!\-—–]+",
+        r"here(?:'s| is)\s+(?:the|your|a|an)\s+",
+        r"(?:cleaned|cleaned-up|rewritten|revised|edited|formatted|corrected|polished|refined|updated)",
+        r"[^\n]*:[ \t]+",
         r")",
     ))
     .expect("valid llm preamble regex")
@@ -1928,5 +1955,55 @@ mod tests {
     fn strips_multiline_body_preserving_internal_content() {
         let input = "Sure! Here's the cleaned text:\n\n\"Line one.\nLine two.\"";
         assert_eq!(strip_llm_preamble(input), "Line one.\nLine two.");
+    }
+
+    #[test]
+    fn strips_sure_thing_preamble() {
+        let input = "Sure thing! Here's the cleaned text:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_of_course_then_preamble() {
+        let input = "Of course — here's the cleaned-up version:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_bare_heres_the_transcript() {
+        let input = "Here's the transcript:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_bare_heres_your_transcription() {
+        let input = "Here is your transcription:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_adjective_plus_transcript_noun() {
+        let input = "Here's the cleaned transcript:\n\nHello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn strips_single_line_preamble_with_lead() {
+        let input = "Sure! Here's the cleaned text: Hello world.";
+        assert_eq!(strip_llm_preamble(input), "Hello world.");
+    }
+
+    #[test]
+    fn preserves_here_is_the_thing_dictation() {
+        let input = "Here is the thing I wanted to say.";
+        assert_eq!(strip_llm_preamble(input), input);
+    }
+
+    #[test]
+    fn preserves_here_is_the_transcript_no_newline() {
+        // Without the newline signal this looks like dictation, not preamble —
+        // keep it. The prompt + strong instructions are the first line of defense.
+        let input = "Here's the transcript I was reading.";
+        assert_eq!(strip_llm_preamble(input), input);
     }
 }

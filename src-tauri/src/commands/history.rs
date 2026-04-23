@@ -2,7 +2,7 @@ use crate::actions::process_transcription_output;
 use crate::ai_metadata;
 use crate::managers::{
     history::{
-        HistoryEntry, HistoryManager, HistoryTag, PaginatedHistory, TagRule, TranscriptionStats,
+        HistoryEntry, HistoryManager, HistoryTag, PaginatedHistory, TranscriptionStats,
         WordCorrection,
     },
     transcription::TranscriptionManager,
@@ -577,28 +577,6 @@ pub async fn delete_history_tag_globally(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_history_tag_rule(
-    _app: AppHandle,
-    history_manager: State<'_, Arc<HistoryManager>>,
-    name: String,
-    strict: bool,
-) -> Result<TagRule, String> {
-    history_manager
-        .set_tag_rule(name, strict)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn list_history_tag_rules(
-    _app: AppHandle,
-    history_manager: State<'_, Arc<HistoryManager>>,
-) -> Result<Vec<TagRule>, String> {
-    history_manager.list_tag_rules().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn filter_history_entries(
     _app: AppHandle,
     history_manager: State<'_, Arc<HistoryManager>>,
@@ -640,14 +618,7 @@ pub async fn generate_history_metadata(
 
     let settings = crate::settings::get_settings(&app);
     let existing_tags = history_manager.list_all_tags().map_err(|e| e.to_string())?;
-    let strict_tags: Vec<String> = history_manager
-        .list_tag_rules()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .filter(|r| r.strict)
-        .map(|r| r.name)
-        .collect();
-    let generated = ai_metadata::generate(&settings, source_text, &existing_tags, &strict_tags)
+    let generated = ai_metadata::generate(&settings, source_text, &existing_tags)
         .await
         .ok_or_else(|| {
             "Unable to generate metadata. Check that an AI provider, model, and API key are configured."
