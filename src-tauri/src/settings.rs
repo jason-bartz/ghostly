@@ -109,11 +109,17 @@ pub struct PostProcessProvider {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum OverlayPosition {
     None,
-    Top,
-    Bottom,
+    TopLeft,
+    #[serde(alias = "top")]
+    TopCenter,
+    TopRight,
+    BottomLeft,
+    #[serde(alias = "bottom")]
+    BottomCenter,
+    BottomRight,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
@@ -643,7 +649,7 @@ fn default_overlay_position() -> OverlayPosition {
     #[cfg(target_os = "linux")]
     return OverlayPosition::None;
     #[cfg(not(target_os = "linux"))]
-    return OverlayPosition::Bottom;
+    return OverlayPosition::BottomCenter;
 }
 
 fn default_debug_mode() -> bool {
@@ -840,12 +846,12 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
         LLMPrompt {
             id: "default_improve_transcriptions".to_string(),
             name: "Improve Transcriptions".to_string(),
-            prompt: "Clean this transcript:\n1. Fix spelling, capitalization, and punctuation errors\n2. Convert number words to digits (twenty-five → 25, ten percent → 10%, five dollars → $5)\n3. Replace spoken punctuation with symbols (period → ., comma → ,, question mark → ?)\n4. Remove filler words (um, uh, like as filler)\n5. Keep the language in the original version (if it was french, keep it in french for example)\n6. Format lists: if the text contains explicit enumeration (first/second/third, one/two/three, number one/two, bullet point one/two) or a clear sequence of items, format them as a proper bulleted or numbered list using markdown (- item or 1. item)\n\nPreserve exact meaning and word order. Do not paraphrase or reorder content.\n\nReturn only the cleaned transcript.\n\nTranscript:\n${output}".to_string(),
+            prompt: "Clean the following dictated text:\n1. Fix spelling, capitalization, and punctuation errors\n2. Convert number words to digits (twenty-five → 25, ten percent → 10%, five dollars → $5)\n3. Convert spoken punctuation to the actual symbol when the speaker clearly intends punctuation (not when referring to the word itself):\n   - period/full stop → . · comma → , · question mark → ? · exclamation mark/point → !\n   - colon → : · semicolon → ;\n   - open quote/close quote/quote/unquote → \" · apostrophe → '\n   - open/close paren (or parenthesis) → ( ) · open/close bracket → [ ] · open/close brace → { }\n   - dash/hyphen → - · em dash → — · en dash → –\n   - ellipsis/dot dot dot → … · slash → / · backslash → \\\n   - new line → insert a line break · new paragraph → insert a blank line\n   Use context: \"Subject colon Project update\" → \"Subject: Project update\" (insert); \"we debated the Oxford comma\" → keep the word literal.\n4. Remove filler words (um, uh, like as filler)\n5. Keep the language in the original version (if it was french, keep it in french for example)\n6. Format lists: if the text contains explicit enumeration (first/second/third, one/two/three, number one/two, bullet point one/two) or a clear sequence of items, format them as a proper bulleted or numbered list using markdown (- item or 1. item)\n\nPreserve exact meaning and word order. Do not paraphrase or reorder content.\n\nOutput rules (critical):\n- Return ONLY the cleaned text. Nothing else.\n- Do NOT include any preamble, greeting, acknowledgement, or explanation (no \"Sure\", no \"Here's...\", no \"Okay,\").\n- Do NOT prefix the output with a label such as \"Transcript:\", \"Output:\", or \"Cleaned:\".\n- Do NOT wrap the output in quotes unless the user dictated the quotes.\n- Do NOT use the words \"transcript\" or \"transcription\" in your response unless they appear in the dictated text itself.\n\n${output}".to_string(),
         },
         LLMPrompt {
             id: "builtin_developer".to_string(),
             name: "Developer".to_string(),
-            prompt: "You are a developer assistant. Clean this voice transcription for a coding context:\n1. Format identifiers: detect spoken camelCase (\"my variable\" → myVariable), snake_case (\"my function\" → my_function), and UPPER_CASE constants\n2. Format CLI syntax: convert spoken commands to code (\"git force push\" → git push --force, \"make directory\" → mkdir, \"pipe to grep\" → | grep)\n3. Convert spoken symbols: \"dot\" → \".\", \"slash\" → \"/\", \"double colon\" → \"::\", \"arrow\" → \"->\", \"fat arrow\" → \"=>\"\n4. Fix punctuation: add semicolons, brackets where spoken (\"open paren\" → \"(\", \"close bracket\" → \"]\")\n5. Preserve technical terms exactly (React, Kubernetes, PostgreSQL, TypeScript, etc.)\n6. Remove filler words only\n\nReturn only the cleaned text.\n\nTranscript:\n${output}".to_string(),
+            prompt: "You are a developer assistant. Clean the following dictated text for a coding context:\n1. Format identifiers: detect spoken camelCase (\"my variable\" → myVariable), snake_case (\"my function\" → my_function), and UPPER_CASE constants\n2. Format CLI syntax: convert spoken commands to code (\"git force push\" → git push --force, \"make directory\" → mkdir, \"pipe to grep\" → | grep)\n3. Convert spoken symbols: \"dot\" → \".\", \"slash\" → \"/\", \"double colon\" → \"::\", \"arrow\" → \"->\", \"fat arrow\" → \"=>\"\n4. Fix punctuation: add semicolons, brackets where spoken (\"open paren\" → \"(\", \"close bracket\" → \"]\")\n5. Preserve technical terms exactly (React, Kubernetes, PostgreSQL, TypeScript, etc.)\n6. Remove filler words only\n\nOutput rules (critical):\n- Return ONLY the cleaned text. Nothing else.\n- Do NOT include any preamble, greeting, acknowledgement, or explanation (no \"Sure\", no \"Here's...\", no \"Okay,\").\n- Do NOT prefix the output with a label such as \"Transcript:\", \"Output:\", or \"Cleaned:\".\n- Do NOT wrap the output in quotes unless the user dictated the quotes.\n- Do NOT use the words \"transcript\" or \"transcription\" in your response unless they appear in the dictated text itself.\n\n${output}".to_string(),
         },
         LLMPrompt {
             id: "builtin_ai_prompt".to_string(),
@@ -860,17 +866,17 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
         LLMPrompt {
             id: "builtin_email".to_string(),
             name: "Email".to_string(),
-            prompt: "Clean this voice transcription for a professional email context:\n1. Fix spelling, capitalization, and grammar\n2. Convert number words to digits where appropriate\n3. Replace spoken punctuation with symbols\n4. Remove filler words (um, uh, like as filler)\n5. Ensure professional tone — fix overly casual phrasing without changing meaning\n6. Add proper sentence structure and paragraph breaks where natural\n\nPreserve meaning exactly. Return only the cleaned text.\n\nTranscript:\n${output}".to_string(),
+            prompt: "Clean the following dictated text for a professional email context:\n1. Fix spelling, capitalization, and grammar\n2. Convert number words to digits where appropriate\n3. Convert spoken punctuation to the actual symbol when the speaker clearly intends punctuation (not when referring to the word itself):\n   - period/full stop → . · comma → , · question mark → ? · exclamation mark/point → !\n   - colon → : · semicolon → ;\n   - open quote/close quote/quote/unquote → \" · apostrophe → '\n   - open/close paren (or parenthesis) → ( ) · open/close bracket → [ ] · open/close brace → { }\n   - dash/hyphen → - · em dash → — · en dash → –\n   - ellipsis/dot dot dot → … · slash → / · backslash → \\\n   - new line → insert a line break · new paragraph → insert a blank line\n   Use context: \"Subject colon Project update\" → \"Subject: Project update\" (insert); \"we debated the Oxford comma\" → keep the word literal.\n4. Remove filler words (um, uh, like as filler)\n5. Ensure professional tone — fix overly casual phrasing without changing meaning\n6. Add proper sentence structure and paragraph breaks where natural\n\nPreserve meaning exactly.\n\nOutput rules (critical):\n- Return ONLY the cleaned text. Nothing else.\n- Do NOT include any preamble, greeting, acknowledgement, or explanation (no \"Sure\", no \"Here's...\", no \"Okay,\").\n- Do NOT prefix the output with a label such as \"Transcript:\", \"Output:\", or \"Cleaned:\".\n- Do NOT wrap the output in quotes unless the user dictated the quotes.\n- Do NOT use the words \"transcript\" or \"transcription\" in your response unless they appear in the dictated text itself.\n\n${output}".to_string(),
         },
         LLMPrompt {
             id: "builtin_casual".to_string(),
             name: "Casual".to_string(),
-            prompt: "Clean this voice transcription for casual messaging:\n1. Fix obvious spelling errors only\n2. Replace spoken punctuation with symbols\n3. Remove filler words (um, uh)\n4. Keep it natural and conversational — don't over-formalize\n5. Lowercase is fine where appropriate\n\nPreserve the casual tone. Return only the cleaned text.\n\nTranscript:\n${output}".to_string(),
+            prompt: "Clean the following dictated text for casual messaging:\n1. Fix obvious spelling errors only\n2. Convert spoken punctuation to the actual symbol when the speaker clearly intends punctuation (not when referring to the word itself):\n   - period/full stop → . · comma → , · question mark → ? · exclamation mark/point → !\n   - colon → : · semicolon → ;\n   - open quote/close quote/quote/unquote → \" · apostrophe → '\n   - open/close paren (or parenthesis) → ( ) · open/close bracket → [ ] · open/close brace → { }\n   - dash/hyphen → - · em dash → — · en dash → –\n   - ellipsis/dot dot dot → … · slash → / · backslash → \\\n   - new line → insert a line break · new paragraph → insert a blank line\n   Use context: \"Subject colon Project update\" → \"Subject: Project update\" (insert); \"we debated the Oxford comma\" → keep the word literal.\n3. Remove filler words (um, uh)\n4. Keep it natural and conversational — don't over-formalize\n5. Lowercase is fine where appropriate\n\nPreserve the casual tone.\n\nOutput rules (critical):\n- Return ONLY the cleaned text. Nothing else.\n- Do NOT include any preamble, greeting, acknowledgement, or explanation (no \"Sure\", no \"Here's...\", no \"Okay,\").\n- Do NOT prefix the output with a label such as \"Transcript:\", \"Output:\", or \"Cleaned:\".\n- Do NOT wrap the output in quotes unless the user dictated the quotes.\n- Do NOT use the words \"transcript\" or \"transcription\" in your response unless they appear in the dictated text itself.\n\n${output}".to_string(),
         },
         LLMPrompt {
             id: "builtin_structured".to_string(),
             name: "Structured Notes".to_string(),
-            prompt: "Clean and structure this voice transcription for note-taking:\n1. Fix spelling, capitalization, and punctuation\n2. Convert number words to digits\n3. Replace spoken punctuation with symbols\n4. Remove filler words\n5. Add bullet points or numbered lists where you detect enumeration (\"first... second... third...\")\n6. Break long sentences into clear, scannable statements\n\nPreserve all meaning. Return only the structured text.\n\nTranscript:\n${output}".to_string(),
+            prompt: "Clean and structure the following dictated text for note-taking:\n1. Fix spelling, capitalization, and punctuation\n2. Convert number words to digits\n3. Convert spoken punctuation to the actual symbol when the speaker clearly intends punctuation (not when referring to the word itself):\n   - period/full stop → . · comma → , · question mark → ? · exclamation mark/point → !\n   - colon → : · semicolon → ;\n   - open quote/close quote/quote/unquote → \" · apostrophe → '\n   - open/close paren (or parenthesis) → ( ) · open/close bracket → [ ] · open/close brace → { }\n   - dash/hyphen → - · em dash → — · en dash → –\n   - ellipsis/dot dot dot → … · slash → / · backslash → \\\n   - new line → insert a line break · new paragraph → insert a blank line\n   Use context: \"Subject colon Project update\" → \"Subject: Project update\" (insert); \"we debated the Oxford comma\" → keep the word literal.\n4. Remove filler words\n5. Add bullet points or numbered lists where you detect enumeration (\"first... second... third...\")\n6. Break long sentences into clear, scannable statements\n\nPreserve all meaning.\n\nOutput rules (critical):\n- Return ONLY the structured text. Nothing else.\n- Do NOT include any preamble, greeting, acknowledgement, or explanation (no \"Sure\", no \"Here's...\", no \"Okay,\").\n- Do NOT prefix the output with a label such as \"Transcript:\", \"Output:\", or \"Notes:\".\n- Do NOT wrap the output in quotes unless the user dictated the quotes.\n- Do NOT use the words \"transcript\" or \"transcription\" in your response unless they appear in the dictated text itself.\n\n${output}".to_string(),
         },
     ]
 }

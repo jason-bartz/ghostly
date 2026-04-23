@@ -136,15 +136,6 @@ pub struct HistoryTag {
     pub auto: bool,
 }
 
-/// Per-tag behaviour toggles. `name` is stored lowercase; the UI carries the
-/// canonical display casing on the tag itself. Rules are keyed by
-/// `LOWER(name)` so renaming casing on entries never drops the rule.
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct TagRule {
-    pub name: String,
-    pub strict: bool,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct HistoryEntry {
     pub id: i64,
@@ -998,39 +989,6 @@ impl HistoryManager {
         Ok(deleted)
     }
 
-    /// Upsert a rule for `name` (e.g. toggle strict matching). Name is stored
-    /// lowercase so rules survive casing drift across entries.
-    pub fn set_tag_rule(&self, name: String, strict: bool) -> Result<TagRule> {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err(anyhow!("Tag name cannot be empty"));
-        }
-        let key = trimmed.to_lowercase();
-        let conn = self.get_connection()?;
-        let now = Utc::now().timestamp();
-        conn.execute(
-            "INSERT INTO tag_rules (name, strict, updated_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(name) DO UPDATE SET strict = excluded.strict, updated_at = excluded.updated_at",
-            params![&key, strict, now],
-        )?;
-        Ok(TagRule { name: key, strict })
-    }
-
-    /// Return every tag rule. Rows are keyed by lowercase tag name — callers
-    /// match against `LOWER(tag)` from the history side.
-    pub fn list_tag_rules(&self) -> Result<Vec<TagRule>> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT name, strict FROM tag_rules")?;
-        let rules = stmt
-            .query_map([], |row| {
-                Ok(TagRule {
-                    name: row.get::<_, String>(0)?,
-                    strict: row.get::<_, bool>(1)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        Ok(rules)
-    }
 
     fn emit_entry_updated(&self, conn: &Connection, entry_id: i64) {
         let entry = conn
@@ -1513,21 +1471,12 @@ async fn run_auto_metadata(
             return;
         }
     };
-    let strict_tags: Vec<String> = hm
-        .list_tag_rules()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|r| r.strict)
-        .map(|r| r.name)
-        .collect();
 
-    let generated =
-        match crate::ai_metadata::generate(&settings, source_text, &existing_tags, &strict_tags)
-            .await
-        {
-            Some(g) => g,
-            None => return,
-        };
+    let generated = match crate::ai_metadata::generate(&settings, source_text, &existing_tags).await
+    {
+        Some(g) => g,
+        None => return,
+    };
 
     if let Err(e) = hm.update_user_title(entry_id, Some(generated.title)).await {
         log::warn!("Auto-metadata: failed to set title: {}", e);

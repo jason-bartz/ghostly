@@ -28,6 +28,18 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+NOTES_FILE="release-notes/v${VERSION}.md"
+if [[ ! -f "$NOTES_FILE" ]]; then
+  echo "error: $NOTES_FILE not found" >&2
+  echo "       write the release notes first:" >&2
+  echo "       mkdir -p release-notes && \$EDITOR $NOTES_FILE" >&2
+  exit 1
+fi
+if [[ ! -s "$NOTES_FILE" ]]; then
+  echo "error: $NOTES_FILE is empty" >&2
+  exit 1
+fi
+
 CURRENT=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1)
 echo "==> Bumping $CURRENT -> $VERSION"
 
@@ -39,7 +51,7 @@ echo "==> Refreshing Cargo.lock"
 (cd src-tauri && cargo check --quiet)
 
 echo "==> Committing + pushing"
-git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json
+git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json "$NOTES_FILE"
 git commit -m "chore: bump version to $VERSION"
 git push origin main
 

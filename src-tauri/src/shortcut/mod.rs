@@ -666,11 +666,18 @@ pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Resu
     let mut settings = settings::get_settings(&app);
     let parsed = match position.as_str() {
         "none" => OverlayPosition::None,
-        "top" => OverlayPosition::Top,
-        "bottom" => OverlayPosition::Bottom,
+        "top_left" => OverlayPosition::TopLeft,
+        "top" | "top_center" => OverlayPosition::TopCenter,
+        "top_right" => OverlayPosition::TopRight,
+        "bottom_left" => OverlayPosition::BottomLeft,
+        "bottom" | "bottom_center" => OverlayPosition::BottomCenter,
+        "bottom_right" => OverlayPosition::BottomRight,
         other => {
-            warn!("Invalid overlay position '{}', defaulting to bottom", other);
-            OverlayPosition::Bottom
+            warn!(
+                "Invalid overlay position '{}', defaulting to bottom_center",
+                other
+            );
+            OverlayPosition::BottomCenter
         }
     };
     settings.overlay_position = parsed;
