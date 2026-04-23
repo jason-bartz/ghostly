@@ -708,6 +708,7 @@
     },
     "profiles": {
       "title": "Per-App Profiles",
+      "intro": "Your active refinement prompt runs on every transcription by default. Profiles let you override the prompt, vocabulary, or provider when a specific app is in focus — so you don't have to switch prompts manually as you move between apps.",
       "enable": {
         "title": "Enable Per-App Profiles",
         "description": "Automatically switch your AI prompt, vocabulary, and other settings based on which app is in focus when you transcribe."
@@ -745,6 +746,7 @@
         "rulesEmpty": "No rules yet. Add one or detect the current app.",
         "addRule": "Add rule",
         "prompt": "Prompt",
+        "promptDescription": "Pick a refinement prompt to use while this app is in focus. Inherit keeps your global active prompt, which is the default behavior.",
         "promptInherit": "Inherit global prompt",
         "postProcess": "Post-processing",
         "postProcessInherit": "Inherit",

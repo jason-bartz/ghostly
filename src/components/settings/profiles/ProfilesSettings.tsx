@@ -129,6 +129,9 @@ export const ProfilesSettings: React.FC = () => {
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
+      <p className="text-[13px] leading-relaxed text-text-muted">
+        {t("settings.profiles.intro")}
+      </p>
       <SettingsGroup title={t("settings.profiles.title")}>
         <ToggleSwitch
           label={t("settings.profiles.enable.title")}
