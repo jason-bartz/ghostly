@@ -1,6 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdaterStore } from "@/stores/updaterStore";
+import { formatBytes, formatEta } from "@/lib/utils/format";
 
 export const UpdateModal: React.FC = () => {
   const { t } = useTranslation();
@@ -94,9 +95,26 @@ export const UpdateModal: React.FC = () => {
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <p className="text-xs text-text-muted tabular-nums text-right">
-              {t("updater.modal.progress", { percent })}
-            </p>
+            <div className="flex items-center justify-between text-xs text-text-muted tabular-nums">
+              <span>
+                {progress && progress.total
+                  ? t("updater.modal.progressBytes", {
+                      done: formatBytes(progress.downloaded),
+                      total: formatBytes(progress.total),
+                    })
+                  : progress
+                    ? formatBytes(progress.downloaded)
+                    : ""}
+              </span>
+              <span>
+                {progress && progress.speedBytesPerSec > 0
+                  ? t("updater.modal.speedAndEta", {
+                      speed: (progress.speedBytesPerSec / (1024 * 1024)).toFixed(1),
+                      eta: formatEta(progress.etaSeconds),
+                    })
+                  : t("updater.modal.progress", { percent })}
+              </span>
+            </div>
           </div>
         )}
 
