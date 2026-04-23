@@ -392,6 +392,11 @@ pub struct AppSettings {
     pub selected_language: String,
     #[serde(default = "default_overlay_position")]
     pub overlay_position: OverlayPosition,
+    /// Position for the staged screenshot + dictation preview overlay.
+    /// Defaults to match `overlay_position` on first run via the default fn,
+    /// but then persists independently.
+    #[serde(default = "default_staged_overlay_position")]
+    pub staged_overlay_position: OverlayPosition,
     #[serde(default = "default_debug_mode")]
     pub debug_mode: bool,
     #[serde(default = "default_log_level")]
@@ -650,6 +655,10 @@ fn default_overlay_position() -> OverlayPosition {
     return OverlayPosition::None;
     #[cfg(not(target_os = "linux"))]
     return OverlayPosition::BottomCenter;
+}
+
+fn default_staged_overlay_position() -> OverlayPosition {
+    default_overlay_position()
 }
 
 fn default_debug_mode() -> bool {
@@ -1118,6 +1127,7 @@ pub fn get_default_settings() -> AppSettings {
         translate_to_english: false,
         selected_language: "auto".to_string(),
         overlay_position: default_overlay_position(),
+        staged_overlay_position: default_staged_overlay_position(),
         debug_mode: false,
         log_level: default_log_level(),
         custom_words: Vec::new(),

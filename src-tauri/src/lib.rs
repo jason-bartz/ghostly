@@ -444,6 +444,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::change_translate_to_english_setting,
             shortcut::change_selected_language_setting,
             shortcut::change_overlay_position_setting,
+            shortcut::change_staged_overlay_position_setting,
             shortcut::change_debug_mode_setting,
             shortcut::change_word_correction_threshold_setting,
             shortcut::change_extra_recording_buffer_setting,

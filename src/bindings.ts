@@ -93,6 +93,14 @@ async changeOverlayPositionSetting(position: string) : Promise<Result<null, stri
     else return { status: "error", error: e  as any };
 }
 },
+async changeStagedOverlayPositionSetting(position: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_staged_overlay_position_setting", { position }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeDebugModeSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_debug_mode_setting", { enabled }) };
@@ -1449,7 +1457,7 @@ confirm_paste_default_set?: boolean;
  * `default_binding` fields to the new code defaults and upgrades any
  * `current_binding` that was still sitting on the old default.
  */
-binding_defaults_v2_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
+binding_defaults_v2_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; staged_overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
 /**
  * Optional phonetic ("sounds like") hints keyed by the lowercased custom
  * word. Used as a Soundex override so users can nudge fuzzy-match for

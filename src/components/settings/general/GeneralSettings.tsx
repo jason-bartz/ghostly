@@ -48,6 +48,13 @@ export const GeneralSettings: React.FC = () => {
       {/* ── Recording feedback ── */}
       <SettingsGroup title={t("settings.sound.title")}>
         <ShowOverlay descriptionMode="tooltip" grouped={true} />
+        <ShowOverlay
+          descriptionMode="tooltip"
+          grouped={true}
+          settingKey="staged_overlay_position"
+          titleKey="settings.advanced.stagedOverlay.title"
+          descriptionKey="settings.advanced.stagedOverlay.description"
+        />
         <AudioFeedback descriptionMode="tooltip" grouped={true} />
         <SoundPicker
           label={t("settings.sound.soundTheme.label")}

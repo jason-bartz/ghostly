@@ -111,6 +111,8 @@ const settingUpdaters: {
     commands.changeSelectedLanguageSetting(value as string),
   overlay_position: (value) =>
     commands.changeOverlayPositionSetting(value as string),
+  staged_overlay_position: (value) =>
+    commands.changeStagedOverlayPositionSetting(value as string),
   debug_mode: (value) => commands.changeDebugModeSetting(value as boolean),
   custom_words: (value) => commands.updateCustomWords(value as string[]),
   custom_word_phonetics: (value) =>
