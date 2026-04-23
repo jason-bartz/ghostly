@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdaterStore } from "@/stores/updaterStore";
 import { formatBytes, formatEta } from "@/lib/utils/format";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 export const UpdateModal: React.FC = () => {
   const { t } = useTranslation();
@@ -17,11 +18,23 @@ export const UpdateModal: React.FC = () => {
   const skipCurrent = useUpdaterStore((s) => s.skipCurrent);
   const closeModal = useUpdaterStore((s) => s.closeModal);
 
-  if (!modalOpen || !available) return null;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, modalOpen && !!available);
 
   const isDownloading = status === "downloading";
   const isReady = status === "ready";
   const isError = status === "error";
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isDownloading) closeModal();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [modalOpen, isDownloading, closeModal]);
+
+  if (!modalOpen || !available) return null;
 
   const percent = Math.round(progress?.percent ?? 0);
   const notes = available.notes?.trim() ?? "";
@@ -53,13 +66,20 @@ export const UpdateModal: React.FC = () => {
       onClick={() => allowDismiss && closeModal()}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-modal-title"
         className="surface-card-inlay !rounded-2xl max-w-lg w-full mx-4 p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
           {/* eslint-disable-next-line i18next/no-literal-string */}
           <span className="tag-pill mb-3">Ghostly</span>
-          <h2 className="text-xl font-display tracking-tight text-text mt-2">
+          <h2
+            id="update-modal-title"
+            className="text-xl font-display tracking-tight text-text mt-2"
+          >
             {t("updater.modal.title")}
           </h2>
           <p className="text-xs text-text-faint mt-1 tabular-nums">

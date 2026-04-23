@@ -7,13 +7,13 @@ interface ApiKeyFieldProps {
   disabled: boolean;
   placeholder?: string;
   className?: string;
+  ariaLabel?: string;
 }
 
 export const ApiKeyField: React.FC<ApiKeyFieldProps> = React.memo(
-  ({ value, onBlur, disabled, placeholder, className = "" }) => {
+  ({ value, onBlur, disabled, placeholder, className = "", ariaLabel }) => {
     const [localValue, setLocalValue] = useState(value);
 
-    // Sync with prop changes
     React.useEffect(() => {
       setLocalValue(value);
     }, [value]);
@@ -28,6 +28,7 @@ export const ApiKeyField: React.FC<ApiKeyFieldProps> = React.memo(
         variant="compact"
         disabled={disabled}
         className={`flex-1 min-w-[320px] ${className}`}
+        aria-label={ariaLabel}
       />
     );
   },
