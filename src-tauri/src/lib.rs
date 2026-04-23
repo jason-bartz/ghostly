@@ -234,11 +234,13 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // after permissions are confirmed (on macOS) or after onboarding completes.
     // This matches the pattern used for Enigo initialization.
 
+    // Signal handlers are best-effort — if we can't install them the CLI
+    // remote-control flags stop working but the app is otherwise fine.
     #[cfg(unix)]
-    let signals = Signals::new(&[SIGUSR1, SIGUSR2]).unwrap();
-    // Set up signal handlers for toggling transcription
-    #[cfg(unix)]
-    signal_handle::setup_signal_handler(app_handle.clone(), signals);
+    match Signals::new([SIGUSR1, SIGUSR2]) {
+        Ok(signals) => signal_handle::setup_signal_handler(app_handle.clone(), signals),
+        Err(e) => log::error!("Failed to install SIGUSR1/SIGUSR2 handlers: {}", e),
+    }
 
     // Start the localhost REST API if enabled
     {
@@ -269,16 +271,22 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // Choose the appropriate initial icon based on theme
     let initial_icon_path = tray::get_icon_path(initial_theme, tray::TrayIconState::Idle);
 
-    let tray = TrayIconBuilder::new()
-        .icon(
-            Image::from_path(
-                app_handle
-                    .path()
-                    .resolve(initial_icon_path, tauri::path::BaseDirectory::Resource)
-                    .unwrap(),
-            )
-            .unwrap(),
-        )
+    // Icon load is best-effort — we'd rather show a tray without an icon than
+    // fail the whole setup. Path and image errors both fall through to the
+    // unstyled builder below.
+    let initial_icon = app_handle
+        .path()
+        .resolve(initial_icon_path, tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("resolve {}: {}", initial_icon_path, e))
+        .and_then(|p| Image::from_path(p).map_err(|e| format!("load {}: {}", initial_icon_path, e)));
+
+    let mut tray_builder = TrayIconBuilder::new();
+    match initial_icon {
+        Ok(img) => tray_builder = tray_builder.icon(img),
+        Err(e) => log::error!("Tray icon unavailable: {}", e),
+    }
+
+    let tray = tray_builder
         .tooltip(tray::tray_tooltip())
         .show_menu_on_left_click(true)
         .icon_as_template(true)
@@ -354,24 +362,35 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             }
             _ => {}
         })
-        .build(app_handle)
-        .unwrap();
-    app_handle.manage(tray);
+        .build(app_handle);
 
-    // Initialize tray menu with idle state
-    utils::update_tray_menu(app_handle, &utils::TrayIconState::Idle, None);
+    match tray {
+        Ok(tray) => {
+            app_handle.manage(tray);
 
-    // Apply show_tray_icon setting
-    let settings = settings::get_settings(app_handle);
-    if !settings.show_tray_icon {
-        tray::set_tray_visibility(app_handle, false);
+            utils::update_tray_menu(app_handle, &utils::TrayIconState::Idle, None);
+
+            let settings = settings::get_settings(app_handle);
+            if !settings.show_tray_icon {
+                tray::set_tray_visibility(app_handle, false);
+            }
+
+            let app_handle_for_listener = app_handle.clone();
+            app_handle.listen("model-state-changed", move |_| {
+                tray::update_tray_menu(
+                    &app_handle_for_listener,
+                    &tray::TrayIconState::Idle,
+                    None,
+                );
+            });
+        }
+        Err(e) => {
+            log::error!(
+                "Failed to build tray icon: {}. The app will continue without a tray.",
+                e
+            );
+        }
     }
-
-    // Refresh tray menu when model state changes
-    let app_handle_for_listener = app_handle.clone();
-    app_handle.listen("model-state-changed", move |_| {
-        tray::update_tray_menu(&app_handle_for_listener, &tray::TrayIconState::Idle, None);
-    });
 
     // Get the autostart manager and configure based on user setting
     let autostart_manager = app_handle.autolaunch();
