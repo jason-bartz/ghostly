@@ -176,6 +176,7 @@
     "noModelDownloadRequired": "No Model - Download Required",
     "deleteModel": "Delete {{modelName}}",
     "downloadSpeed": "{{speed}} MB/s",
+    "speedAndEta": "{{speed}} MB/s · {{eta}} left",
     "cancel": "Cancel",
     "cancelDownload": "Cancel download",
     "capabilities": {
@@ -988,7 +989,9 @@
       "skipButton": "Skip This Version",
       "errorTitle": "Couldn't download update",
       "errorRetry": "Try Again",
-      "progress": "{{percent}}%"
+      "progress": "{{percent}}%",
+      "progressBytes": "{{done}} / {{total}}",
+      "speedAndEta": "{{speed}} MB/s · {{eta}} left"
     },
     "settings": {
       "title": "Software Updates",

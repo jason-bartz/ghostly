@@ -9,7 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ModelInfo } from "@/bindings";
-import { formatModelSize } from "../../lib/utils/format";
+import { formatEta, formatModelSize } from "../../lib/utils/format";
 import {
   getTranslatedModelDescription,
   getTranslatedModelName,
@@ -255,9 +255,24 @@ const ModelCard: React.FC<ModelCardProps> = ({
             <div className="flex items-center gap-2">
               {downloadSpeed !== undefined && downloadSpeed > 0 && (
                 <span className="tabular-nums text-text/50">
-                  {t("modelSelector.downloadSpeed", {
-                    speed: downloadSpeed.toFixed(1),
-                  })}
+                  {(() => {
+                    const remainingMb =
+                      model.size_mb > 0
+                        ? Math.max(0, model.size_mb * (1 - downloadProgress / 100))
+                        : 0;
+                    const etaSeconds =
+                      remainingMb > 0 && downloadSpeed > 0
+                        ? remainingMb / downloadSpeed
+                        : null;
+                    return etaSeconds !== null
+                      ? t("modelSelector.speedAndEta", {
+                          speed: downloadSpeed.toFixed(1),
+                          eta: formatEta(etaSeconds),
+                        })
+                      : t("modelSelector.downloadSpeed", {
+                          speed: downloadSpeed.toFixed(1),
+                        });
+                  })()}
                 </span>
               )}
               {onCancel && (

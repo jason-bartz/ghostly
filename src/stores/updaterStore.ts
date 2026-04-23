@@ -22,6 +22,8 @@ export interface DownloadProgress {
   downloaded: number;
   total: number | null;
   percent: number;
+  speedBytesPerSec: number;
+  etaSeconds: number | null;
 }
 
 interface UpdaterState {
@@ -125,32 +127,67 @@ export const useUpdaterStore = create<UpdaterState>()((set, get) => ({
     set({
       status: "downloading",
       error: null,
-      progress: { downloaded: 0, total: null, percent: 0 },
+      progress: {
+        downloaded: 0,
+        total: null,
+        percent: 0,
+        speedBytesPerSec: 0,
+        etaSeconds: null,
+      },
     });
 
     let total = 0;
     let downloaded = 0;
+    // Exponential-smoothed speed in bytes/sec. First sample seeds directly;
+    // subsequent samples weight 80/20 toward the running value so brief
+    // network stalls don't yank the ETA around.
+    let smoothedSpeed = 0;
+    let lastSampleAt = 0;
+    let lastSampleBytes = 0;
 
     try {
       await update.downloadAndInstall((event: DownloadEvent) => {
         if (event.event === "Started") {
           total = event.data.contentLength ?? 0;
+          lastSampleAt = Date.now();
+          lastSampleBytes = 0;
           set({
             progress: {
               downloaded: 0,
               total: total || null,
               percent: 0,
+              speedBytesPerSec: 0,
+              etaSeconds: null,
             },
           });
         } else if (event.event === "Progress") {
           downloaded += event.data.chunkLength;
           const percent =
             total > 0 ? Math.min(100, (downloaded / total) * 100) : 0;
+
+          const now = Date.now();
+          const dt = (now - lastSampleAt) / 1000;
+          if (dt >= 0.5) {
+            const sampleSpeed = Math.max(0, (downloaded - lastSampleBytes) / dt);
+            smoothedSpeed =
+              smoothedSpeed > 0
+                ? smoothedSpeed * 0.8 + sampleSpeed * 0.2
+                : sampleSpeed;
+            lastSampleAt = now;
+            lastSampleBytes = downloaded;
+          }
+
+          const remaining = total > 0 ? Math.max(0, total - downloaded) : 0;
+          const etaSeconds =
+            total > 0 && smoothedSpeed > 0 ? remaining / smoothedSpeed : null;
+
           set({
             progress: {
               downloaded,
               total: total || null,
               percent,
+              speedBytesPerSec: smoothedSpeed,
+              etaSeconds,
             },
           });
         } else if (event.event === "Finished") {
@@ -160,6 +197,8 @@ export const useUpdaterStore = create<UpdaterState>()((set, get) => ({
               downloaded,
               total: total || null,
               percent: 100,
+              speedBytesPerSec: 0,
+              etaSeconds: 0,
             },
           });
         }
