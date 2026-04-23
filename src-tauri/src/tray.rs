@@ -67,19 +67,22 @@ pub fn get_icon_path(theme: AppTheme, state: TrayIconState) -> &'static str {
 pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
     let tray = app.state::<TrayIcon>();
     let theme = get_current_theme(app);
-
     let icon_path = get_icon_path(theme, icon.clone());
 
-    let _ = tray.set_icon(Some(
-        Image::from_path(
-            app.path()
-                .resolve(icon_path, tauri::path::BaseDirectory::Resource)
-                .expect("failed to resolve"),
-        )
-        .expect("failed to set icon"),
-    ));
+    match app
+        .path()
+        .resolve(icon_path, tauri::path::BaseDirectory::Resource)
+        .map_err(|e| e.to_string())
+        .and_then(|p| Image::from_path(p).map_err(|e| e.to_string()))
+    {
+        Ok(image) => {
+            if let Err(e) = tray.set_icon(Some(image)) {
+                error!("Failed to set tray icon: {}", e);
+            }
+        }
+        Err(e) => error!("Failed to load tray icon '{}': {}", icon_path, e),
+    }
 
-    // Update menu based on state
     update_tray_menu(app, &icon, None);
 }
 
@@ -96,46 +99,53 @@ fn version_label() -> String {
 }
 
 pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&str>) {
-    let settings = settings::get_settings(app);
+    let version_label = version_label();
+    match build_tray_menu(app, state, locale) {
+        Ok(menu) => {
+            let tray = app.state::<TrayIcon>();
+            let _ = tray.set_menu(Some(menu));
+            let _ = tray.set_icon_as_template(true);
+            let _ = tray.set_tooltip(Some(version_label));
+        }
+        Err(e) => error!("Failed to rebuild tray menu: {}", e),
+    }
+}
 
+fn build_tray_menu(
+    app: &AppHandle,
+    state: &TrayIconState,
+    locale: Option<&str>,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    let settings = settings::get_settings(app);
     let locale = locale.unwrap_or(&settings.app_language);
     let strings = get_tray_translations(Some(locale.to_string()));
 
-    // Platform-specific accelerators
     #[cfg(target_os = "macos")]
     let (settings_accelerator, quit_accelerator) = (Some("Cmd+,"), Some("Cmd+Q"));
     #[cfg(not(target_os = "macos"))]
     let (settings_accelerator, quit_accelerator) = (Some("Ctrl+,"), Some("Ctrl+Q"));
 
-    // Create common menu items
     let version_label = version_label();
-    let version_i = MenuItem::with_id(app, "version", &version_label, false, None::<&str>)
-        .expect("failed to create version item");
+    let version_i = MenuItem::with_id(app, "version", &version_label, false, None::<&str>)?;
     let metrics_label = weekly_metrics_label(app);
-    let metrics_i = MenuItem::with_id(app, "metrics", &metrics_label, false, None::<&str>)
-        .expect("failed to create metrics item");
+    let metrics_i = MenuItem::with_id(app, "metrics", &metrics_label, false, None::<&str>)?;
     let settings_i = MenuItem::with_id(
         app,
         "settings",
         &strings.settings,
         true,
         settings_accelerator,
-    )
-    .expect("failed to create settings item");
+    )?;
     let copy_last_transcript_i = MenuItem::with_id(
         app,
         "copy_last_transcript",
         &strings.copy_last_transcript,
         true,
         None::<&str>,
-    )
-    .expect("failed to create copy last transcript item");
+    )?;
     let model_loaded = app.state::<Arc<TranscriptionManager>>().is_model_loaded();
-    let quit_i = MenuItem::with_id(app, "quit", &strings.quit, true, quit_accelerator)
-        .expect("failed to create quit item");
-    let separator = || PredefinedMenuItem::separator(app).expect("failed to create separator");
+    let quit_i = MenuItem::with_id(app, "quit", &strings.quit, true, quit_accelerator)?;
 
-    // Build model submenu — label is the active model name
     let model_manager = app.state::<Arc<ModelManager>>();
     let models = model_manager.get_available_models();
     let current_model_id = &settings.selected_model;
@@ -149,21 +159,14 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
         .map(|m| m.name.clone())
         .unwrap_or_else(|| strings.model.clone());
 
-    let model_submenu = {
-        let submenu = Submenu::with_id(app, "model_submenu", &submenu_label, true)
-            .expect("failed to create model submenu");
-
-        for model in &downloaded {
-            let is_active = model.id == *current_model_id;
-            let item_id = format!("model_select:{}", model.id);
-            let item =
-                CheckMenuItem::with_id(app, &item_id, &model.name, true, is_active, None::<&str>)
-                    .expect("failed to create model item");
-            let _ = submenu.append(&item);
-        }
-
-        submenu
-    };
+    let model_submenu = Submenu::with_id(app, "model_submenu", &submenu_label, true)?;
+    for model in &downloaded {
+        let is_active = model.id == *current_model_id;
+        let item_id = format!("model_select:{}", model.id);
+        let item =
+            CheckMenuItem::with_id(app, &item_id, &model.name, true, is_active, None::<&str>)?;
+        let _ = model_submenu.append(&item);
+    }
 
     let unload_model_i = MenuItem::with_id(
         app,
@@ -171,94 +174,73 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
         &strings.unload_model,
         model_loaded,
         None::<&str>,
-    )
-    .expect("failed to create unload model item");
+    )?;
 
-    // Build microphone submenu — label is the active device name or "Microphone"
     let current_mic = settings.selected_microphone.clone();
-    let mic_submenu = {
-        let devices = list_input_devices().unwrap_or_default();
+    let devices = list_input_devices().unwrap_or_default();
+    let mic_submenu_label = current_mic
+        .as_deref()
+        .and_then(|name| devices.iter().find(|d| d.name == name))
+        .map(|d| d.name.clone())
+        .unwrap_or_else(|| strings.microphone.clone());
+    let mic_submenu = Submenu::with_id(app, "mic_submenu", &mic_submenu_label, true)?;
+    let default_item = CheckMenuItem::with_id(
+        app,
+        "mic_select:default",
+        &strings.default_microphone,
+        true,
+        current_mic.is_none(),
+        None::<&str>,
+    )?;
+    let _ = mic_submenu.append(&default_item);
+    for device in &devices {
+        let is_active = current_mic.as_deref() == Some(device.name.as_str());
+        let item_id = format!("mic_select:{}", device.name);
+        let item =
+            CheckMenuItem::with_id(app, &item_id, &device.name, true, is_active, None::<&str>)?;
+        let _ = mic_submenu.append(&item);
+    }
 
-        let submenu_label = current_mic
-            .as_deref()
-            .and_then(|name| devices.iter().find(|d| d.name == name))
-            .map(|d| d.name.clone())
-            .unwrap_or_else(|| strings.microphone.clone());
+    let sep = || PredefinedMenuItem::separator(app);
 
-        let submenu = Submenu::with_id(app, "mic_submenu", &submenu_label, true)
-            .expect("failed to create mic submenu");
-
-        // "Default" option
-        let default_active = current_mic.is_none();
-        let default_item = CheckMenuItem::with_id(
-            app,
-            "mic_select:default",
-            &strings.default_microphone,
-            true,
-            default_active,
-            None::<&str>,
-        )
-        .expect("failed to create default mic item");
-        let _ = submenu.append(&default_item);
-
-        for device in &devices {
-            let is_active = current_mic.as_deref() == Some(device.name.as_str());
-            let item_id = format!("mic_select:{}", device.name);
-            let item =
-                CheckMenuItem::with_id(app, &item_id, &device.name, true, is_active, None::<&str>)
-                    .expect("failed to create mic item");
-            let _ = submenu.append(&item);
-        }
-
-        submenu
-    };
-
-    let menu = match state {
+    match state {
         TrayIconState::Recording | TrayIconState::Transcribing => {
-            let cancel_i = MenuItem::with_id(app, "cancel", &strings.cancel, true, None::<&str>)
-                .expect("failed to create cancel item");
+            let cancel_i = MenuItem::with_id(app, "cancel", &strings.cancel, true, None::<&str>)?;
             Menu::with_items(
                 app,
                 &[
                     &version_i,
                     &metrics_i,
-                    &separator(),
+                    &sep()?,
                     &cancel_i,
-                    &separator(),
+                    &sep()?,
                     &copy_last_transcript_i,
-                    &separator(),
+                    &sep()?,
                     &settings_i,
-                    &separator(),
+                    &sep()?,
                     &quit_i,
                 ],
             )
-            .expect("failed to create menu")
         }
         TrayIconState::Idle => Menu::with_items(
             app,
             &[
                 &version_i,
                 &metrics_i,
-                &separator(),
+                &sep()?,
                 &copy_last_transcript_i,
-                &separator(),
+                &sep()?,
                 &model_submenu,
                 &unload_model_i,
-                &separator(),
+                &sep()?,
                 &mic_submenu,
-                &separator(),
+                &sep()?,
                 &settings_i,
-                &separator(),
+                &sep()?,
                 &quit_i,
             ],
-        )
-        .expect("failed to create menu"),
-    };
-
-    let tray = app.state::<TrayIcon>();
-    let _ = tray.set_menu(Some(menu));
-    let _ = tray.set_icon_as_template(true);
-    let _ = tray.set_tooltip(Some(version_label));
+        ),
+    }
 }
 
 /// Short one-line summary of this week's vanity metrics for the tray menu.
