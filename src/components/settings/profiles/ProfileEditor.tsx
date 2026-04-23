@@ -174,8 +174,8 @@ export const ProfileEditor: React.FC<Props> = ({
       {/* Prompt override */}
       <SettingContainer
         title={t("settings.profiles.fields.prompt")}
-        description=""
-        descriptionMode="inline"
+        description={t("settings.profiles.fields.promptDescription")}
+        descriptionMode="tooltip"
         layout="horizontal"
         grouped={true}
       >
