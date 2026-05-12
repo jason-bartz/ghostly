@@ -242,7 +242,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
         <div className="w-full mt-3">
           <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full transition-all duration-300"
+              className="h-full min-w-[2px] bg-gradient-to-r from-accent to-accent-deep rounded-full transition-all duration-300 ease-out"
               style={{ width: `${downloadProgress}%` }}
             />
           </div>
@@ -258,7 +258,10 @@ const ModelCard: React.FC<ModelCardProps> = ({
                   {(() => {
                     const remainingMb =
                       model.size_mb > 0
-                        ? Math.max(0, model.size_mb * (1 - downloadProgress / 100))
+                        ? Math.max(
+                            0,
+                            model.size_mb * (1 - downloadProgress / 100),
+                          )
                         : 0;
                     const etaSeconds =
                       remainingMb > 0 && downloadSpeed > 0

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { RefreshCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { commands } from "@/bindings";
 
@@ -10,6 +10,7 @@ import {
   SettingContainer,
   SettingsGroup,
   Textarea,
+  ToggleSwitch,
 } from "@/components/ui";
 import { Button } from "../../ui/Button";
 import { ResetButton } from "../../ui/ResetButton";
@@ -62,7 +63,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
               layout="horizontal"
               grouped={true}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full">
                 <BaseUrlField
                   value={state.baseUrl}
                   onBlur={state.handleBaseUrlChange}
@@ -70,7 +71,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
                     "settings.postProcessing.api.baseUrl.placeholder",
                   )}
                   disabled={state.isBaseUrlUpdating}
-                  className="min-w-[380px]"
+                  className="w-full max-w-[380px] min-w-0"
                   ariaLabel={t("settings.postProcessing.api.baseUrl.title")}
                 />
               </div>
@@ -84,7 +85,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
             layout="horizontal"
             grouped={true}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full">
               <ApiKeyField
                 value={state.apiKey}
                 onBlur={state.handleApiKeyChange}
@@ -92,7 +93,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
                   "settings.postProcessing.api.apiKey.placeholder",
                 )}
                 disabled={state.isApiKeyUpdating}
-                className="min-w-[320px]"
+                className="w-full max-w-[380px] min-w-0"
                 ariaLabel={t("settings.postProcessing.api.apiKey.title")}
               />
             </div>
@@ -112,7 +113,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
           layout="stacked"
           grouped={true}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full">
             <ModelSelect
               value={state.model}
               options={state.modelOptions}
@@ -128,7 +129,7 @@ const PostProcessingSettingsApiComponent: React.FC = () => {
               onSelect={state.handleModelSelect}
               onCreate={state.handleModelCreate}
               onBlur={() => {}}
-              className="flex-1 min-w-[380px]"
+              className="flex-1 min-w-0"
             />
             <ResetButton
               onClick={state.handleRefreshModels}
@@ -507,6 +508,7 @@ const ConnectionStatusCard: React.FC = () => {
   }
 
   const connected = status === "connected";
+  const Icon = connected ? CheckCircle2 : AlertCircle;
   const iconColor = connected ? "text-green-500" : "text-amber-500";
   const label = provider?.label ?? providerId;
 
@@ -523,38 +525,66 @@ const ConnectionStatusCard: React.FC = () => {
       className="flex items-center gap-3 px-4 py-3 rounded-lg border border-mid-gray/20 bg-mid-gray/5"
       role="status"
     >
-      <span className={`text-lg ${iconColor}`}>{connected ? "✓" : "⚠"}</span>
+      <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} aria-hidden="true" />
       <span className="text-sm">{message}</span>
     </div>
   );
 };
 
+const RefinementEnabledToggle: React.FC = () => {
+  const { t } = useTranslation();
+  const { getSetting, updateSetting, isUpdating } = useSettings();
+  const enabled = getSetting("refinement_enabled") ?? true;
+
+  return (
+    <ToggleSwitch
+      checked={enabled}
+      onChange={(value) => updateSetting("refinement_enabled", value)}
+      isUpdating={isUpdating("refinement_enabled")}
+      label={t("settings.postProcessing.enable.label")}
+      description={t("settings.postProcessing.enable.description")}
+      descriptionMode="inline"
+      grouped={true}
+    />
+  );
+};
+
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
+  const { getSetting } = useSettings();
+  const refinementEnabled = getSetting("refinement_enabled") ?? true;
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
-      <ConnectionStatusCard />
-
-      <SettingsGroup title={t("settings.postProcessing.api.title")}>
-        <PostProcessingSettingsApi />
+      <SettingsGroup title={t("settings.postProcessing.title")}>
+        <RefinementEnabledToggle />
       </SettingsGroup>
 
-      <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
-        <PostProcessingSettingsPrompts />
-      </SettingsGroup>
+      {refinementEnabled && (
+        <>
+          <ConnectionStatusCard />
 
-      <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
-        <ShortcutInput
-          shortcutId="transcribe_with_screenshot"
-          descriptionMode="tooltip"
-          grouped={true}
-        />
-      </SettingsGroup>
+          <SettingsGroup title={t("settings.postProcessing.api.title")}>
+            <PostProcessingSettingsApi />
+          </SettingsGroup>
 
-      <SettingsGroup title={t("settings.voiceEditing.title")}>
-        <VoiceEditing />
-      </SettingsGroup>
+          <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
+            <PostProcessingSettingsPrompts />
+          </SettingsGroup>
+
+          <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
+            <ShortcutInput
+              shortcutId="transcribe_with_screenshot"
+              descriptionMode="tooltip"
+              grouped={true}
+            />
+          </SettingsGroup>
+
+          <SettingsGroup title={t("settings.voiceEditing.title")}>
+            <VoiceEditing />
+          </SettingsGroup>
+        </>
+      )}
     </div>
   );
 };

@@ -319,6 +319,14 @@ async changeAppendTrailingSpaceSetting(enabled: boolean) : Promise<Result<null, 
     else return { status: "error", error: e  as any };
 }
 },
+async changeRefinementEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_refinement_enabled_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeLazyStreamCloseSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_lazy_stream_close_setting", { enabled }) };
@@ -1457,14 +1465,27 @@ confirm_paste_default_set?: boolean;
  * `default_binding` fields to the new code defaults and upgrades any
  * `current_binding` that was still sitting on the old default.
  */
-binding_defaults_v2_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; staged_overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
+binding_defaults_v2_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; 
+/**
+ * Position for the staged screenshot + dictation preview overlay.
+ * Defaults to match `overlay_position` on first run via the default fn,
+ * but then persists independently.
+ */
+staged_overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; 
 /**
  * Optional phonetic ("sounds like") hints keyed by the lowercased custom
  * word. Used as a Soundex override so users can nudge fuzzy-match for
  * proper nouns whose spelling diverges from pronunciation
  * (e.g. "Siobhan" -> "shavawn").
  */
-custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
+custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; 
+/**
+ * Master toggle for AI refinement. When false, all post-process LLM calls
+ * are short-circuited and the raw transcription is used as-is — even if a
+ * provider, model, and API key are configured. Lets users run pure local
+ * transcription without touching their existing provider config.
+ */
+refinement_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
 /**
  * Enables the hands-free continuous dictation mode. Dev-mode gated in UI.
  * When true, an additional shortcut arms/disarms a VAD-driven loop that

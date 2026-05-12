@@ -13,7 +13,10 @@ import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import { EulaGate } from "./components/EulaGate";
 import { PaywallModal } from "./components/PaywallModal";
 import Footer from "./components/footer";
-import Onboarding, { AccessibilityOnboarding } from "./components/onboarding";
+import Onboarding, {
+  AccessibilityOnboarding,
+  RefinementOnboarding,
+} from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
 import { UpdateModal } from "./components/update-checker";
 import { useSettings } from "./hooks/useSettings";
@@ -22,7 +25,7 @@ import { useUpdaterStore } from "./stores/updaterStore";
 import { commands } from "@/bindings";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
 
-type OnboardingStep = "accessibility" | "model" | "done";
+type OnboardingStep = "accessibility" | "model" | "refinement" | "done";
 
 const renderSettingsContent = (section: SidebarSection) => {
   const ActiveComponent =
@@ -341,7 +344,12 @@ function App() {
   };
 
   const handleModelSelected = () => {
-    // Transition to main app - user has started a download
+    // Ask new users to pick a refinement provider before dropping into the main
+    // app. Returning users already have their config and skip this step.
+    setOnboardingStep("refinement");
+  };
+
+  const handleRefinementComplete = () => {
     setOnboardingStep("done");
   };
 
@@ -361,6 +369,10 @@ function App() {
 
   if (onboardingStep === "model") {
     return <Onboarding onModelSelected={handleModelSelected} />;
+  }
+
+  if (onboardingStep === "refinement") {
+    return <RefinementOnboarding onComplete={handleRefinementComplete} />;
   }
 
   return (

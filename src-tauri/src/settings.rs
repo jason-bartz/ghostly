@@ -425,6 +425,12 @@ pub struct AppSettings {
     pub auto_submit: bool,
     #[serde(default)]
     pub auto_submit_key: AutoSubmitKey,
+    /// Master toggle for AI refinement. When false, all post-process LLM calls
+    /// are short-circuited and the raw transcription is used as-is — even if a
+    /// provider, model, and API key are configured. Lets users run pure local
+    /// transcription without touching their existing provider config.
+    #[serde(default = "default_refinement_enabled")]
+    pub refinement_enabled: bool,
     #[serde(default = "default_post_process_provider_id")]
     pub post_process_provider_id: String,
     #[serde(default = "default_post_process_providers")]
@@ -495,7 +501,7 @@ pub struct AppSettings {
     pub ort_accelerator: OrtAcceleratorSetting,
     #[serde(default = "default_whisper_gpu_device")]
     pub whisper_gpu_device: i32,
-    #[serde(default)]
+    #[serde(default = "default_extra_recording_buffer_ms")]
     pub extra_recording_buffer_ms: u64,
 
     // --- Per-app profiles (Feature A) ---
@@ -604,6 +610,13 @@ fn default_session_buffer_size() -> usize {
 
 fn default_session_idle_timeout_secs() -> u64 {
     120
+}
+
+// Default trailing-audio buffer captures the last syllable VAD would otherwise
+// clip when the user releases the shortcut. 100ms is enough for word endings
+// without adding perceptible latency to the paste.
+fn default_extra_recording_buffer_ms() -> u64 {
+    100
 }
 
 fn default_model() -> String {
@@ -721,6 +734,10 @@ fn default_show_dock_icon() -> bool {
 
 fn default_post_process_provider_id() -> String {
     "openai".to_string()
+}
+
+fn default_refinement_enabled() -> bool {
+    true
 }
 
 fn default_post_process_providers() -> Vec<PostProcessProvider> {
@@ -1140,6 +1157,7 @@ pub fn get_default_settings() -> AppSettings {
         clipboard_handling: ClipboardHandling::default(),
         auto_submit: default_auto_submit(),
         auto_submit_key: AutoSubmitKey::default(),
+        refinement_enabled: default_refinement_enabled(),
         post_process_provider_id: default_post_process_provider_id(),
         post_process_providers: default_post_process_providers(),
         post_process_api_keys: default_post_process_api_keys(),
@@ -1168,7 +1186,7 @@ pub fn get_default_settings() -> AppSettings {
         whisper_accelerator: WhisperAcceleratorSetting::default(),
         ort_accelerator: OrtAcceleratorSetting::default(),
         whisper_gpu_device: default_whisper_gpu_device(),
-        extra_recording_buffer_ms: 0,
+        extra_recording_buffer_ms: default_extra_recording_buffer_ms(),
         profiles_enabled: false,
         profiles: Vec::new(),
         builtin_profiles_enabled: true,
@@ -1226,6 +1244,9 @@ impl AppSettings {
     /// Used to decide whether the default transcribe shortcut should auto-
     /// apply AI refinement.
     pub fn has_working_llm(&self) -> bool {
+        if !self.refinement_enabled {
+            return false;
+        }
         let Some(provider) = self.active_post_process_provider() else {
             return false;
         };

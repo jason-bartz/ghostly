@@ -70,7 +70,8 @@ export const UpdateModal: React.FC = () => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="update-modal-title"
-        className="surface-card-inlay !rounded-2xl max-w-lg w-full mx-4 p-6 space-y-4"
+        aria-describedby="update-modal-subtitle"
+        className="surface-card-inlay !rounded-2xl w-full max-w-lg max-w-[calc(100vw-2rem)] p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
@@ -82,7 +83,10 @@ export const UpdateModal: React.FC = () => {
           >
             {t("updater.modal.title")}
           </h2>
-          <p className="text-xs text-text-faint mt-1 tabular-nums">
+          <p
+            id="update-modal-subtitle"
+            className="text-xs text-text-faint mt-1 tabular-nums"
+          >
             {t("updater.modal.subtitle", {
               current: available.currentVersion,
               next: available.version,
@@ -111,7 +115,7 @@ export const UpdateModal: React.FC = () => {
           <div className="space-y-1.5">
             <div className="h-1.5 w-full rounded-full bg-surface-1 overflow-hidden">
               <div
-                className="h-full bg-accent-bright transition-[width] duration-150"
+                className="h-full min-w-[2px] rounded-full bg-accent-bright transition-[width] duration-300 ease-out"
                 style={{ width: `${percent}%` }}
               />
             </div>
@@ -129,7 +133,10 @@ export const UpdateModal: React.FC = () => {
               <span>
                 {progress && progress.speedBytesPerSec > 0
                   ? t("updater.modal.speedAndEta", {
-                      speed: (progress.speedBytesPerSec / (1024 * 1024)).toFixed(1),
+                      speed: (
+                        progress.speedBytesPerSec /
+                        (1024 * 1024)
+                      ).toFixed(1),
                       eta: formatEta(progress.etaSeconds),
                     })
                   : t("updater.modal.progress", { percent })}
@@ -153,13 +160,13 @@ export const UpdateModal: React.FC = () => {
           {!isDownloading && !isReady && (
             <>
               <button
-                className="px-3.5 py-1.5 text-xs font-medium rounded-full text-text-muted hover:text-text hover:bg-white/[0.04] transition-colors"
+                className="px-4 py-2 text-sm font-medium rounded-full text-text-muted hover:text-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors"
                 onClick={skipCurrent}
               >
                 {t("updater.modal.skipButton")}
               </button>
               <button
-                className="px-3.5 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] transition-colors"
+                className="px-4 py-2 text-sm font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors"
                 onClick={remindLater}
               >
                 {t("updater.modal.laterButton")}
@@ -168,7 +175,7 @@ export const UpdateModal: React.FC = () => {
           )}
           <button
             disabled={isDownloading}
-            className="px-4 py-1.5 text-xs font-medium rounded-full bg-accent-deep hover:bg-background-ui-hover disabled:opacity-60 disabled:cursor-not-allowed text-white transition-colors btn-glow"
+            className="px-5 py-2 text-sm font-medium rounded-full bg-accent-deep hover:bg-background-ui-hover disabled:opacity-60 disabled:cursor-not-allowed text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors btn-glow"
             onClick={onPrimaryClick}
           >
             {primaryLabel}

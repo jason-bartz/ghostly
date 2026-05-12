@@ -168,7 +168,10 @@ export const useUpdaterStore = create<UpdaterState>()((set, get) => ({
           const now = Date.now();
           const dt = (now - lastSampleAt) / 1000;
           if (dt >= 0.5) {
-            const sampleSpeed = Math.max(0, (downloaded - lastSampleBytes) / dt);
+            const sampleSpeed = Math.max(
+              0,
+              (downloaded - lastSampleBytes) / dt,
+            );
             smoothedSpeed =
               smoothedSpeed > 0
                 ? smoothedSpeed * 0.8 + sampleSpeed * 0.2
