@@ -1,12 +1,13 @@
 use crate::audio_toolkit::{list_input_devices, vad::SmoothedVad, AudioRecorder, SileroVad};
+use crate::helpers::audio_device_watcher::DeviceWatcher;
 use crate::helpers::clamshell;
 use crate::settings::{get_settings, AppSettings};
 use crate::utils;
-use log::{debug, error, info};
-use std::sync::atomic::{AtomicU64, Ordering};
+use log::{debug, error, info, warn};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -179,6 +180,14 @@ pub struct AudioRecordingManager {
     /// overlay/windows can steal focus. Read by the transcription pipeline so
     /// the history entry records where the note was dictated in.
     source_app: Arc<Mutex<Option<String>>>,
+    /// Holds the CoreAudio property listener that watches for default-input
+    /// and device-list changes. None until `install_device_watcher` is called
+    /// (after the manager is registered with Tauri state).
+    device_watcher: Arc<Mutex<Option<DeviceWatcher>>>,
+    /// Set by the device-change handler when a restart is needed but recording
+    /// was active. Drained by `stop_recording` / `cancel_recording`, which
+    /// then performs the deferred restart.
+    pending_device_restart: Arc<AtomicBool>,
 }
 
 impl AudioRecordingManager {
@@ -204,6 +213,8 @@ impl AudioRecordingManager {
             close_generation: Arc::new(AtomicU64::new(0)),
             raw_frame_slot: Arc::new(Mutex::new(None)),
             source_app: Arc::new(Mutex::new(None)),
+            device_watcher: Arc::new(Mutex::new(None)),
+            pending_device_restart: Arc::new(AtomicBool::new(false)),
         };
 
         // Always-on or Continuous?  Open immediately.
@@ -494,6 +505,76 @@ impl AudioRecordingManager {
         Ok(())
     }
 
+    /// Installs the CoreAudio device-change watcher. Safe to call multiple
+    /// times — subsequent calls are no-ops. Must be called after the manager
+    /// is registered as Tauri state so the callback can look it up.
+    pub fn install_device_watcher(self: &Arc<Self>) {
+        let mut slot = self.device_watcher.lock().unwrap();
+        if slot.is_some() {
+            return;
+        }
+
+        let manager = Arc::clone(self);
+        match DeviceWatcher::new(move || {
+            manager.handle_device_change();
+        }) {
+            Ok(watcher) => {
+                *slot = Some(watcher);
+                info!("Audio device watcher installed");
+            }
+            Err(e) => {
+                warn!("Failed to install audio device watcher: {}", e);
+            }
+        }
+    }
+
+    /// Called (debounced) by the CoreAudio listener when the device list or
+    /// the system default input device changes. Restarts the microphone
+    /// stream so it picks up the new device. If a recording is in flight,
+    /// the restart is deferred until the recording stops to avoid pulling
+    /// the rug out from under it mid-capture.
+    fn handle_device_change(&self) {
+        // Always nudge the frontend to refresh the device dropdown.
+        let _ = self.app_handle.emit("audio-devices-changed", ());
+
+        if !*self.is_open.lock().unwrap() {
+            // Stream is closed — nothing to do. Next start_microphone_stream
+            // will resolve the device fresh.
+            return;
+        }
+
+        if *self.is_recording.lock().unwrap() {
+            debug!("Device change during active recording; deferring stream restart");
+            self.pending_device_restart.store(true, Ordering::SeqCst);
+            return;
+        }
+
+        info!("Audio device changed; restarting microphone stream");
+        self.close_generation.fetch_add(1, Ordering::SeqCst);
+        self.stop_microphone_stream();
+        if let Err(e) = self.start_microphone_stream() {
+            error!("Failed to restart microphone stream after device change: {e}");
+        }
+    }
+
+    /// Drains a pending device-change restart that was deferred while a
+    /// recording was in flight. Called from `stop_recording`/`cancel_recording`
+    /// after the recording has been finalized.
+    fn drain_pending_device_restart(&self) {
+        if !self.pending_device_restart.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        if !*self.is_open.lock().unwrap() {
+            return;
+        }
+        info!("Applying deferred microphone restart after device change");
+        self.close_generation.fetch_add(1, Ordering::SeqCst);
+        self.stop_microphone_stream();
+        if let Err(e) = self.start_microphone_stream() {
+            error!("Deferred microphone restart failed: {e}");
+        }
+    }
+
     pub fn stop_recording(&self, binding_id: &str) -> Option<Vec<f32>> {
         let mut state = self.state.lock().unwrap();
 
@@ -538,6 +619,10 @@ impl AudioRecordingManager {
                     }
                 }
 
+                // If a device change came in during this recording, apply the
+                // restart now (no-op if the stream was just closed above).
+                self.drain_pending_device_restart();
+
                 // Pad if very short
                 let s_len = samples.len();
                 // debug!("Got {} samples", s_len);
@@ -581,6 +666,8 @@ impl AudioRecordingManager {
                     self.stop_microphone_stream();
                 }
             }
+
+            self.drain_pending_device_restart();
         }
     }
 }
