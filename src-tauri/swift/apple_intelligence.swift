@@ -110,7 +110,19 @@ public func processTextWithSystemPrompt(
         }
     }
 
-    semaphore.wait()
+    // Bound the wait so a hung Foundation Models call can't park the calling
+    // thread forever. Without this, memory pressure or a post-wake stall in
+    // `session.respond(to:)` leaves the Ghostly recording overlay stuck in
+    // "Processing…" until the user force-quits the app. 60s is well past any
+    // legitimate on-device generation; the detached Task keeps running and is
+    // cleaned up by ARC once it eventually completes.
+    let timeoutResult = semaphore.wait(timeout: .now() + 60.0)
+    if timeoutResult == .timedOut {
+        responsePtr.pointee.error_message = duplicateCString(
+            "Apple Intelligence didn't respond within 60 seconds. The on-device model may be busy or unavailable; please try again."
+        )
+        return responsePtr
+    }
 
     // Write to responsePtr on the calling thread after task completes
     if let response = box.response {

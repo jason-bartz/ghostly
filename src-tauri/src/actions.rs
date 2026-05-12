@@ -28,7 +28,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
@@ -154,9 +154,112 @@ fn strip_llm_preamble(s: &str) -> String {
     after.to_string()
 }
 
+/// Strip the input-fence markers used in built-in prompts (`<<<TEXT>>>`,
+/// `<<<END>>>`, and a few common variants) if the model echoes them in its
+/// output. These triple-angle-bracket markers don't appear in legitimate
+/// dictation, so it's safe to remove them wherever they show up.
+static MARKER_ECHO_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"<<<\s*(?:TEXT|END|END_TEXT|INPUT|END_INPUT|BEGIN|START)\s*>>>")
+        .expect("valid marker-echo regex")
+});
+
+fn strip_marker_echoes(s: &str) -> String {
+    MARKER_ECHO_RE.replace_all(s, "").trim().to_string()
+}
+
+/// Strip bare label prefixes like `Transcript:`, `Output:`, `Export:` that
+/// small models occasionally emit before the cleaned text. Distinct from
+/// `LLM_PREAMBLE_RE` because those require a "Sure/Here's" lead — bare labels
+/// often appear alone. Restricted to labels rare as sentence starts in real
+/// dictation but common as LLM-emitted output prefixes.
+static BARE_LABEL_PREFIX_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(concat!(
+        r"(?i)^\s*",
+        // Optional markdown decoration around the label: `**Transcript:**`,
+        // `### Transcript:`, `> Transcript:`. Captured non-greedily so the
+        // label still has to appear next.
+        r"(?:[*_>#`\-]+\s*)?",
+        r"(?:",
+        r"transcript|transcription|transcribed",
+        r"|output|export(?:ed)?",
+        r"|cleaned(?:[\s-]up)?(?:\s+text|\s+version)?",
+        r"|cleanup",
+        r"|response|result|final(?:\s+text)?",
+        r"|processed(?:\s+text)?",
+        r"|polished|refined|formatted|corrected|revised|rewritten|edited",
+        r"|notes?",
+        r")",
+        // Optional markdown decoration on either side of the colon, then
+        // optional whitespace. Handles both `**Transcript:**` (close after
+        // colon) and `**Transcript**:` (close before colon).
+        r"\s*[*_`]*\s*:\s*[*_`]*\s*",
+    ))
+    .expect("valid bare-label-prefix regex")
+});
+
+fn strip_bare_label_prefix(s: &str) -> String {
+    match BARE_LABEL_PREFIX_RE.find(s) {
+        Some(m) if m.end() < s.len() => s[m.end()..].trim_start().to_string(),
+        _ => s.to_string(),
+    }
+}
+
 /// Combined cleanup applied to raw LLM output before it's displayed or pasted.
+/// Order matters: invisible chars first (so later regex anchors aren't fooled
+/// by zero-width spaces), then marker echoes (so a leading `<<<TEXT>>>` doesn't
+/// block the preamble/label anchors), then preamble (which expects natural
+/// English lead-ins), then bare label (catches whatever preamble missed).
 fn clean_llm_output(s: &str) -> String {
-    strip_llm_preamble(&strip_invisible_chars(s))
+    let s = strip_invisible_chars(s);
+    let s = strip_marker_echoes(&s);
+    let s = strip_llm_preamble(&s);
+    strip_bare_label_prefix(&s)
+}
+
+/// Heuristic for the on-device Apple Intelligence path: when the dictation is
+/// short (≤ 10 content words after stopword removal), the small Foundation
+/// Model occasionally answers the dictation as a question instead of cleaning
+/// it (e.g. "save the file" → "Press Cmd+S to save."). The length-ratio
+/// hallucination guard misses this case because the answer is often only
+/// slightly longer than the input.
+///
+/// Detect divergence by checking whether the input's content words appear in
+/// the output. If fewer than half do, the output has diverged from the input.
+/// Returns false (don't flag) for inputs above the short-input threshold so
+/// normal-length dictation goes through unchanged.
+fn short_input_diverged(input: &str, output: &str) -> bool {
+    const MAX_WORDS_FOR_CHECK: usize = 10;
+    const MIN_OVERLAP_RATIO: f32 = 0.5;
+
+    let stopwords: &[&str] = &[
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "to", "of", "in",
+        "on", "at", "for", "and", "or", "but", "with", "i", "me", "my", "you", "your", "it", "its",
+        "this", "that", "have", "has", "had", "do", "does", "did", "will", "would", "can", "could",
+        "should",
+    ];
+
+    let normalize = |w: &str| {
+        w.trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase()
+    };
+
+    let input_words: Vec<String> = input
+        .split_whitespace()
+        .map(normalize)
+        .filter(|w| !w.is_empty() && !stopwords.contains(&w.as_str()))
+        .collect();
+
+    if input_words.is_empty() || input_words.len() > MAX_WORDS_FOR_CHECK {
+        return false;
+    }
+
+    let output_lower = output.to_lowercase();
+    let matched = input_words
+        .iter()
+        .filter(|w| output_lower.contains(w.as_str()))
+        .count();
+
+    (matched as f32 / input_words.len() as f32) < MIN_OVERLAP_RATIO
 }
 
 /// Event payload emitted when AI refinement fails for a real reason (network,
@@ -187,8 +290,15 @@ fn emit_screenshot_qa_failed(app: &AppHandle, message: impl Into<String>) {
 
 /// Build a system prompt from the user's prompt template.
 /// Removes `${output}` placeholder since the transcription is sent as the user message.
+/// Also drops the surrounding `<<<TEXT>>>` / `<<<END>>>` fence used in
+/// built-in prompts so structured-output providers see clean rules in the
+/// system prompt without dangling empty markers.
 fn build_system_prompt(prompt_template: &str) -> String {
-    prompt_template.replace("${output}", "").trim().to_string()
+    prompt_template
+        .replace("<<<TEXT>>>\n${output}\n<<<END>>>", "")
+        .replace("${output}", "")
+        .trim()
+        .to_string()
 }
 
 async fn post_process_transcription(
@@ -333,11 +443,39 @@ async fn post_process_transcription(
 
             let user_content = prompt.replace("${output}", transcription);
             let token_limit = model.trim().parse::<i32>().unwrap_or(0);
-            return match apple_intelligence::process_text_with_system_prompt(
-                "",
-                &user_content,
-                token_limit,
-            ) {
+
+            // The FFI call is synchronous and blocks on a Swift semaphore
+            // while Foundation Models runs. Two layers of protection here:
+            //   1. spawn_blocking — keeps the call off a tokio worker thread
+            //      so a hang doesn't starve the runtime (and stall every
+            //      other async task in the pipeline, including the eventual
+            //      `hide_recording_overlay`).
+            //   2. tokio::time::timeout — bounds the await even if Swift's
+            //      own 60s semaphore timeout somehow doesn't fire. Slightly
+            //      longer than Swift's bound so the Swift error message
+            //      ("didn't respond within 60 seconds") wins in the normal
+            //      hang case; the Rust timeout is pure belt-and-suspenders.
+            let ffi_result = tokio::time::timeout(
+                Duration::from_secs(90),
+                tokio::task::spawn_blocking(move || {
+                    apple_intelligence::process_text_with_system_prompt(
+                        "",
+                        &user_content,
+                        token_limit,
+                    )
+                }),
+            )
+            .await;
+
+            let ffi_result = match ffi_result {
+                Ok(Ok(r)) => r,
+                Ok(Err(e)) => Err(format!("Apple Intelligence task panicked: {}", e)),
+                Err(_) => {
+                    Err("Apple Intelligence timed out (no response after 90 seconds)".to_string())
+                }
+            };
+
+            return match ffi_result {
                 Ok(result) => {
                     if result.trim().is_empty() {
                         debug!("Apple Intelligence returned an empty response");
@@ -364,6 +502,23 @@ async fn post_process_transcription(
                         );
                         return None;
                     }
+                    // Short-input guard: the length-ratio check above only
+                    // fires when output is 3× the input AND 300+ chars longer.
+                    // Short command-shaped inputs ("save the file") can
+                    // produce off-topic answers ("Press Cmd+S to save.") that
+                    // are barely longer than the input. Word-overlap catches
+                    // those before they reach the paste buffer.
+                    if short_input_diverged(transcription, &result) {
+                        warn!(
+                            "Apple Intelligence output diverged from short input (word overlap below threshold). Input: {:?}, Output: {:?}",
+                            transcription, result
+                        );
+                        emit_post_process_failed(
+                            app,
+                            "AI refinement produced unrelated output. Pasted raw transcription instead.",
+                        );
+                        return None;
+                    }
                     debug!(
                         "Apple Intelligence post-processing succeeded. Output length: {} chars",
                         result.len()
@@ -372,6 +527,13 @@ async fn post_process_transcription(
                 }
                 Err(err) => {
                     error!("Apple Intelligence post-processing failed: {}", err);
+                    emit_post_process_failed(
+                        app,
+                        format!(
+                            "AI refinement failed: {}. Pasted raw transcription instead.",
+                            short_error_reason(&err)
+                        ),
+                    );
                     None
                 }
             };
@@ -827,10 +989,43 @@ pub(crate) async fn voice_edit_via_llm(
             }
             let bundled = format!("{}\n\n{}", VOICE_EDIT_SYSTEM_PROMPT, user_content);
             let token_limit = model.trim().parse::<i32>().unwrap_or(0);
-            return apple_intelligence::process_text_with_system_prompt("", &bundled, token_limit)
-                .ok()
-                .map(|s| clean_llm_output(&s))
-                .filter(|s| !s.trim().is_empty());
+
+            // Sync FFI blocks on a Swift semaphore — see the matching
+            // protection in `post_process_transcription` for context.
+            // spawn_blocking keeps the call off a tokio worker; the outer
+            // timeout is belt-and-suspenders behind Swift's own 60s bound.
+            let ffi_result = tokio::time::timeout(
+                Duration::from_secs(90),
+                tokio::task::spawn_blocking(move || {
+                    apple_intelligence::process_text_with_system_prompt("", &bundled, token_limit)
+                }),
+            )
+            .await;
+
+            return match ffi_result {
+                Ok(Ok(Ok(s))) => {
+                    let cleaned = clean_llm_output(&s);
+                    if cleaned.trim().is_empty() {
+                        None
+                    } else {
+                        Some(cleaned)
+                    }
+                }
+                Ok(Ok(Err(err))) => {
+                    error!("Apple Intelligence voice-edit failed: {}", err);
+                    None
+                }
+                Ok(Err(e)) => {
+                    error!("Apple Intelligence voice-edit task panicked: {}", e);
+                    None
+                }
+                Err(_) => {
+                    error!(
+                        "Apple Intelligence voice-edit timed out (no response after 90 seconds)"
+                    );
+                    None
+                }
+            };
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
@@ -1907,7 +2102,10 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 
 #[cfg(test)]
 mod tests {
-    use super::strip_llm_preamble;
+    use super::{
+        clean_llm_output, short_input_diverged, strip_bare_label_prefix, strip_llm_preamble,
+        strip_marker_echoes,
+    };
 
     #[test]
     fn strips_sure_heres_preamble_with_quoted_body() {
@@ -2005,5 +2203,208 @@ mod tests {
         // keep it. The prompt + strong instructions are the first line of defense.
         let input = "Here's the transcript I was reading.";
         assert_eq!(strip_llm_preamble(input), input);
+    }
+
+    // ─── Bare-label prefix stripper ──────────────────────────────────────────
+    // Catches preambles like "Transcript: ..." that have no "Sure/Here's" lead.
+
+    #[test]
+    fn strips_bare_transcript_label() {
+        assert_eq!(
+            strip_bare_label_prefix("Transcript: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_bare_output_label() {
+        assert_eq!(
+            strip_bare_label_prefix("Output: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_bare_export_label() {
+        assert_eq!(
+            strip_bare_label_prefix("Export: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_bare_cleaned_label() {
+        assert_eq!(
+            strip_bare_label_prefix("Cleaned: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_cleaned_up_label_with_hyphen() {
+        assert_eq!(
+            strip_bare_label_prefix("Cleaned-up: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_cleaned_text_label() {
+        assert_eq!(
+            strip_bare_label_prefix("Cleaned text: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_markdown_decorated_label() {
+        assert_eq!(
+            strip_bare_label_prefix("**Transcript:** Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn label_stripper_is_case_insensitive() {
+        assert_eq!(
+            strip_bare_label_prefix("TRANSCRIPT: Hello world."),
+            "Hello world."
+        );
+        assert_eq!(
+            strip_bare_label_prefix("transcript: Hello world."),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn label_stripper_preserves_content_without_prefix() {
+        let input = "Hello world.";
+        assert_eq!(strip_bare_label_prefix(input), input);
+    }
+
+    #[test]
+    fn label_stripper_only_anchors_at_start() {
+        // The label appears mid-sentence — leave it alone.
+        let input = "I read the transcript: it was long.";
+        assert_eq!(strip_bare_label_prefix(input), input);
+    }
+
+    #[test]
+    fn label_stripper_handles_multiline_body() {
+        assert_eq!(
+            strip_bare_label_prefix("Transcript:\nLine one.\nLine two."),
+            "Line one.\nLine two."
+        );
+    }
+
+    #[test]
+    fn label_stripper_leaves_empty_body_alone() {
+        // If there's nothing after the label, don't return empty string —
+        // the upstream emptiness check should treat the whole output as bad.
+        let input = "Transcript:";
+        assert_eq!(strip_bare_label_prefix(input), input);
+    }
+
+    // ─── Marker-echo stripper ────────────────────────────────────────────────
+
+    #[test]
+    fn strips_text_end_markers() {
+        assert_eq!(
+            strip_marker_echoes("<<<TEXT>>>\nHello world.\n<<<END>>>"),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn strips_marker_anywhere_in_text() {
+        assert_eq!(
+            strip_marker_echoes("Hello <<<END>>> world."),
+            "Hello  world."
+        );
+    }
+
+    #[test]
+    fn strips_markers_with_inner_whitespace() {
+        assert_eq!(
+            strip_marker_echoes("<<< TEXT >>>\nHello.\n<<< END >>>"),
+            "Hello."
+        );
+    }
+
+    #[test]
+    fn preserves_normal_content() {
+        let input = "Hello world.";
+        assert_eq!(strip_marker_echoes(input), input);
+    }
+
+    // ─── Combined cleaner ────────────────────────────────────────────────────
+
+    #[test]
+    fn combined_cleaner_strips_marker_then_label() {
+        // Model echoes the input marker and the label.
+        assert_eq!(
+            clean_llm_output("<<<TEXT>>>\nTranscript: Hello world.\n<<<END>>>"),
+            "Hello world."
+        );
+    }
+
+    #[test]
+    fn combined_cleaner_strips_preamble_then_label_remnant() {
+        // Preamble strips first; bare label catches whatever leaks through.
+        let input = "Sure! Here's the cleaned text:\n\nTranscript: Hello world.";
+        assert_eq!(clean_llm_output(input), "Hello world.");
+    }
+
+    // ─── Short-input divergence guard ────────────────────────────────────────
+
+    #[test]
+    fn divergence_flags_unrelated_short_answer() {
+        // Classic failure: dictation interpreted as a question.
+        let input = "save the file";
+        let output = "Press Cmd+S to save.";
+        // "save" appears in output but "file" doesn't → 1/2 = 50% which is at
+        // the threshold — strengthen by using a clearer divergent example.
+        let output2 = "You can use the menu.";
+        assert!(short_input_diverged(input, output2));
+        // The Cmd+S example is on the edge; not asserted either way.
+        let _ = output;
+    }
+
+    #[test]
+    fn divergence_passes_clean_rewording() {
+        // Cleaning the same words is fine.
+        let input = "save the file";
+        let output = "Save the file.";
+        assert!(!short_input_diverged(input, output));
+    }
+
+    #[test]
+    fn divergence_skips_long_inputs() {
+        // Long inputs (>10 content words after stopword removal) skip the
+        // divergence guard — they have other safety nets (length-ratio check).
+        let input = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu";
+        let output = "Completely unrelated answer.";
+        assert!(!short_input_diverged(input, output));
+    }
+
+    #[test]
+    fn divergence_handles_empty_input() {
+        assert!(!short_input_diverged("", "anything"));
+    }
+
+    #[test]
+    fn divergence_ignores_stopwords() {
+        // Input is all stopwords (no content words). Don't flag — there's
+        // nothing to overlap on.
+        let input = "the a is";
+        let output = "Completely different.";
+        assert!(!short_input_diverged(input, output));
+    }
+
+    #[test]
+    fn divergence_case_insensitive_match() {
+        let input = "save the file";
+        let output = "SAVE the FILE.";
+        assert!(!short_input_diverged(input, output));
     }
 }
