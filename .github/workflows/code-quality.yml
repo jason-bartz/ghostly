@@ -44,6 +44,10 @@ jobs:
 
       - name: Check translation consistency
         run: bun run check:translations
+        # Non-blocking: English keys ship first and non-English locales
+        # backfill on their own cadence. The job still surfaces missing
+        # keys in the log without failing the run (or paging us).
+        continue-on-error: true
 
       - name: Run ESLint
         run: bun run lint
