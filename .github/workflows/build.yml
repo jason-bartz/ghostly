@@ -187,16 +187,21 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ steps.get-version.outputs.version }}
         run: |
           DMG=$(find src-tauri/target -name "*.dmg" -type f | head -1)
           if [ -z "$DMG" ]; then
             echo "No DMG found to upload"
             exit 1
           fi
-          echo "Uploading $DMG to r2://$R2_BUCKET/Ghostly-latest.dmg"
+          # Stable URL stays Ghostly-latest.dmg, but Content-Disposition makes
+          # the browser save the file as Ghostly-v<version>.dmg so users can
+          # tell which version they downloaded.
+          echo "Uploading $DMG to r2://$R2_BUCKET/Ghostly-latest.dmg (filename: Ghostly-v${VERSION}.dmg)"
           aws s3 cp "$DMG" "s3://$R2_BUCKET/Ghostly-latest.dmg" \
             --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
             --content-type "application/x-apple-diskimage" \
+            --content-disposition "attachment; filename=\"Ghostly-v${VERSION}.dmg\"" \
             --cache-control "public, max-age=300"
 
       - name: Publish updater manifest + bundle to Cloudflare R2
