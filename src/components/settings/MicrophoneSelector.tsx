@@ -36,9 +36,15 @@ export const MicrophoneSelector: React.FC<MicrophoneSelectorProps> = React.memo(
       await resetSetting("selected_microphone");
     };
 
+    // The backend reports the system-default entry with name "Default";
+    // present it as "System Default" so users know Ghostly will follow
+    // whatever input macOS is currently using.
     const microphoneOptions = audioDevices.map((device) => ({
       value: device.name,
-      label: device.name,
+      label:
+        device.name === "Default"
+          ? t("settings.sound.microphone.systemDefault")
+          : device.name,
     }));
 
     return (

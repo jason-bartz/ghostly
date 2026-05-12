@@ -258,9 +258,10 @@
       "title": "Microphone & Audio",
       "microphone": {
         "title": "Microphone",
-        "description": "Choose which microphone Ghostly listens to.",
+        "description": "Choose which microphone Ghostly listens to. System Default follows the input macOS is currently using and auto-switches when devices are plugged or unplugged.",
         "placeholder": "Select microphone...",
-        "loading": "Loading..."
+        "loading": "Loading...",
+        "systemDefault": "System Default"
       },
       "audioFeedback": {
         "label": "Sound Feedback",

@@ -213,6 +213,12 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
     app_handle.manage(usage_manager.clone());
+
+    // Listen for OS-level audio device changes so the mic stream automatically
+    // reopens on the right hardware (e.g. when an external mic is unplugged
+    // and macOS switches its default input). Must run after manage() so the
+    // watcher's callback can hold an Arc<AudioRecordingManager>.
+    recording_manager.install_device_watcher();
     app_handle.manage(Arc::new(SessionBuffer::new()));
     app_handle.manage(Arc::new(stream_cancel::StreamCancellation::new()));
     app_handle.manage(Arc::new(staged_capture::StagedCaptureState::new()));
@@ -278,7 +284,9 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         .path()
         .resolve(initial_icon_path, tauri::path::BaseDirectory::Resource)
         .map_err(|e| format!("resolve {}: {}", initial_icon_path, e))
-        .and_then(|p| Image::from_path(p).map_err(|e| format!("load {}: {}", initial_icon_path, e)));
+        .and_then(|p| {
+            Image::from_path(p).map_err(|e| format!("load {}: {}", initial_icon_path, e))
+        });
 
     let mut tray_builder = TrayIconBuilder::new();
     match initial_icon {
@@ -377,11 +385,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
             let app_handle_for_listener = app_handle.clone();
             app_handle.listen("model-state-changed", move |_| {
-                tray::update_tray_menu(
-                    &app_handle_for_listener,
-                    &tray::TrayIconState::Idle,
-                    None,
-                );
+                tray::update_tray_menu(&app_handle_for_listener, &tray::TrayIconState::Idle, None);
             });
         }
         Err(e) => {

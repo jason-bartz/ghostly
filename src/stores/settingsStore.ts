@@ -618,6 +618,15 @@ export const useSettingsStore = create<SettingsStore>()(
       listen("model-state-changed", () => {
         get().refreshSettings();
       });
+
+      // The backend watches CoreAudio for default-input and device-list
+      // changes, and emits this event after restarting the mic stream.
+      // Re-fetch the dropdown contents so a freshly-plugged or unplugged
+      // device shows up without the user reopening settings.
+      listen("audio-devices-changed", () => {
+        get().refreshAudioDevices();
+        get().refreshOutputDevices();
+      });
     },
   })),
 );
