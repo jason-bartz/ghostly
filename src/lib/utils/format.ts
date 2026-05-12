@@ -21,7 +21,12 @@ export const formatModelSize = (sizeMb: number | null | undefined): string => {
 };
 
 export const formatBytes = (bytes: number | null | undefined): string => {
-  if (bytes === null || bytes === undefined || !Number.isFinite(bytes) || bytes < 0) {
+  if (
+    bytes === null ||
+    bytes === undefined ||
+    !Number.isFinite(bytes) ||
+    bytes < 0
+  ) {
     return "—";
   }
   const mb = bytes / (1024 * 1024);

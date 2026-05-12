@@ -217,6 +217,14 @@ impl AudioRecordingManager {
             pending_device_restart: Arc::new(AtomicBool::new(false)),
         };
 
+        // Preload the Silero VAD model eagerly so the first on-demand
+        // recording doesn't pay the ~50–200ms load cost on the hot path.
+        // For AlwaysOn/Continuous modes the subsequent start_microphone_stream
+        // call reuses the already-built recorder (preload_vad is idempotent).
+        if let Err(e) = manager.preload_vad() {
+            warn!("Failed to preload VAD at startup: {}", e);
+        }
+
         // Always-on or Continuous?  Open immediately.
         if matches!(mode, MicrophoneMode::AlwaysOn | MicrophoneMode::Continuous) {
             manager.start_microphone_stream()?;

@@ -219,6 +219,12 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // and macOS switches its default input). Must run after manage() so the
     // watcher's callback can hold an Arc<AudioRecordingManager>.
     recording_manager.install_device_watcher();
+
+    // Kick off transcription model load in the background so the first
+    // recording doesn't block on a cold model load. No-op if the model is
+    // already loaded or a load is already in progress.
+    transcription_manager.initiate_model_load();
+
     app_handle.manage(Arc::new(SessionBuffer::new()));
     app_handle.manage(Arc::new(stream_cancel::StreamCancellation::new()));
     app_handle.manage(Arc::new(staged_capture::StagedCaptureState::new()));
@@ -476,6 +482,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::resume_binding,
             shortcut::change_mute_while_recording_setting,
             shortcut::change_append_trailing_space_setting,
+            shortcut::change_refinement_enabled_setting,
             shortcut::change_lazy_stream_close_setting,
             shortcut::change_continuous_dictation_enabled_setting,
             shortcut::change_continuous_silence_ms_setting,

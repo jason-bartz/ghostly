@@ -307,6 +307,13 @@ async fn post_process_transcription(
     overrides: &ResolvedOverrides,
     app: &AppHandle,
 ) -> Option<String> {
+    // Master kill switch. Honored even for `force_post_process` shortcuts so
+    // users have a single, predictable "no refinement" mode.
+    if !settings.refinement_enabled {
+        debug!("Post-processing skipped because refinement is disabled");
+        return None;
+    }
+
     // Profile may redirect to a different provider (e.g. Apple Intelligence for
     // Slack). Fall back to the global selection if the override id doesn't exist.
     let provider_id = overrides
@@ -450,13 +457,12 @@ async fn post_process_transcription(
             //      so a hang doesn't starve the runtime (and stall every
             //      other async task in the pipeline, including the eventual
             //      `hide_recording_overlay`).
-            //   2. tokio::time::timeout — bounds the await even if Swift's
-            //      own 60s semaphore timeout somehow doesn't fire. Slightly
-            //      longer than Swift's bound so the Swift error message
-            //      ("didn't respond within 60 seconds") wins in the normal
-            //      hang case; the Rust timeout is pure belt-and-suspenders.
+            //   2. tokio::time::timeout — caps the await at 30s. Typical
+            //      Apple Intelligence responses finish well under 15s, so a
+            //      30s ceiling surfaces hangs to the user fast instead of
+            //      sitting behind Swift's own 60s semaphore bound.
             let ffi_result = tokio::time::timeout(
-                Duration::from_secs(90),
+                Duration::from_secs(30),
                 tokio::task::spawn_blocking(move || {
                     apple_intelligence::process_text_with_system_prompt(
                         "",
@@ -471,7 +477,7 @@ async fn post_process_transcription(
                 Ok(Ok(r)) => r,
                 Ok(Err(e)) => Err(format!("Apple Intelligence task panicked: {}", e)),
                 Err(_) => {
-                    Err("Apple Intelligence timed out (no response after 90 seconds)".to_string())
+                    Err("Apple Intelligence timed out (no response after 30 seconds)".to_string())
                 }
             };
 
@@ -992,10 +998,11 @@ pub(crate) async fn voice_edit_via_llm(
 
             // Sync FFI blocks on a Swift semaphore — see the matching
             // protection in `post_process_transcription` for context.
-            // spawn_blocking keeps the call off a tokio worker; the outer
-            // timeout is belt-and-suspenders behind Swift's own 60s bound.
+            // spawn_blocking keeps the call off a tokio worker; the 30s
+            // ceiling surfaces hangs fast instead of waiting on Swift's
+            // own 60s semaphore bound.
             let ffi_result = tokio::time::timeout(
-                Duration::from_secs(90),
+                Duration::from_secs(30),
                 tokio::task::spawn_blocking(move || {
                     apple_intelligence::process_text_with_system_prompt("", &bundled, token_limit)
                 }),
@@ -1021,7 +1028,7 @@ pub(crate) async fn voice_edit_via_llm(
                 }
                 Err(_) => {
                     error!(
-                        "Apple Intelligence voice-edit timed out (no response after 90 seconds)"
+                        "Apple Intelligence voice-edit timed out (no response after 30 seconds)"
                     );
                     None
                 }

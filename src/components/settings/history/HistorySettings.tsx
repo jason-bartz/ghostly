@@ -941,10 +941,7 @@ export const HistorySettings: React.FC = () => {
                   className="inline-flex items-center"
                   title={
                     active
-                      ? t(
-                          "settings.history.tags.removeFilter",
-                          "Remove filter",
-                        )
+                      ? t("settings.history.tags.removeFilter", "Remove filter")
                       : t("settings.history.tags.filter", "Filter by tag")
                   }
                 >

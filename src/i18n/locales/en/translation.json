@@ -134,6 +134,31 @@
       "loadModels": "Failed to load available models",
       "downloadModel": "Failed to download model: {{error}}"
     },
+    "refinement": {
+      "title": "AI Refinement",
+      "tagline": "Optionally clean up, format, and polish your transcriptions. You can change this later in Settings.",
+      "continue": "Continue",
+      "applying": "Saving…",
+      "changeLaterHint": "Change anytime in Settings → AI Refinement.",
+      "options": {
+        "apple": {
+          "title": "Apple Intelligence",
+          "description": "Runs fully on-device. No API key, no extra setup, no data leaves your Mac.",
+          "badge": "Recommended"
+        },
+        "byok": {
+          "title": "Bring your own API key",
+          "description": "Use OpenAI, Anthropic, Groq, Cerebras, OpenRouter, Z.AI, or a custom endpoint. You'll add your key in Settings."
+        },
+        "none": {
+          "title": "No refinement",
+          "description": "Use only the local transcription model. Fastest, fully offline — no cleanup or formatting."
+        }
+      },
+      "errors": {
+        "saveFailed": "Failed to save your choice. Please try again."
+      }
+    },
     "permissions": {
       "title": "Permissions Required",
       "description": "Ghostly needs a couple of permissions to work properly.",
@@ -1015,6 +1040,7 @@
   },
   "common": {
     "loading": "Loading...",
+    "selected": "Selected",
     "save": "Save",
     "cancel": "Cancel",
     "reset": "Reset",
