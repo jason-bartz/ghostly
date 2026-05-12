@@ -229,8 +229,10 @@ pub fn category_style_for<'a>(
 }
 
 /// Build the post-process prompt for a given (cleanup, style, category)
-/// combination. Returns a full system prompt ending with a `Transcript:`
-/// placeholder that the post-process pipeline fills in.
+/// combination. The dictated text is fenced with `<<<TEXT>>>` / `<<<END>>>`
+/// markers rather than a `Transcript:` label — small on-device models echo
+/// label-shaped prefixes back into their output, and the markers also give
+/// the model a clean boundary between rules and content.
 pub fn build_style_prompt(cleanup: AutoCleanupLevel, style: &CategoryStyle) -> String {
     // If the user chose Custom and supplied a prompt, honor it as-is. The
     // cleanup level still applies as a preamble so Auto Cleanup remains a
@@ -241,7 +243,7 @@ pub fn build_style_prompt(cleanup: AutoCleanupLevel, style: &CategoryStyle) -> S
             if !body.is_empty() {
                 let cleanup_prefix = cleanup_preamble(cleanup);
                 return format!(
-                    "{}{}\n\nReturn only the cleaned text.\n\nTranscript:\n${{output}}",
+                    "{}{}\n\nClean the dictated text inside the markers. Return only the cleaned text — no markers, no preface, no labels.\n\n<<<TEXT>>>\n${{output}}\n<<<END>>>",
                     cleanup_prefix, body
                 );
             }
@@ -251,7 +253,7 @@ pub fn build_style_prompt(cleanup: AutoCleanupLevel, style: &CategoryStyle) -> S
     let cleanup_prefix = cleanup_preamble(cleanup);
     let style_body = style_body(style.selected_style);
     format!(
-        "{}{}\n\nReturn only the cleaned text.\n\nTranscript:\n${{output}}",
+        "{}{}\n\nClean the dictated text inside the markers. Return only the cleaned text — no markers, no preface, no labels.\n\n<<<TEXT>>>\n${{output}}\n<<<END>>>",
         cleanup_prefix, style_body
     )
 }

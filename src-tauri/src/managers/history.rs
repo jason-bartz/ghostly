@@ -989,7 +989,6 @@ impl HistoryManager {
         Ok(deleted)
     }
 
-
     fn emit_entry_updated(&self, conn: &Connection, entry_id: i64) {
         let entry = conn
             .query_row(
