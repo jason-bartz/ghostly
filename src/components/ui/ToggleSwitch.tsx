@@ -44,7 +44,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
           disabled={disabled || isUpdating}
           onChange={(e) => onChange(e.target.checked)}
         />
-        <div className="relative w-10 h-[22px] bg-fill-4 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/40 rounded-full peer peer-checked:after:translate-x-[18px] rtl:peer-checked:after:-translate-x-[18px] after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-[18px] after:w-[18px] after:shadow-[0_1px_2px_rgba(0,0,0,0.4)] after:transition-all peer-checked:bg-accent-deep peer-checked:shadow-[0_0_0_1px_rgba(167,139,250,0.4),0_0_14px_rgba(124,58,237,0.4)] peer-disabled:opacity-50 transition-all"></div>
+        <div className="relative w-10 h-[22px] bg-fill-4 peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 rounded-full peer peer-checked:after:translate-x-[18px] rtl:peer-checked:after:-translate-x-[18px] after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-[18px] after:w-[18px] after:shadow-[0_1px_2px_rgba(0,0,0,0.4)] after:transition-all peer-checked:bg-accent-deep peer-checked:shadow-[0_0_0_1px_rgba(167,139,250,0.4),0_0_14px_rgba(124,58,237,0.4)] peer-disabled:opacity-50 transition-all"></div>
       </label>
       {isUpdating && (
         <div className="absolute inset-0 flex items-center justify-center">

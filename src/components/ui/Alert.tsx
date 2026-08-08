@@ -11,19 +11,25 @@ interface AlertProps {
   className?: string;
 }
 
+/**
+ * Status tones come from the semantic `--color-{danger,warning,success}` tokens,
+ * never the raw Tailwind palette. A fixed tint like Tailwind's `amber-200` is
+ * tuned for a black canvas and turns into pale-yellow-on-white in light mode;
+ * the tokens flip to their darker, readable counterparts when the theme does.
+ */
 const variantStyles: Record<
   AlertVariant,
   { container: string; icon: string; text: string }
 > = {
   error: {
-    container: "bg-red-500/10 border border-red-500/25",
-    icon: "text-red-400",
-    text: "text-red-300",
+    container: "bg-danger/10 border border-danger/30",
+    icon: "text-danger",
+    text: "text-danger",
   },
   warning: {
-    container: "bg-amber-500/10 border border-amber-500/25",
-    icon: "text-amber-400",
-    text: "text-amber-200",
+    container: "bg-warning/10 border border-warning/30",
+    icon: "text-warning",
+    text: "text-warning",
   },
   info: {
     container: "bg-accent/10 border border-accent/25",
@@ -31,9 +37,9 @@ const variantStyles: Record<
     text: "text-accent-bright",
   },
   success: {
-    container: "bg-emerald-500/10 border border-emerald-500/25",
-    icon: "text-emerald-400",
-    text: "text-emerald-300",
+    container: "bg-success/10 border border-success/30",
+    icon: "text-success",
+    text: "text-success",
   },
 };
 

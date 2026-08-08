@@ -290,8 +290,8 @@ const ErrorBlock: React.FC<ErrorBlockProps> = ({
 }) => {
   const { t } = useTranslation();
   return (
-    <div className="p-3 rounded-md border border-red-500/30 bg-red-500/10 text-sm space-y-2">
-      <p className="text-red-400">{t(errorKey(error))}</p>
+    <div className="p-3 rounded-md border border-danger/30 bg-danger/10 text-sm space-y-2">
+      <p className="text-danger">{t(errorKey(error))}</p>
       {errorMessage !== null && (
         <p className="text-xs text-mid-gray">{errorMessage}</p>
       )}

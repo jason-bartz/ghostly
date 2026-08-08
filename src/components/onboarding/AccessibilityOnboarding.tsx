@@ -294,8 +294,8 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
   if (allGranted) {
     return (
       <div className="app-canvas h-screen w-screen flex flex-col items-center justify-center gap-4">
-        <div className="p-4 rounded-full bg-emerald-500/15 border border-emerald-500/30">
-          <Check className="w-10 h-10 text-emerald-400" />
+        <div className="p-4 rounded-full bg-success/15 border border-success/30">
+          <Check className="w-10 h-10 text-success" />
         </div>
         <p className="text-lg font-display text-text">
           {t("onboarding.permissions.allGranted")}
@@ -335,7 +335,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
                   {t("onboarding.permissions.microphone.description")}
                 </p>
                 {permissions.microphone === "granted" ? (
-                  <div className="flex items-center gap-2 text-emerald-400 text-xs">
+                  <div className="flex items-center gap-2 text-success text-xs">
                     <Check className="w-4 h-4" />
                     {t("onboarding.permissions.granted")}
                   </div>
@@ -374,7 +374,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
                   {t("onboarding.permissions.accessibility.description")}
                 </p>
                 {permissions.accessibility === "granted" ? (
-                  <div className="flex items-center gap-2 text-emerald-400 text-xs">
+                  <div className="flex items-center gap-2 text-success text-xs">
                     <Check className="w-4 h-4" />
                     {t("onboarding.permissions.granted")}
                   </div>

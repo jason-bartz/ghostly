@@ -1172,7 +1172,7 @@ export const HistorySettings: React.FC = () => {
           </button>
           <button
             onClick={bulkDelete}
-            className="flex items-center gap-1.5 h-7 px-2 rounded-md text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 h-7 px-2 rounded-md text-xs text-danger hover:bg-danger/10 transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
             {t("settings.history.bulk.delete", "Delete")}
@@ -1311,7 +1311,7 @@ const EntryMoreMenu: React.FC<{
             role="menuitem"
             onClick={() => run(onDelete)}
             disabled={retrying}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-500 hover:bg-red-500/10
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-danger hover:bg-danger/10
                        disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             <Trash2 width={14} height={14} />

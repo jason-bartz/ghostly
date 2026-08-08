@@ -110,10 +110,10 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
   const limitLabel = formatDurationShort(stats.weekly_limit_secs);
 
   const barColor = stats.is_over_limit
-    ? "bg-red-500"
+    ? "bg-danger"
     : stats.is_at_warning
-      ? "bg-amber-500"
-      : "bg-logo-primary";
+      ? "bg-warning"
+      : "bg-accent";
 
   return (
     <div className="surface-card rounded-xl p-5 space-y-4">
@@ -153,7 +153,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
             />
           </div>
           {stats.is_over_limit && (
-            <p className="mt-3 text-sm text-red-500">
+            <p className="mt-3 text-sm text-danger">
               {t("usage.thisWeek.overLimit")}
             </p>
           )}
@@ -194,7 +194,7 @@ const HistoryList: React.FC<HistoryListProps> = ({ history, limitSecs }) => {
             <div className="flex-1 h-1.5 rounded-full bg-fill-2 overflow-hidden">
               <div
                 className={`h-full rounded-full ${
-                  w.hit_limit ? "bg-amber-500" : "bg-logo-primary"
+                  w.hit_limit ? "bg-warning" : "bg-accent"
                 }`}
                 style={{ width: `${Math.round(pct * 100)}%` }}
               />
@@ -202,7 +202,7 @@ const HistoryList: React.FC<HistoryListProps> = ({ history, limitSecs }) => {
             <div className="w-28 shrink-0 text-right text-sm tabular-nums">
               {formatDurationShort(w.seconds)}
               {w.hit_limit && (
-                <span className="ml-2 text-xs text-amber-500">
+                <span className="ml-2 text-xs text-warning">
                   {t("usage.history.hitLimit")}
                 </span>
               )}

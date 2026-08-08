@@ -509,7 +509,7 @@ const ConnectionStatusCard: React.FC = () => {
 
   const connected = status === "connected";
   const Icon = connected ? CheckCircle2 : AlertCircle;
-  const iconColor = connected ? "text-green-500" : "text-amber-500";
+  const iconColor = connected ? "text-success" : "text-warning";
   const label = provider?.label ?? providerId;
 
   const message = connected

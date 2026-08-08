@@ -52,7 +52,7 @@ export const AutoCleanupTab: React.FC<AutoCleanupTabProps> = ({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl bg-gradient-to-r from-sky-500/15 via-sky-500/5 to-transparent border border-sky-500/20 px-4 py-3">
+      <div className="rounded-xl bg-gradient-to-r from-accent-alt/15 via-accent-alt/5 to-transparent border border-accent-alt/20 px-4 py-3">
         <div className="text-sm font-medium">
           {t("settings.style.cleanup.headerTitle")}
         </div>

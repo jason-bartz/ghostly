@@ -39,7 +39,7 @@ export function LegalViewer({ title, load, onClose }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4 bg-fill-2">
           {error ? (
-            <p className="text-red-400 text-sm">{error}</p>
+            <p className="text-danger text-sm">{error}</p>
           ) : text === null ? (
             <p className="text-sm text-mid-gray">…</p>
           ) : (

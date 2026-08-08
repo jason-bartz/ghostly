@@ -31,7 +31,14 @@ type OnboardingStep = "accessibility" | "model" | "refinement" | "done";
 const renderSettingsContent = (section: SidebarSection) => {
   const ActiveComponent =
     SECTIONS_CONFIG[section]?.component || SECTIONS_CONFIG.general.component;
-  return <ActiveComponent />;
+  // Keying on the section re-fires the mount animation on every navigation, so
+  // switching panes reads as a transition rather than a hard swap. `w-full`
+  // preserves each pane's own `max-w-*` centring.
+  return (
+    <div key={section} className="w-full animate-rise">
+      <ActiveComponent />
+    </div>
+  );
 };
 
 function App() {
@@ -388,7 +395,11 @@ function App() {
       className="app-canvas h-screen flex flex-col select-none cursor-default"
     >
       <Toaster
-        theme="dark"
+        // Sonner's own theming is bypassed (`unstyled`), and the toast surface
+        // is painted from the `--color-*` tokens in App.css — which already
+        // follow the app theme. Pinning "dark" here only desynced the few
+        // styles Sonner still owns when the app was in light mode.
+        theme="system"
         toastOptions={{
           unstyled: true,
           classNames: {
