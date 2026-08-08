@@ -327,9 +327,124 @@ async changeRefinementEnabledSetting(enabled: boolean) : Promise<Result<null, st
     else return { status: "error", error: e  as any };
 }
 },
+async changeDeterministicCleanupInAiAppsSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_deterministic_cleanup_in_ai_apps_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeLazyStreamCloseSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_lazy_stream_close_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Toggle opt-in error reporting. Also marks the one-time prompt as answered,
+ * so an explicit choice — either way — stops us asking again.
+ */
+async changeErrorReportingSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_error_reporting_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Record that the error-reporting prompt was shown and dismissed without a
+ * choice, so it doesn't reappear on every launch.
+ */
+async markErrorReportingPrompted() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mark_error_reporting_prompted") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Set the light/dark/system appearance preference.
+ */
+async changeAppearanceSetting(appearance: Appearance) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_appearance_setting", { appearance }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Mark first-run onboarding as finished.
+ * 
+ * Called when the user leaves the welcome flow — including when they choose to
+ * start dictating immediately with the bundled model while a better one is
+ * still downloading in the background.
+ */
+async completeOnboarding() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("complete_onboarding") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether first-run onboarding still needs to be shown.
+ * 
+ * Existing installs predate the flag, so anyone who already has a
+ * *downloaded* (non-bundled) model is treated as onboarded — otherwise
+ * upgrading to this version would drop long-time users back into the
+ * welcome flow.
+ */
+async needsOnboarding() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("needs_onboarding") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run every health check and return a report.
+ * 
+ * Deliberately does no network I/O beyond a short, bounded reachability probe
+ * of the configured refinement endpoint — this runs on a settings screen the
+ * user is staring at, so it must return promptly.
+ */
+async runHealthCheck() : Promise<Result<HealthReport, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("run_health_check") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Build a support bundle on the Desktop and return its path.
+ * 
+ * Contains: the most recent log files, a redacted settings snapshot, and an
+ * environment summary. Never contains transcripts, audio, API keys, or license
+ * keys.
+ */
+async exportDiagnosticsBundle() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_diagnostics_bundle") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Reveal the generated bundle in Finder.
+ */
+async revealDiagnosticsBundle(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reveal_diagnostics_bundle", { path }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1485,7 +1600,20 @@ custom_word_phonetics?: Partial<{ [key in string]: string }>; model_unload_timeo
  * provider, model, and API key are configured. Lets users run pure local
  * transcription without touching their existing provider config.
  */
-refinement_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
+refinement_enabled?: boolean; 
+/**
+ * When true (the default), dictation headed into an AI assistant's prompt
+ * box — Claude, ChatGPT, Cursor, Claude Code, and friends — skips the LLM
+ * refinement call entirely and uses deterministic local cleanup instead.
+ * 
+ * This is the structural fix for the failure where the refinement model
+ * *acts on* a dictated prompt rather than transcribing it. No model runs,
+ * so it cannot happen. It also removes a full network round-trip from the
+ * most common dictation path.
+ * 
+ * Turn off to send AI-app dictation through the configured LLM anyway.
+ */
+deterministic_cleanup_in_ai_apps?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
 /**
  * Enables the hands-free continuous dictation mode. Dev-mode gated in UI.
  * When true, an additional shortcut arms/disarms a VAD-driven loop that
@@ -1573,7 +1701,43 @@ is_pro?: boolean;
  * `is_pro`. Only settable from the Debug settings pane; not exposed in
  * the normal UI. Lets us test the paywall flow on a Pro build.
  */
-dev_force_free_tier?: boolean }
+dev_force_free_tier?: boolean; 
+/**
+ * Opt-in error reporting. Defaults to `false` and is never enabled
+ * implicitly — see `telemetry.rs` for exactly what a report contains
+ * (bounded enum-like fields only; never transcripts, audio, or keys).
+ */
+error_reporting_enabled?: boolean; 
+/**
+ * Whether the user has been asked about error reporting yet. Keeps the
+ * one-time prompt from reappearing for someone who declined.
+ */
+error_reporting_prompted?: boolean; 
+/**
+ * Light/dark/system appearance. See [`Appearance`].
+ */
+appearance?: Appearance; 
+/**
+ * Whether first-run onboarding has been completed.
+ * 
+ * This exists because "does the user have a model?" stopped being a valid
+ * proxy for "is this a new user?" once a starter model began shipping
+ * inside the app bundle — every install now has a model from the first
+ * launch, so the old check would skip onboarding for genuinely new users.
+ */
+onboarding_completed?: boolean }
+/**
+ * Appearance preference.
+ * 
+ * Dark is the product's identity and the default for a new install —
+ * `System` is offered but not chosen for you, because a user who installs a
+ * dark-first app on a light-mode Mac almost certainly wants the dark app.
+ */
+export type Appearance = "dark" | "light" | 
+/**
+ * Follow the macOS appearance setting, live.
+ */
+"system"
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoCleanupLevel = "none" | "light" | "medium" | "high"
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
@@ -1612,6 +1776,63 @@ export type CustomSounds = { start: boolean; stop: boolean }
 export type EarnedBadge = { id: BadgeId; unlocked_at: number }
 export type EngineType = "Whisper" | "Parakeet" | "Moonshine" | "MoonshineStreaming" | "SenseVoice" | "GigaAM" | "Canary" | "Cohere"
 export type GpuDeviceOption = { id: number; name: string; total_vram_mb: number }
+/**
+ * What the user should do about a non-passing check. The frontend maps this to
+ * a button rather than making the user hunt through System Settings.
+ */
+export type HealthAction = 
+/**
+ * Open System Settings › Privacy & Security › Microphone.
+ */
+"OpenMicrophoneSettings" | 
+/**
+ * Open System Settings › Privacy & Security › Accessibility.
+ */
+"OpenAccessibilitySettings" | 
+/**
+ * Jump to the in-app Models screen.
+ */
+"OpenModels" | 
+/**
+ * Jump to the in-app Refinement screen.
+ */
+"OpenRefinement" | 
+/**
+ * Jump to the in-app Audio settings.
+ */
+"OpenAudio"
+export type HealthCheck = { 
+/**
+ * Stable identifier — the frontend keys translations off this, so the
+ * human-readable strings below never reach the UI directly.
+ */
+id: string; status: HealthStatus; 
+/**
+ * English fallback detail (e.g. "Whisper Large — 1031 MB"). Shown verbatim
+ * only when it carries specifics the translated label can't.
+ */
+detail: string | null; action: HealthAction | null }
+export type HealthReport = { checks: HealthCheck[]; 
+/**
+ * Worst status across all checks — drives the summary banner.
+ */
+overall: HealthStatus }
+/**
+ * Outcome of a single health check.
+ */
+export type HealthStatus = 
+/**
+ * Working as intended.
+ */
+"Pass" | 
+/**
+ * Functional but degraded, or an optional feature is unconfigured.
+ */
+"Warn" | 
+/**
+ * Core dictation is broken until the user acts.
+ */
+"Fail"
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; user_title: string | null; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean; source_app?: string | null; tags?: HistoryTag[] }
 export type HistoryTag = { name: string; auto: boolean }
 export type HistoryUpdatePayload = { action: "added"; entry: HistoryEntry } | { action: "updated"; entry: HistoryEntry } | { action: "deleted"; id: number } | { action: "toggled"; id: number }
@@ -1624,7 +1845,18 @@ export type ImplementationChangeResult = { success: boolean;
  */
 reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
-export type LLMPrompt = { id: string; name: string; prompt: string }
+export type LLMPrompt = { id: string; name: string; prompt: string; 
+/**
+ * True for prompts whose whole purpose is to rewrite or answer rather than
+ * clean — e.g. "AI Prompt" (restructures rambly speech into a formatted
+ * prompt) and "Screenshot Q&A" (answers a question about the screen).
+ * 
+ * The divergence guard in `actions::refinement_diverged` exists to catch a
+ * model answering dictation instead of transcribing it. For these prompts
+ * that behavior is the feature, so the guard is skipped. Defaults to false
+ * so cleanup prompts — including every user-authored one — stay protected.
+ */
+transformative?: boolean }
 export type LicenseError = { code: "invalid_key" } | { code: "revoked" } | { code: "device_limit_reached"; limit: number; active_devices: ActiveDevice[] } | { code: "not_activated" } | { code: "network_error"; message: string } | { code: "invalid_token" } | { code: "not_ready" }
 export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
@@ -1651,8 +1883,39 @@ export type MatchRule =
  * Useful for browser-tab-aware profiles ("Gmail", "GitHub").
  */
 { kind: "window_title_contains"; value: string }
-export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; sha256: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean }
+export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; sha256: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; 
+/**
+ * Set for the three models surfaced in the primary picker; `None` for the
+ * rest, which only appear under "All models".
+ */
+tier: ModelTier | null; 
+/**
+ * True for models shipped inside the app bundle — these are always
+ * present, cannot be deleted, and never need downloading.
+ */
+is_bundled: boolean }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
+/**
+ * The three named choices surfaced in the primary model picker.
+ * 
+ * Seventeen model IDs is an inventory, not a decision — users cannot rank
+ * "Parakeet V3" against "Canary 1B v2" and shouldn't have to. Exactly one
+ * model carries each tier; everything else lives behind "All models" for the
+ * people who genuinely want to pick an engine.
+ */
+export type ModelTier = 
+/**
+ * Near-instant, English only. Streaming encoder.
+ */
+"Fast" | 
+/**
+ * The default. Fast enough to feel immediate, accurate enough to trust.
+ */
+"Balanced" | 
+/**
+ * Highest accuracy, widest language coverage, slowest.
+ */
+"Accurate"
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_15"
 export type OrtAcceleratorSetting = "auto" | "cpu" | "cuda" | "directml" | "rocm"
 export type OverlayPosition = "none" | "top_left" | "top_center" | "top_right" | "bottom_left" | "bottom_center" | "bottom_right"

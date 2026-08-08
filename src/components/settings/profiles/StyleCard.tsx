@@ -27,7 +27,7 @@ export const StyleCard: React.FC<StyleCardProps> = ({
         ${
           selected
             ? "border-logo-primary bg-logo-primary/5 shadow-sm"
-            : "border-mid-gray/20 bg-mid-gray/5 hover:border-mid-gray/40 hover:bg-mid-gray/10"
+            : "border-hairline-strong bg-fill-2 hover:border-hairline-strong hover:bg-fill-2"
         }`}
       aria-pressed={selected}
     >
@@ -43,7 +43,7 @@ export const StyleCard: React.FC<StyleCardProps> = ({
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className="mt-3 rounded-lg bg-background/60 border border-mid-gray/15 px-3 py-2.5 text-xs text-text/80 whitespace-pre-wrap leading-relaxed min-h-[84px]">
+      <div className="mt-3 rounded-lg bg-background/60 border border-hairline-strong px-3 py-2.5 text-xs text-text/80 whitespace-pre-wrap leading-relaxed min-h-[84px]">
         {sample}
       </div>
     </button>

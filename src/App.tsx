@@ -24,6 +24,7 @@ import { useSettingsStore } from "./stores/settingsStore";
 import { useUpdaterStore } from "./stores/updaterStore";
 import { commands } from "@/bindings";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
+import { useAppearanceSync } from "./hooks/useAppearance";
 
 type OnboardingStep = "accessibility" | "model" | "refinement" | "done";
 
@@ -46,6 +47,9 @@ function App() {
   const [currentSection, setCurrentSection] =
     useState<SidebarSection>("history");
   const { settings, updateSetting } = useSettings();
+  // Keeps <html data-theme> in step with the saved preference (and the OS,
+  // when the preference is "system"). Every colour token keys off it.
+  useAppearanceSync();
   const direction = getLanguageDirection(i18n.language);
   const refreshAudioDevices = useSettingsStore(
     (state) => state.refreshAudioDevices,
@@ -281,12 +285,15 @@ function App() {
 
   const checkOnboardingStatus = async () => {
     try {
-      // Check if they have any models available
-      const result = await commands.hasAnyModelsAvailable();
-      const hasModels = result.status === "ok" && result.data;
+      // A starter model ships inside the app bundle, so "has any model" is no
+      // longer a valid proxy for "has been set up" — every install has one from
+      // first launch. The backend flag is the authority (and migrates existing
+      // users forward so an upgrade never re-runs onboarding).
+      const result = await commands.needsOnboarding();
+      const isNewUser = result.status === "ok" ? result.data : false;
       const currentPlatform = platform();
 
-      if (hasModels) {
+      if (!isNewUser) {
         // Returning user - check if they need to grant permissions first
         setIsReturningUser(true);
 
@@ -386,7 +393,7 @@ function App() {
           unstyled: true,
           classNames: {
             toast:
-              "bg-surface-2 border border-hairline-strong rounded-xl shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] px-4 py-3 flex items-center gap-3 text-sm text-text",
+              "glass-raised rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-text",
             title: "font-medium text-text",
             description: "text-text-muted",
           },

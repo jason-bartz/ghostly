@@ -77,7 +77,7 @@ const AccessibilityPermissions: React.FC = () => {
     verify: {
       text: t("accessibility.openSettings"),
       className:
-        "px-3.5 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] transition-colors",
+        "px-3.5 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-fill-2 transition-colors",
     },
     granted: null,
   };

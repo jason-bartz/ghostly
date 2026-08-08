@@ -103,13 +103,13 @@ export function EulaGate({ onAccepted }: Props) {
   );
 
   return (
-    <div className="app-canvas fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-6">
+    <div className="app-canvas fixed inset-0 z-50 flex items-center justify-center modal-scrim p-6">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="eula-title"
-        className={`w-full max-w-2xl h-[85vh] max-h-[760px] flex flex-col rounded-2xl bg-surface-1 border border-hairline-strong shadow-[0_40px_80px_-20px_rgba(0,0,0,0.7)] overflow-hidden ${
+        className={`w-full max-w-2xl h-[85vh] max-h-[760px] flex flex-col rounded-2xl glass-raised overflow-hidden ${
           shake ? "animate-[shake_0.4s_ease-in-out]" : ""
         }`}
       >
@@ -288,7 +288,7 @@ function renderInline(text: string): React.ReactNode {
       parts.push(
         <code
           key={k++}
-          className="font-mono text-[12.5px] bg-mid-gray/15 px-1 py-px rounded"
+          className="font-mono text-[12.5px] bg-fill-2 px-1 py-px rounded"
         >
           {m[3]}
         </code>,

@@ -199,7 +199,7 @@ export const CategoryTab: React.FC<CategoryTabProps> = ({
 
       {/* Custom style editor */}
       {customEditorOpen && (
-        <div className="rounded-xl border border-mid-gray/25 bg-mid-gray/5 p-4">
+        <div className="rounded-xl border border-hairline-strong bg-fill-2 p-4">
           <div className="text-sm font-semibold mb-4">
             {t("settings.style.custom.editorTitle")}
           </div>
@@ -240,7 +240,7 @@ export const CategoryTab: React.FC<CategoryTabProps> = ({
             </label>
           </div>
 
-          <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-mid-gray/15">
+          <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-hairline-strong">
             <Button
               variant="secondary"
               size="sm"
@@ -256,7 +256,7 @@ export const CategoryTab: React.FC<CategoryTabProps> = ({
       )}
 
       {/* Category vocabulary */}
-      <div className="rounded-xl border border-mid-gray/20 bg-mid-gray/5 p-4 space-y-3">
+      <div className="rounded-xl border border-hairline-strong bg-fill-2 p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">
@@ -294,7 +294,7 @@ export const CategoryTab: React.FC<CategoryTabProps> = ({
             {style.custom_vocab.map((w) => (
               <span
                 key={w}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-mid-gray/25 bg-background text-xs"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-hairline-strong bg-background text-xs"
               >
                 <span>{w}</span>
                 <button

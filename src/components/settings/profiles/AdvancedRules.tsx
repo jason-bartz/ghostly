@@ -99,11 +99,11 @@ export const AdvancedRules: React.FC = () => {
   };
 
   return (
-    <div className="rounded-xl border border-mid-gray/20 bg-mid-gray/5">
+    <div className="rounded-xl border border-hairline-strong bg-fill-2">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer hover:bg-mid-gray/5"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer hover:bg-fill-2"
       >
         <div>
           <div className="text-sm font-semibold">
@@ -121,7 +121,7 @@ export const AdvancedRules: React.FC = () => {
       </button>
 
       {expanded && (
-        <div className="border-t border-mid-gray/15">
+        <div className="border-t border-hairline-strong">
           <div className="px-4 py-3 flex items-center justify-between">
             <div className="text-xs text-text/60">
               {profiles.length === 0
@@ -139,7 +139,10 @@ export const AdvancedRules: React.FC = () => {
           </div>
 
           {profiles.map((p) => (
-            <div key={p.id} className="px-4 py-3 border-t border-mid-gray/10">
+            <div
+              key={p.id}
+              className="px-4 py-3 border-t border-hairline-strong"
+            >
               {editingId === p.id ? (
                 <ProfileEditor
                   profile={p}

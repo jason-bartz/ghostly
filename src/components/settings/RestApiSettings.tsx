@@ -100,7 +100,7 @@ export const RestApiSettings: React.FC = () => {
               layout="stacked"
               grouped={true}
             >
-              <div className="text-xs font-mono space-y-1 text-mid-gray/80 bg-mid-gray/5 rounded-md p-3 border border-mid-gray/20">
+              <div className="text-xs font-mono space-y-1 text-mid-gray/80 bg-fill-2 rounded-md p-3 border border-hairline-strong">
                 {[
                   {
                     method: "POST",

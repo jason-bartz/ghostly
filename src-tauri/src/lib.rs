@@ -9,6 +9,7 @@ mod clipboard;
 #[cfg(target_os = "macos")]
 mod clipboard_image;
 mod commands;
+mod diagnostics;
 mod edit_intent;
 mod frontmost;
 mod helpers;
@@ -16,6 +17,7 @@ mod input;
 mod keychain;
 mod license;
 mod llm_client;
+mod local_cleanup;
 mod managers;
 mod overlay;
 pub mod portable;
@@ -28,6 +30,7 @@ mod shortcut;
 mod signal_handle;
 mod staged_capture;
 mod stream_cancel;
+mod telemetry;
 mod transcription_coordinator;
 mod tray;
 mod tray_i18n;
@@ -157,17 +160,23 @@ fn should_force_show_permissions_window(app: &AppHandle) -> bool {
 
     #[cfg(target_os = "macos")]
     {
-        let model_manager = app.state::<Arc<ModelManager>>();
-        let has_downloaded_models = model_manager
-            .get_available_models()
-            .iter()
-            .any(|model| model.is_downloaded);
+        // Deliberately ignores the bundled starter model: it is present on
+        // every install from first launch, so counting it here would mean a
+        // brand-new user never gets the onboarding window revealed.
+        let settings = settings::get_settings(app);
+        if !settings.onboarding_completed {
+            let model_manager = app.state::<Arc<ModelManager>>();
+            let has_user_installed_model = model_manager
+                .get_available_models()
+                .iter()
+                .any(|model| model.is_downloaded && !model.is_bundled);
 
-        if !has_downloaded_models {
-            log::info!(
-                "No transcription model downloaded; forcing main window visible for first-run onboarding"
-            );
-            return true;
+            if !has_user_installed_model {
+                log::info!(
+                    "No user-installed transcription model; forcing main window visible for first-run onboarding"
+                );
+                return true;
+            }
         }
     }
 
@@ -483,7 +492,16 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             shortcut::change_mute_while_recording_setting,
             shortcut::change_append_trailing_space_setting,
             shortcut::change_refinement_enabled_setting,
+            shortcut::change_deterministic_cleanup_in_ai_apps_setting,
             shortcut::change_lazy_stream_close_setting,
+            shortcut::change_error_reporting_setting,
+            shortcut::mark_error_reporting_prompted,
+            shortcut::change_appearance_setting,
+            shortcut::complete_onboarding,
+            shortcut::needs_onboarding,
+            diagnostics::run_health_check,
+            diagnostics::export_diagnostics_bundle,
+            diagnostics::reveal_diagnostics_bundle,
             shortcut::change_continuous_dictation_enabled_setting,
             shortcut::change_continuous_silence_ms_setting,
             shortcut::change_continuous_max_segment_ms_setting,

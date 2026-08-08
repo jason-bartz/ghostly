@@ -3,7 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ghostly</title>
+    <title>Ghostly — Your AI ghostwriter</title>
+    <script>
+      // Apply the theme before first paint.
+      //
+      // The real preference lives in the Tauri store, which is async and not
+      // readable until React mounts — long enough for a light-mode user to see
+      // a full dark frame flash past. `useAppearanceSync` mirrors the resolved
+      // theme into localStorage on every change purely so this line can run
+      // synchronously here. Dark is the default and the fallback.
+      (function () {
+        try {
+          var saved = localStorage.getItem("ghostly:theme");
+          var theme =
+            saved === "light" || saved === "dark"
+              ? saved
+              : saved === "system"
+                ? window.matchMedia("(prefers-color-scheme: light)").matches
+                  ? "light"
+                  : "dark"
+                : "dark";
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
   </head>
 
   <body>

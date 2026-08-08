@@ -19,7 +19,6 @@
     "history": "My Notes",
     "usage": "Usage",
     "license": "License",
-    "achievements": "Achievements",
     "dictionary": "Dictionary",
     "developer": "Vibe Coding",
     "debug": "Debug",
@@ -27,9 +26,12 @@
     "settings": "Settings",
     "back": "Back",
     "groups": {
-      "preferences": "Preferences",
-      "developer": "Developer",
-      "about": "About"
+      "voice": "Voice",
+      "system": "System",
+      "account": "Account",
+      "about": "About",
+      "advanced": "Advanced",
+      "developer": "Developer"
     },
     "metrics": {
       "thisWeek": "This Week",
@@ -39,15 +41,17 @@
       "wpm": "WPM",
       "showWeek": "Show this week",
       "showLifetime": "Show all time"
-    }
+    },
+    "health": "Health"
   },
   "onboarding": {
-    "title": "Welcome to Ghostly",
-    "tagline": "Private, on-device voice transcription — works in any app.",
+    "title": "Ghostly",
+    "tagline": "Your AI ghostwriter. Just speak.",
     "features": {
-      "onDevice": "100% on-device — your voice never leaves this computer",
-      "fast": "Instant results — transcription in under a second",
-      "everywhere": "Works anywhere — paste into any app, any text field"
+      "onDevice": "Runs entirely on this Mac — your voice is never uploaded",
+      "fast": "Text lands where your cursor is, in about a second",
+      "everywhere": "Works anywhere — paste into any app, any text field",
+      "agents": "Built for talking to AI — prompts reach Claude, Cursor, and ChatGPT exactly as you said them"
     },
     "modelSection": "Setting up your model",
     "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
@@ -179,7 +183,19 @@
         "checkFailed": "Failed to check permissions. Please try again.",
         "requestFailed": "Failed to request permission. Please try again."
       }
-    }
+    },
+    "ready": {
+      "badge": "Ready now",
+      "headline": "You can start dictating right away.",
+      "headlineWithShortcut": "Hold {{shortcut}} anywhere and talk.",
+      "body": "Ghostly ships with a transcription model built in, so there is nothing to wait for. Put your cursor in any text field and try it.",
+      "cta": "Start dictating"
+    },
+    "upgrade": {
+      "title": "Downloading a more accurate model",
+      "body": "This runs in the background and switches over on its own. Keep using Ghostly in the meantime — nothing is interrupted."
+    },
+    "errorReports": "Send anonymous error reports. Helps fix recurring problems. Never includes what you say, your audio, or your keys — only the kind of failure and your app version."
   },
   "modelSelector": {
     "custom": "Custom",
@@ -240,6 +256,10 @@
           "transcribe_with_screenshot": {
             "name": "Screenshot + Dictate",
             "description": "Captures the screen on press, records your question, and pastes the vision LLM's answer. Requires a vision-capable provider (OpenAI, OpenRouter, Z.AI, or Groq)."
+          },
+          "transcribe_verbatim": {
+            "name": "Dictate Verbatim",
+            "description": "Transcribes exactly what you say with no AI refinement of any kind. Use when dictating prompts, quotes, or anything that must not be rewritten."
           }
         },
         "errors": {
@@ -277,7 +297,35 @@
         "translation": "Translation",
         "allLanguages": "All Languages"
       },
-      "noModelsMatch": "No models match this filter."
+      "noModelsMatch": "No models match this filter.",
+      "subtitle": "Pick how Ghostly balances speed against accuracy. You can change this at any time — switching takes a moment, nothing is lost.",
+      "usingOther": "Currently using {{modelName}}",
+      "bundledNote": "Built into Ghostly, so it works the moment you install. Pick a tier above for better accuracy.",
+      "otherNote": "Chosen from All models. Pick a tier above to go back to a standard option.",
+      "allModels": "All models ({{count}})",
+      "allModelsHint": "Every engine Ghostly supports, including specialised and language-specific models. Most people never need this.",
+      "tiers": {
+        "recommended": "Recommended",
+        "languages": "Languages",
+        "size": "Size",
+        "englishOnly": "English",
+        "languageCount": "{{count}}",
+        "download": "Download",
+        "use": "Use this",
+        "inUse": "In use",
+        "Fast": {
+          "name": "Fast",
+          "promise": "Text appears almost the instant you stop talking. Best for chat, prompts, and short notes."
+        },
+        "Balanced": {
+          "name": "Balanced",
+          "promise": "Quick enough to feel immediate, accurate enough to trust with real writing. The right choice for most people."
+        },
+        "Accurate": {
+          "name": "Most accurate",
+          "promise": "The best transcription Ghostly can produce, in the most languages. Noticeably slower."
+        }
+      }
     },
     "sound": {
       "title": "Microphone & Audio",
@@ -495,6 +543,10 @@
         "label": "Enable AI Refinement",
         "description": "Use AI to clean up, format, or rephrase your transcriptions after they're captured. Requires an AI provider API key or Apple Intelligence."
       },
+      "aiAppBypass": {
+        "label": "Skip AI refinement in AI apps",
+        "description": "In Claude, ChatGPT, Cursor, Claude Code and similar apps, clean transcriptions locally instead of sending them to a refinement model. Prevents the model from acting on a dictated prompt instead of typing it, and pastes noticeably faster. Recommended."
+      },
       "hotkey": {
         "title": "Quick-Access Shortcut"
       },
@@ -628,7 +680,19 @@
         "clear": "Clear selection"
       },
       "bulkDeleteError": "Some entries failed to delete",
-      "sourceApp": "Captured in"
+      "sourceApp": "Captured in",
+      "subtitle": "Everything you have dictated, when you said it, and where.",
+      "view": {
+        "label": "View",
+        "timeline": "Timeline",
+        "byApp": "By app",
+        "list": "List",
+        "noteCount": "{{count}} note",
+        "noteCount_other": "{{count}} notes",
+        "appCount": "{{count}} app",
+        "appCount_other": "{{count}} apps",
+        "unknownApp": "Unknown app"
+      }
     },
     "debug": {
       "title": "Debug",
@@ -998,6 +1062,111 @@
       "add": "Add",
       "duplicate": "\"{{phrase}}\" is already in your list.",
       "remove": "Remove \"{{phrase}}\""
+    },
+    "health": {
+      "title": "Health",
+      "subtitle": "Everything Ghostly needs in order to work, checked in one place. If dictation has stopped behaving, start here.",
+      "recheck": "Re-check",
+      "runFailed": "Could not run the health check.",
+      "checksTitle": "Checks",
+      "summary": {
+        "Pass": "Everything is working",
+        "Warn": "Working, with something to look at",
+        "Fail": "Dictation is blocked"
+      },
+      "summaryDetail": {
+        "Pass": "All checks passed. Ghostly is ready to use.",
+        "Warn": "Core dictation works, but an optional feature needs attention.",
+        "Fail": "One or more required permissions or files are missing."
+      },
+      "actions": {
+        "OpenMicrophoneSettings": "Grant access",
+        "OpenAccessibilitySettings": "Grant access",
+        "OpenModels": "Open Models",
+        "OpenRefinement": "Open Refinement",
+        "OpenAudio": "Open Audio"
+      },
+      "checks": {
+        "microphone": {
+          "label": "Microphone access",
+          "Pass": "Ghostly can hear you.",
+          "Warn": "Could not confirm microphone access.",
+          "Fail": "macOS is blocking microphone access, so recordings will be silent."
+        },
+        "accessibility": {
+          "label": "Accessibility access",
+          "Pass": "Shortcuts and pasting are working.",
+          "Warn": "Could not confirm accessibility access.",
+          "Fail": "Without this, the global shortcut and pasting into other apps will not work. macOS often revokes it after an update."
+        },
+        "model": {
+          "label": "Transcription model",
+          "Pass": "{{detail}} is installed and ready.",
+          "Warn": "{{detail}}",
+          "Fail": "The selected model is missing or incomplete. Download it again."
+        },
+        "inputDevice": {
+          "label": "Input device",
+          "Pass": "{{detail}}",
+          "Warn": "{{detail}}",
+          "Fail": "No microphone was found on this Mac."
+        },
+        "inputDeviceMissing": {
+          "label": "Input device",
+          "Pass": "{{detail}}",
+          "Warn": "\"{{detail}}\" is selected but not connected. Ghostly will fall back to the system default.",
+          "Fail": "{{detail}}"
+        },
+        "refinement": {
+          "label": "AI refinement",
+          "Pass": "{{detail}} is reachable.",
+          "Warn": "{{detail}}",
+          "Fail": "{{detail}}"
+        },
+        "refinementOff": {
+          "label": "AI refinement",
+          "Pass": "Turned off. Transcripts are pasted exactly as spoken.",
+          "Warn": "",
+          "Fail": ""
+        },
+        "refinementNoProvider": {
+          "label": "AI refinement",
+          "Pass": "",
+          "Warn": "Refinement is on but no provider is configured.",
+          "Fail": ""
+        },
+        "refinementUnreachable": {
+          "label": "AI refinement",
+          "Pass": "",
+          "Warn": "{{detail}}. Dictation still works — transcripts paste unrefined.",
+          "Fail": ""
+        },
+        "shortcut": {
+          "label": "Dictation shortcut",
+          "Pass": "Bound to {{detail}}.",
+          "Warn": "{{detail}}",
+          "Fail": "No shortcut is bound, so there is no way to start dictating."
+        }
+      },
+      "supportTitle": "Support",
+      "supportDescription": "Tools that make a bug report actionable.",
+      "bundleTitle": "Diagnostics bundle",
+      "bundleDescription": "Saves your logs, settings, and system details to the Desktop as a folder you can attach to an email. Contains no transcripts, audio, or keys.",
+      "export": "Create",
+      "exporting": "Creating…",
+      "exportDone": "Diagnostics bundle saved to your Desktop.",
+      "reveal": "Show in Finder",
+      "errorReportingTitle": "Send error reports",
+      "errorReportingDescription": "Report when something fails, so recurring problems get fixed. Off by default.",
+      "privacyNote": "An error report contains only the kind of failure, your Ghostly version, your macOS version, and which model and provider were in use. It never contains what you said, what you typed, your audio, your API keys, or anything that identifies you."
+    },
+    "appearance": {
+      "group": "Appearance",
+      "title": "Theme",
+      "description": "Ghostly is designed for dark. Light is fully supported if you prefer it.",
+      "dark": "Dark",
+      "light": "Light",
+      "system": "System"
     }
   },
   "footer": {
@@ -1059,7 +1228,8 @@
     "off": "Off",
     "yes": "Yes",
     "no": "No",
-    "noOptionsFound": "No options found"
+    "noOptionsFound": "No options found",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Accessibility Permissions Required",

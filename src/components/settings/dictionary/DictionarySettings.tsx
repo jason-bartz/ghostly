@@ -508,7 +508,7 @@ export const DictionarySettings: React.FC = () => {
                     "settings.dictionary.vocabulary.searchPlaceholder",
                     "Search words…",
                   )}
-                  className="w-full h-8 pl-9 pr-8 text-sm bg-background border border-mid-gray/30 rounded-md
+                  className="w-full h-8 pl-9 pr-8 text-sm bg-background border border-hairline-strong rounded-md
                              focus:outline-none focus:border-logo-primary/60 placeholder:text-mid-gray/40"
                 />
                 {query && (
@@ -535,7 +535,7 @@ export const DictionarySettings: React.FC = () => {
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as DictSort)}
-                  className="h-8 pl-7 pr-2 bg-background border border-mid-gray/30 rounded-md text-sm
+                  className="h-8 pl-7 pr-2 bg-background border border-hairline-strong rounded-md text-sm
                              focus:outline-none focus:border-logo-primary/60 cursor-pointer appearance-none"
                   title={t("settings.dictionary.vocabulary.sort", "Sort")}
                 >
@@ -565,7 +565,7 @@ export const DictionarySettings: React.FC = () => {
               </span>
               {CATEGORY_TAGS.map((c) => (
                 <span key={c.id} className="inline-flex items-center gap-1">
-                  <span className="w-4 h-4 inline-flex items-center justify-center text-[10px] font-semibold rounded bg-mid-gray/15 text-text/70">
+                  <span className="w-4 h-4 inline-flex items-center justify-center text-[10px] font-semibold rounded bg-fill-2 text-text/70">
                     {c.label}
                   </span>
                   <span>{t(`settings.dictionary.tags.${c.id}`, c.full)}</span>
@@ -612,7 +612,7 @@ export const DictionarySettings: React.FC = () => {
                 </button>
                 <button
                   onClick={clearSelection}
-                  className="flex items-center justify-center w-7 h-7 rounded-md text-text/60 hover:text-text hover:bg-mid-gray/20 transition-colors cursor-pointer"
+                  className="flex items-center justify-center w-7 h-7 rounded-md text-text/60 hover:text-text hover:bg-fill-2 transition-colors cursor-pointer"
                   title={t(
                     "settings.dictionary.vocabulary.clearSelection",
                     "Clear selection",
@@ -763,8 +763,8 @@ const CategoryTagToggle: React.FC<CategoryTagToggleProps> = ({
               active
                 ? "bg-logo-primary text-white"
                 : hasAny
-                  ? "bg-mid-gray/20 text-text/40 hover:text-text/70"
-                  : "bg-mid-gray/10 text-text/40 hover:bg-mid-gray/25 hover:text-text/70"
+                  ? "bg-fill-2 text-text/40 hover:text-text/70"
+                  : "bg-fill-2 text-text/40 hover:bg-fill-2 hover:text-text/70"
             }`}
             aria-label={`${word} — ${c.full}`}
             aria-pressed={active}

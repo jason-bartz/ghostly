@@ -73,7 +73,7 @@ export const UpdateCheckRow: React.FC<UpdateCheckRowProps> = ({
         <button
           onClick={() => void check({ silent: false })}
           disabled={isChecking}
-          className="px-3 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] disabled:opacity-60 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+          className="px-3 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-fill-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
         >
           {isChecking && <Loader2 className="w-3 h-3 animate-spin" />}
           {isChecking

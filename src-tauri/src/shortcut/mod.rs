@@ -1064,6 +1064,9 @@ pub fn add_post_process_prompt(
         id: id.clone(),
         name,
         prompt,
+        // User-authored prompts are cleanup prompts and keep the divergence
+        // guard. Only the built-in rewrite/answer presets opt out.
+        transformative: false,
     };
 
     settings.post_process_prompts.push(new_prompt.clone());
@@ -1207,6 +1210,103 @@ pub fn change_append_trailing_space_setting(app: AppHandle, enabled: bool) -> Re
 pub fn change_refinement_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.refinement_enabled = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_deterministic_cleanup_in_ai_apps_setting(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.deterministic_cleanup_in_ai_apps = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+/// Toggle opt-in error reporting. Also marks the one-time prompt as answered,
+/// so an explicit choice — either way — stops us asking again.
+#[tauri::command]
+#[specta::specta]
+pub fn change_error_reporting_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.error_reporting_enabled = enabled;
+    settings.error_reporting_prompted = true;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+/// Set the light/dark/system appearance preference.
+#[tauri::command]
+#[specta::specta]
+pub fn change_appearance_setting(
+    app: AppHandle,
+    appearance: settings::Appearance,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.appearance = appearance;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+/// Mark first-run onboarding as finished.
+///
+/// Called when the user leaves the welcome flow — including when they choose to
+/// start dictating immediately with the bundled model while a better one is
+/// still downloading in the background.
+#[tauri::command]
+#[specta::specta]
+pub fn complete_onboarding(app: AppHandle) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.onboarding_completed = true;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+/// Whether first-run onboarding still needs to be shown.
+///
+/// Existing installs predate the flag, so anyone who already has a
+/// *downloaded* (non-bundled) model is treated as onboarded — otherwise
+/// upgrading to this version would drop long-time users back into the
+/// welcome flow.
+#[tauri::command]
+#[specta::specta]
+pub fn needs_onboarding(app: AppHandle) -> Result<bool, String> {
+    let settings = settings::get_settings(&app);
+    if settings.onboarding_completed {
+        return Ok(false);
+    }
+
+    let already_set_up = app
+        .try_state::<std::sync::Arc<crate::managers::model::ModelManager>>()
+        .map(|manager| {
+            manager
+                .get_available_models()
+                .iter()
+                .any(|m| m.is_downloaded && !m.is_bundled)
+        })
+        .unwrap_or(false);
+
+    if already_set_up {
+        // Migrate the flag forward so this only costs one check.
+        let mut settings = settings::get_settings(&app);
+        settings.onboarding_completed = true;
+        settings::write_settings(&app, settings);
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+/// Record that the error-reporting prompt was shown and dismissed without a
+/// choice, so it doesn't reappear on every launch.
+#[tauri::command]
+#[specta::specta]
+pub fn mark_error_reporting_prompted(app: AppHandle) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.error_reporting_prompted = true;
     settings::write_settings(&app, settings);
     Ok(())
 }

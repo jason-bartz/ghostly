@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export interface DateRange {
@@ -45,6 +46,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   onChange,
   onClose,
 }) => {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const today = startOfDay(new Date());
   const [viewMonth, setViewMonth] = useState(value?.start ?? today);
@@ -101,19 +103,19 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   return (
     <div
       ref={ref}
-      className="absolute top-full mt-1 right-0 z-50 bg-background border border-mid-gray/30 rounded-lg shadow-lg p-3 w-[260px] select-none"
+      className="absolute top-full mt-1.5 end-0 z-50 glass-raised rounded-xl p-3 w-[260px] select-none"
     >
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={prevMonth}
-          className="p-1 rounded hover:bg-mid-gray/15 text-text/70 hover:text-text cursor-pointer"
+          className="p-1 rounded hover:bg-fill-2 text-text-muted hover:text-text cursor-pointer"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
         <span className="text-sm font-medium">{monthLabel}</span>
         <button
           onClick={nextMonth}
-          className="p-1 rounded hover:bg-mid-gray/15 text-text/70 hover:text-text cursor-pointer"
+          className="p-1 rounded hover:bg-fill-2 text-text-muted hover:text-text cursor-pointer"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -162,7 +164,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       </div>
 
       {(value || pickStart) && (
-        <div className="mt-2 pt-2 border-t border-mid-gray/15 flex justify-between items-center">
+        <div className="mt-2 pt-2 border-t border-hairline flex justify-between items-center">
           {pickStart && (
             <span className="text-xs text-mid-gray/60">Select end date...</span>
           )}
@@ -174,7 +176,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
             }}
             className="text-xs text-mid-gray/60 hover:text-mid-gray underline ml-auto cursor-pointer"
           >
-            Clear
+            {t("common.clear")}
           </button>
         </div>
       )}

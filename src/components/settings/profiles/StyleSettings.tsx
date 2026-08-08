@@ -105,9 +105,9 @@ export const StyleSettings: React.FC = () => {
       </SettingsGroup>
 
       {enabled && (
-        <div className="rounded-2xl border border-mid-gray/20 bg-background overflow-hidden">
+        <div className="rounded-2xl border border-hairline-strong bg-background overflow-hidden">
           {/* Top tab strip */}
-          <div className="flex items-center gap-1 px-2 pt-2 border-b border-mid-gray/15 overflow-x-auto">
+          <div className="flex items-center gap-1 px-2 pt-2 border-b border-hairline-strong overflow-x-auto">
             {TABS.map(({ key, labelKey, Icon }) => {
               const active = activeTab === key;
               return (

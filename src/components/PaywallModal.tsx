@@ -53,7 +53,7 @@ export const PaywallModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center modal-scrim"
       onClick={() => setOpen(false)}
     >
       <div
@@ -85,13 +85,13 @@ export const PaywallModal: React.FC = () => {
         )}
         <div className="flex gap-2 justify-end pt-2 flex-wrap">
           <button
-            className="px-3.5 py-1.5 text-xs font-medium rounded-full text-text-muted hover:text-text hover:bg-white/[0.04] transition-colors"
+            className="px-3.5 py-1.5 text-xs font-medium rounded-full text-text-muted hover:text-text hover:bg-fill-2 transition-colors"
             onClick={() => setOpen(false)}
           >
             {t("paywall.dismiss")}
           </button>
           <button
-            className="px-3.5 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] transition-colors"
+            className="px-3.5 py-1.5 text-xs font-medium rounded-full border border-hairline-strong text-text hover:bg-fill-2 transition-colors"
             onClick={handleHaveKey}
           >
             {t("paywall.haveKey")}

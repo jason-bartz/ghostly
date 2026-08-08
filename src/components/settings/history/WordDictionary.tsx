@@ -147,12 +147,12 @@ export const WordDictionary: React.FC = () => {
           {t("settings.history.dictionary.empty", "No corrections yet.")}
         </p>
       ) : (
-        <div className="divide-y divide-mid-gray/15 border border-mid-gray/20 rounded-md overflow-hidden">
+        <div className="divide-y divide-[color:var(--color-hairline)] border border-hairline-strong rounded-md overflow-hidden">
           {corrections.map((c) => (
             <div
               key={c.id}
               className={`flex items-center gap-2 px-3 py-2 ${
-                c.enabled ? "bg-background" : "bg-mid-gray/5"
+                c.enabled ? "bg-background" : "bg-fill-2"
               }`}
             >
               <span

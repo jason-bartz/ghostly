@@ -393,7 +393,7 @@ const PostProcessingSettingsPromptsComponent: React.FC = () => {
         )}
 
         {!isCreating && !selectedPrompt && (
-          <div className="p-3 bg-mid-gray/5 rounded-md border border-mid-gray/20">
+          <div className="p-3 bg-fill-2 rounded-md border border-hairline-strong">
             <p className="text-sm text-mid-gray">
               {hasPrompts
                 ? t("settings.postProcessing.prompts.selectToEdit")
@@ -522,7 +522,7 @@ const ConnectionStatusCard: React.FC = () => {
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-mid-gray/20 bg-mid-gray/5"
+      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-hairline-strong bg-fill-2"
       role="status"
     >
       <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} aria-hidden="true" />
@@ -549,6 +549,26 @@ const RefinementEnabledToggle: React.FC = () => {
   );
 };
 
+const DeterministicCleanupToggle: React.FC = () => {
+  const { t } = useTranslation();
+  const { getSetting, updateSetting, isUpdating } = useSettings();
+  const enabled = getSetting("deterministic_cleanup_in_ai_apps") ?? true;
+
+  return (
+    <ToggleSwitch
+      checked={enabled}
+      onChange={(value) =>
+        updateSetting("deterministic_cleanup_in_ai_apps", value)
+      }
+      isUpdating={isUpdating("deterministic_cleanup_in_ai_apps")}
+      label={t("settings.postProcessing.aiAppBypass.label")}
+      description={t("settings.postProcessing.aiAppBypass.description")}
+      descriptionMode="inline"
+      grouped={true}
+    />
+  );
+};
+
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
   const { getSetting } = useSettings();
@@ -558,6 +578,7 @@ export const PostProcessingSettings: React.FC = () => {
     <div className="max-w-3xl w-full mx-auto space-y-6">
       <SettingsGroup title={t("settings.postProcessing.title")}>
         <RefinementEnabledToggle />
+        {refinementEnabled && <DeterministicCleanupToggle />}
       </SettingsGroup>
 
       {refinementEnabled && (
@@ -573,6 +594,11 @@ export const PostProcessingSettings: React.FC = () => {
           </SettingsGroup>
 
           <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
+            <ShortcutInput
+              shortcutId="transcribe_verbatim"
+              descriptionMode="tooltip"
+              grouped={true}
+            />
             <ShortcutInput
               shortcutId="transcribe_with_screenshot"
               descriptionMode="tooltip"

@@ -2,7 +2,7 @@
 
 <img src="src/assets/Ghostly-wordmark.svg" alt="Ghostly" width="320"><br><br>
 
-Voice-first typing for macOS.
+Your AI ghostwriter. Just speak.
 
 <br>
 
@@ -16,17 +16,17 @@ Voice-first typing for macOS.
 
 <br><br>
 
-<sub>macOS 10.15 or later · Apple Silicon & Intel · Transcription runs on-device</sub>
+<sub>macOS 10.15 or later · Apple Silicon &amp; Intel · Transcription runs on-device</sub>
 
 </div>
 
 ---
 
-Ghostly lives in your menu bar. Press a shortcut, talk, and your words land in the active app. Whisper does the transcription locally; audio never leaves the Mac.
+Ghostly lives in your menu bar. Press a shortcut, talk, and your words land in the active app — punctuated, formatted, and shaped to whatever you're writing in. Transcription runs locally; audio never leaves the Mac.
 
 ## Install
 
-Grab the latest `.dmg` from [releases](https://github.com/jason-bartz/ghostly/releases/latest), drag Ghostly to Applications, and launch it. It'll ask for microphone and accessibility access. Pick a shortcut in Settings. On first run it downloads a transcription model (500 MB–1.6 GB depending on which one you pick). After that, dictation works offline.
+Grab the latest `.dmg` from [releases](https://github.com/jason-bartz/ghostly/releases/latest), drag Ghostly to Applications, and launch it. It'll ask for microphone and accessibility access, then you can dictate immediately — a starter model ships inside the app. A more accurate one downloads in the background and switches over on its own.
 
 ## How it works in practice
 

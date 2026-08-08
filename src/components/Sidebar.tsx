@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Award,
   BookA,
   Bug,
   Keyboard,
@@ -14,21 +13,23 @@ import {
   Mic,
   Terminal,
   Gauge,
+  Stethoscope,
   Settings as SettingsIcon,
   ChevronLeft,
+  ChevronDown,
   ArrowLeftRight,
 } from "lucide-react";
 import GhostlyLogo from "./icons/GhostwriterLogo";
 import { useSettings } from "../hooks/useSettings";
 import { commands, type UsageStats } from "@/bindings";
 import {
-  AchievementsSettings,
   GeneralSettings,
   AdvancedSettings,
   DictionarySettings,
   HistorySettings,
   DebugSettings,
   AboutSettings,
+  HealthSettings,
   PostProcessingSettings,
   ModelsSettings,
   StyleSettings,
@@ -127,40 +128,57 @@ export const SECTIONS_CONFIG = {
     component: AboutSettings,
     enabled: () => true,
   },
-  achievements: {
-    labelKey: "sidebar.achievements",
-    icon: Award,
-    component: AchievementsSettings,
+  health: {
+    labelKey: "sidebar.health",
+    icon: Stethoscope,
+    component: HealthSettings,
     enabled: () => true,
   },
 } as const satisfies Record<string, SectionConfig>;
 
+/**
+ * The three surfaces someone actually uses day to day: what they dictated,
+ * how dictation behaves, and how it gets cleaned up.
+ *
+ * Everything else is configuration and lives behind the gear. The previous
+ * six-item primary nav put Style, Dictionary, and Achievements at the same
+ * level as Notes, which made a settings app out of a dictation app.
+ */
 const PRIMARY_SECTIONS = [
   "history",
-  "style",
-  "dictionary",
-  "achievements",
-  "postprocessing",
   "general",
+  "postprocessing",
 ] as const satisfies readonly SidebarSection[];
 
 interface SettingsGroup {
   labelKey: string;
   items: readonly SidebarSection[];
+  /** Groups behind the "Advanced" disclosure at the bottom of the settings
+   *  list — power-user surfaces that most users should never need to see. */
+  advanced?: boolean;
 }
 
 const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   {
-    labelKey: "sidebar.groups.preferences",
-    items: ["advanced", "models", "usage", "license"],
+    labelKey: "sidebar.groups.voice",
+    items: ["models", "style", "dictionary"],
   },
   {
-    labelKey: "sidebar.groups.developer",
-    items: ["developer", "debug"],
+    labelKey: "sidebar.groups.system",
+    items: ["advanced", "health"],
+  },
+  {
+    labelKey: "sidebar.groups.account",
+    items: ["usage", "license"],
   },
   {
     labelKey: "sidebar.groups.about",
     items: ["about"],
+  },
+  {
+    labelKey: "sidebar.groups.developer",
+    items: ["developer", "debug"],
+    advanced: true,
   },
 ];
 
@@ -182,10 +200,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [view, setView] = useState<"primary" | "settings">(() =>
     isPrimary(activeSection) ? "primary" : "settings",
   );
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Follow active section if it was changed externally (e.g. deep links).
   useEffect(() => {
     setView(isPrimary(activeSection) ? "primary" : "settings");
+  }, [activeSection]);
+
+  // Never hide the section the user is currently looking at: navigating to
+  // Debug via Cmd+Shift+D must not leave the nav with no highlighted item.
+  useEffect(() => {
+    const inAdvanced = SETTINGS_GROUPS.some(
+      (g) =>
+        g.advanced && (g.items as readonly string[]).includes(activeSection),
+    );
+    if (inAdvanced) setShowAdvanced(true);
   }, [activeSection]);
 
   const openSettings = () => {
@@ -203,7 +232,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="flex flex-col w-56 h-full border-e border-hairline bg-surface-1/40 backdrop-blur-xl px-2">
+    <div className="relative flex flex-col w-56 h-full px-2 bg-fill-1 backdrop-blur-[28px] backdrop-saturate-150 border-e border-hairline">
+      {/* Specular edge. A 1px border alone reads as a divider; a bright inner
+          line plus a soft outer falloff reads as the edge of a pane of glass. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 end-0 w-px bg-gradient-to-b from-transparent via-[color:var(--glass-specular)] to-transparent opacity-60"
+      />
       <GhostlyLogo width={140} className="mt-5 mb-3 self-center" />
       <SidebarMetrics />
 
@@ -221,7 +256,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={openSettings}
-              className="flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-white/[0.04]"
+              className="flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-fill-2"
             >
               <SettingsIcon
                 width={18}
@@ -240,7 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={goBack}
-            className="flex gap-2 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-white/[0.04]"
+            className="flex gap-2 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-fill-2"
           >
             <ChevronLeft
               width={16}
@@ -253,7 +288,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </p>
           </button>
 
-          {SETTINGS_GROUPS.map((group) => {
+          {SETTINGS_GROUPS.filter((g) => !g.advanced).map((group) => {
             const items = group.items.filter((id) =>
               SECTIONS_CONFIG[id].enabled(settings),
             );
@@ -274,8 +309,87 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             );
           })}
+
+          <AdvancedDisclosure
+            expanded={showAdvanced}
+            onToggle={() => setShowAdvanced((v) => !v)}
+            activeSection={activeSection}
+            onSectionChange={onSectionChange}
+            settings={settings}
+          />
         </div>
       )}
+    </div>
+  );
+};
+
+interface AdvancedDisclosureProps {
+  expanded: boolean;
+  onToggle: () => void;
+  activeSection: SidebarSection;
+  onSectionChange: (section: SidebarSection) => void;
+  settings: unknown;
+}
+
+/**
+ * Collapsed-by-default home for developer and debug surfaces.
+ *
+ * These exist for a small number of users and are a support liability for
+ * everyone else — a confused user who turns a knob in Debug generates a
+ * bug report about a setting they didn't know they changed.
+ */
+const AdvancedDisclosure: React.FC<AdvancedDisclosureProps> = ({
+  expanded,
+  onToggle,
+  activeSection,
+  onSectionChange,
+  settings,
+}) => {
+  const { t } = useTranslation();
+
+  const groups = SETTINGS_GROUPS.filter((g) => g.advanced)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((id) => SECTIONS_CONFIG[id].enabled(settings)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex gap-1.5 items-center px-2.5 py-1.5 w-full rounded-lg cursor-pointer transition-colors duration-150 text-text-faint hover:text-text-muted"
+      >
+        <ChevronDown
+          width={12}
+          height={12}
+          strokeWidth={2}
+          className={`shrink-0 transition-transform duration-200 ${
+            expanded ? "rotate-180" : "-rotate-90"
+          }`}
+        />
+        <p className="text-[10px] font-semibold uppercase tracking-[0.08em]">
+          {t("sidebar.groups.advanced")}
+        </p>
+      </button>
+
+      {expanded &&
+        groups.map((group) => (
+          <div key={group.labelKey} className="flex flex-col gap-0.5">
+            {group.items.map((id) => (
+              <NavItem
+                key={id}
+                id={id}
+                active={activeSection === id}
+                onClick={() => onSectionChange(id)}
+              />
+            ))}
+          </div>
+        ))}
     </div>
   );
 };
@@ -320,7 +434,7 @@ const SidebarMetrics: React.FC = () => {
           ? "sidebar.metrics.showWeek"
           : "sidebar.metrics.showLifetime",
       )}
-      className="mx-1 mb-3 rounded-xl bg-white/[0.025] border border-hairline px-3 py-2.5 text-[11px] leading-tight text-left transition-colors hover:bg-white/[0.04] hover:border-hairline-strong cursor-pointer"
+      className="glass glimmer mx-1 mb-3 rounded-xl px-3 py-2.5 text-[11px] leading-tight text-left transition-colors hover:border-hairline-strong cursor-pointer"
     >
       <div className="flex items-center justify-between mb-2">
         <p className="uppercase tracking-[0.08em] text-[9px] font-semibold text-text-faint">
@@ -379,10 +493,10 @@ const NavItem: React.FC<NavItemProps> = ({ id, active, onClick }) => {
   const label = t(config.labelKey);
   return (
     <div
-      className={`group relative flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out ${
+      className={`group relative flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-200 ease-out ${
         active
-          ? "bg-white/[0.06] text-text"
-          : "text-text-muted hover:text-text hover:bg-white/[0.04]"
+          ? "glass text-text"
+          : "text-text-muted hover:text-text hover:bg-fill-2 border border-transparent"
       }`}
       onClick={onClick}
     >

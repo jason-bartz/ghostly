@@ -286,7 +286,7 @@ const BuiltinChip: React.FC<BuiltinChipProps> = ({ profile, onCustomize }) => {
   const appInfo = getAppInfoByProfileId(profile.id);
   return (
     <div
-      className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border border-hairline bg-white/[0.025] hover:border-accent/40 hover:bg-white/[0.05] transition-colors"
+      className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border border-hairline bg-fill-1 hover:border-accent/40 hover:bg-fill-2 transition-colors"
       title={profile.match_rules.map((r) => r.value).join("\n")}
     >
       <span className="flex items-center gap-2 text-sm font-medium truncate">

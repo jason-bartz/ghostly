@@ -135,7 +135,7 @@ export const FillerWords: React.FC<FillerWordsProps> = React.memo(
             </SettingContainer>
             {words.length > 0 && (
               <div
-                className={`px-4 p-2 ${grouped ? "" : "rounded-lg border border-mid-gray/20"} flex flex-wrap gap-1`}
+                className={`px-4 p-2 ${grouped ? "" : "rounded-lg border border-hairline-strong"} flex flex-wrap gap-1`}
               >
                 {words.map((word) => (
                   <Button
