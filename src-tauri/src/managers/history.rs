@@ -1403,24 +1403,6 @@ impl HistoryManager {
         Ok(stats)
     }
 
-    /// Current row-count and max-word-count in the history DB. Used once at
-    /// startup to seed the v3 achievements counters in the keychain
-    /// [`crate::managers::usage::UsageManager`] for users upgrading from a
-    /// build that tracked those stats only in the DB.
-    pub fn achievements_backfill_seed(&self) -> Result<(u64, u64)> {
-        let conn = self.get_connection()?;
-        let (count, longest): (u64, u64) = conn.query_row(
-            "SELECT
-                COUNT(*) AS cnt,
-                COALESCE(MAX(word_count), 0) AS longest
-             FROM transcription_history
-             WHERE transcription_text != ''",
-            [],
-            |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)? as u64)),
-        )?;
-        Ok((count, longest))
-    }
-
     fn format_timestamp_title(&self, timestamp: i64) -> String {
         if let Some(utc_datetime) = DateTime::from_timestamp(timestamp, 0) {
             // Convert UTC to local timezone
