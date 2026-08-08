@@ -52,12 +52,12 @@ const TYPING_WPM_BASELINE: u64 = 40;
 /// Schema versions:
 ///   v2 — original shape; all fields except the two "lifetime_achievements"
 ///        trailing fields.
-///   v3 — adds `lifetime_transcription_count` and `lifetime_longest_words`
-///        so the Achievements page can display cumulative stats that survive
-///        note deletion and app reinstall. Loading a v2 blob defaults the
-///        new fields to 0; a one-time backfill from the history DB
-///        ([`UsageManager::backfill_achievements`]) seeds them on first
-///        launch after the upgrade.
+///   v3 — adds `lifetime_transcription_count` and `lifetime_longest_words`,
+///        which fed the Achievements page. That page has since been removed,
+///        and with it the startup backfill that seeded these from the history
+///        DB. The fields are retained because existing v3 blobs on disk
+///        deserialize against this struct — dropping them would fail to load
+///        every current user's usage state. They are written but never read.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct UsageBlob {
     version: u32,
@@ -250,34 +250,6 @@ impl UsageManager {
             blob.clone()
         };
         save_blob(&snapshot);
-    }
-
-    /// Seed the v3 achievements counters from the transcription history DB
-    /// the first time a user launches a build that has them. Idempotent:
-    /// only writes when the current stored value is smaller, so repeated
-    /// invocations and subsequent history edits never lower the counter.
-    /// Called once at startup from `lib.rs` after `HistoryManager` is ready.
-    pub fn backfill_achievements(&self, count_from_db: u64, longest_words_from_db: u64) {
-        let snapshot: Option<UsageBlob> = {
-            let mut blob = self.state.lock().expect("usage mutex poisoned");
-            let mut changed = false;
-            if count_from_db > blob.lifetime_transcription_count {
-                blob.lifetime_transcription_count = count_from_db;
-                changed = true;
-            }
-            if longest_words_from_db > blob.lifetime_longest_words {
-                blob.lifetime_longest_words = longest_words_from_db;
-                changed = true;
-            }
-            if changed {
-                Some(blob.clone())
-            } else {
-                None
-            }
-        };
-        if let Some(snapshot) = snapshot {
-            save_blob(&snapshot);
-        }
     }
 
     /// Monotonic counters used by the Achievements page. Kept in a dedicated

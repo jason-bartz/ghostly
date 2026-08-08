@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="src/assets/Ghostly-wordmark.svg" alt="Ghostly" width="320"><br><br>
+<img src="src-tauri/icons/Ghostly-icon.svg" alt="" width="104"><br><br>
+
+# Ghostly
 
 Your AI ghostwriter. Just speak.
 
