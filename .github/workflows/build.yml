@@ -178,6 +178,68 @@ jobs:
             fi
           done
 
+      # Tauri notarizes and staples the .app, then builds the DMG around it —
+      # so the app passes Gatekeeper on launch, but the disk image itself
+      # carries no ticket. macOS can then warn when the *downloaded image* is
+      # opened, before the user ever reaches the app.
+      #
+      # Notarizing and stapling the DMG closes that gap. It must run before the
+      # R2 upload and the release-asset replacement below, so both distribute
+      # the stapled image.
+      #
+      # `continue-on-error` because the app inside is already notarized: if
+      # Apple's service is slow or down, shipping an unstapled DMG is exactly
+      # the (working) status quo and is far better than failing the release.
+      - name: Notarize and staple DMG
+        id: staple-dmg
+        if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin'
+        continue-on-error: true
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          DMG=$(find src-tauri/target -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG" ]; then
+            echo "::warning::No DMG found to notarize"
+            exit 0
+          fi
+          if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            echo "::warning::Apple notarization credentials absent — leaving DMG unstapled"
+            exit 0
+          fi
+
+          echo "Submitting $DMG to Apple notary service…"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 30m
+
+          echo "Stapling ticket to $DMG…"
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+          # Gate the asset re-upload below on this actually having worked.
+          echo "stapled=true" >> "$GITHUB_OUTPUT"
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+
+      # tauri-action attached the pre-staple DMG to the release. Replace it so
+      # the GitHub download matches what R2 serves.
+      - name: Replace release DMG with stapled copy
+        if: steps.staple-dmg.outputs.stapled == 'true' && inputs.release-id
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMG: ${{ steps.staple-dmg.outputs.dmg }}
+          VERSION: ${{ steps.get-version.outputs.version }}
+        run: |
+          gh release upload "v${VERSION}" "$DMG" \
+            --repo "${{ github.repository }}" --clobber
+
       - name: Upload DMG to Cloudflare R2
         if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin' && inputs.release-id
         shell: bash
@@ -289,14 +351,22 @@ jobs:
             --content-type "application/json" \
             --cache-control "public, max-age=60"
 
+      # Cosmetic: bumps the version string shown on the marketing site.
+      #
+      # `continue-on-error` is deliberate. By the time this runs the DMG is
+      # built, signed, notarized, and already uploaded to R2 — the release has
+      # shipped. Letting a marketing-copy edit mark that run as failed sends
+      # exactly the wrong signal, and it has already happened once: a expired
+      # PAT red-X'd v0.1.23 after a completely successful release.
       - name: Sync version on try-ghostly landing page
         if: inputs.sign-binaries && inputs.target == 'aarch64-apple-darwin' && inputs.release-id
+        continue-on-error: true
         shell: bash
         env:
           TRY_GHOSTLY_PAT: ${{ secrets.TRY_GHOSTLY_PAT }}
         run: |
           if [ -z "$TRY_GHOSTLY_PAT" ]; then
-            echo "TRY_GHOSTLY_PAT not set — skipping landing page sync"
+            echo "::warning::TRY_GHOSTLY_PAT not set — skipping landing page sync"
             exit 0
           fi
           APP_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
@@ -305,7 +375,12 @@ jobs:
             exit 1
           fi
           WORKDIR=$(mktemp -d)
-          git clone --depth=1 "https://x-access-token:${TRY_GHOSTLY_PAT}@github.com/jason-bartz/try-ghostly.git" "$WORKDIR"
+          if ! git clone --depth=1 \
+              "https://x-access-token:${TRY_GHOSTLY_PAT}@github.com/jason-bartz/try-ghostly.git" \
+              "$WORKDIR" 2>/dev/null; then
+            echo "::warning::Could not clone try-ghostly — TRY_GHOSTLY_PAT is likely expired or lacks 'repo' scope. Rotate it in repo secrets. The release itself is unaffected."
+            exit 0
+          fi
           cd "$WORKDIR"
           MONTH_YEAR=$(date -u +"%b %Y")
           sed -i.bak -E 's|("softwareVersion": ")[^"]+(")|\1'"$APP_VERSION"'\2|' index.html
