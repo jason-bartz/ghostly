@@ -68,10 +68,15 @@
   /* -- Neutral gray (translucent utilities derive from this) -- */
   --color-mid-gray: #6b7280;
 
-  /* -- Status -- */
+  /* -- Status --
+   * `-danger` is the *text/tint* red: light enough to read as type on a dark
+   * canvas. `-danger-solid` is the *fill* red for destructive buttons, where
+   * the label is white and the tint red would only give ~2.5:1. Two tokens
+   * because one red cannot do both jobs. */
   --color-success: #34d399;
   --color-warning: #fbbf24;
   --color-danger: #f87171;
+  --color-danger-solid: #dc2626;
 }
 
 /* =============================================================================
@@ -123,6 +128,7 @@
   --color-success: #059669;
   --color-warning: #b45309;
   --color-danger: #dc2626;
+  --color-danger-solid: #dc2626;
 
   --scrollbar-thumb: rgba(23, 20, 41, 0.14);
   --scrollbar-thumb-hover: rgba(23, 20, 41, 0.26);
@@ -559,6 +565,23 @@ body {
     animation: shimmer-sweep 1.6s linear infinite;
   }
 
+  /* Indeterminate progress — a bright band travelling along the accent
+   * gradient. `animate-pulse` on a full-width bar reads as "stalled and
+   * blinking"; a sweep reads as "working". Same keyframe as every other
+   * shimmer, so the whole app's light travels in one direction. */
+  .indeterminate-bar {
+    background: linear-gradient(
+      90deg,
+      var(--color-accent-deep) 0%,
+      var(--color-accent) 38%,
+      var(--color-accent-bright) 50%,
+      var(--color-accent) 62%,
+      var(--color-accent-deep) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-sweep 1.4s linear infinite;
+  }
+
   /* Gradient text for section headlines. Static — the brand gradient without
    * the motion cost. */
   .text-gradient {
@@ -902,6 +925,11 @@ input[type="range"]:focus::-webkit-slider-thumb {
   .shimmer-skeleton {
     animation: none;
     background: var(--color-fill-2);
+  }
+
+  .indeterminate-bar {
+    animation: none;
+    background: var(--color-accent);
   }
 
   .glimmer:hover::after {

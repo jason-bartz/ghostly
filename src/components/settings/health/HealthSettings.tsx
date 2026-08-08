@@ -37,9 +37,26 @@ const STATUS_STYLES: Record<
   HealthStatus,
   { dot: string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  Pass: { dot: "text-emerald-400 bg-emerald-400/12", icon: Check },
-  Warn: { dot: "text-amber-400 bg-amber-400/12", icon: AlertTriangle },
-  Fail: { dot: "text-red-400 bg-red-400/12", icon: X },
+  Pass: { dot: "text-success bg-success/12", icon: Check },
+  Warn: { dot: "text-warning bg-warning/12", icon: AlertTriangle },
+  Fail: { dot: "text-danger bg-danger/12", icon: X },
+};
+
+/** Summary-banner tint per overall status. Keyed off the same semantic tokens
+ *  as the per-check dots so the banner and the rows can never disagree. */
+const SUMMARY_STYLES: Record<HealthStatus, { band: string; badge: string }> = {
+  Pass: {
+    band: "border-success/25 bg-success/[0.06]",
+    badge: "bg-success/12 text-success",
+  },
+  Warn: {
+    band: "border-warning/25 bg-warning/[0.06]",
+    badge: "bg-warning/12 text-warning",
+  },
+  Fail: {
+    band: "border-danger/25 bg-danger/[0.06]",
+    badge: "bg-danger/12 text-danger",
+  },
 };
 
 export const HealthSettings: React.FC = () => {
@@ -124,22 +141,10 @@ export const HealthSettings: React.FC = () => {
 
       {/* --- Summary banner ------------------------------------------------ */}
       <div
-        className={`rounded-2xl px-4 py-3.5 flex items-center gap-3.5 border transition-colors duration-300 ${
-          overall === "Pass"
-            ? "border-emerald-400/25 bg-emerald-400/[0.06]"
-            : overall === "Warn"
-              ? "border-amber-400/25 bg-amber-400/[0.06]"
-              : "border-red-400/25 bg-red-400/[0.06]"
-        }`}
+        className={`rounded-2xl px-4 py-3.5 flex items-center gap-3.5 border transition-colors duration-300 ${SUMMARY_STYLES[overall].band}`}
       >
         <span
-          className={`flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${
-            overall === "Pass"
-              ? "bg-emerald-400/12 text-emerald-400"
-              : overall === "Warn"
-                ? "bg-amber-400/12 text-amber-400"
-                : "bg-red-400/12 text-red-400"
-          }`}
+          className={`flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${SUMMARY_STYLES[overall].badge}`}
         >
           {overall === "Pass" ? (
             <ShieldCheck className="w-4.5 h-4.5" strokeWidth={1.9} />
@@ -181,7 +186,7 @@ export const HealthSettings: React.FC = () => {
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
-                className="h-5 rounded bg-fill-2 animate-pulse"
+                className="h-5 rounded-md shimmer-skeleton"
                 style={{ animationDelay: `${i * 60}ms` }}
               />
             ))}

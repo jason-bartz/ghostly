@@ -605,7 +605,7 @@ export const DictionarySettings: React.FC = () => {
                 <div className="flex-1" />
                 <button
                   onClick={handleBulkDelete}
-                  className="flex items-center gap-1.5 h-7 px-2 rounded-md text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 h-7 px-2 rounded-md text-xs text-danger hover:bg-danger/10 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   {t("settings.advanced.customWords.remove_short", "Delete")}
@@ -697,7 +697,7 @@ export const DictionarySettings: React.FC = () => {
                       )}
                       <button
                         onClick={() => handleRemove(word)}
-                        className="text-mid-gray/50 hover:text-red-400 transition-colors opacity-0 group-hover/row:opacity-100"
+                        className="text-mid-gray/50 hover:text-danger transition-colors opacity-0 group-hover/row:opacity-100"
                         title={t("settings.advanced.customWords.remove", {
                           word,
                         })}

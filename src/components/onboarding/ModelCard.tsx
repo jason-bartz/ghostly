@@ -299,7 +299,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
       {status === "verifying" && (
         <div className="w-full mt-3">
           <div className="w-full h-1 bg-fill-4 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full animate-pulse w-full" />
+            <div className="h-full w-full rounded-full indeterminate-bar" />
           </div>
           <p className="text-xs text-text/50 mt-1">
             {t("modelSelector.verifyingGeneric")}
@@ -309,7 +309,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
       {status === "extracting" && (
         <div className="w-full mt-3">
           <div className="w-full h-1 bg-fill-4 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full animate-pulse w-full" />
+            <div className="h-full w-full rounded-full indeterminate-bar" />
           </div>
           <p className="text-xs text-text/50 mt-1">
             {t("modelSelector.extractingGeneric")}

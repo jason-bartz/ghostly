@@ -151,7 +151,7 @@ export const RestApiSettings: React.FC = () => {
                   <div key={path} className="flex gap-3 items-start">
                     <span
                       className={`shrink-0 font-bold ${
-                        method === "GET" ? "text-blue-400" : "text-green-400"
+                        method === "GET" ? "text-accent-alt" : "text-success"
                       }`}
                     >
                       {method}

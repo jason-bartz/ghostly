@@ -13,7 +13,7 @@ const Badge: React.FC<BadgeProps> = ({
 }) => {
   const variantClasses = {
     primary: "bg-accent/15 border border-accent/30 text-accent-bright",
-    success: "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300",
+    success: "bg-success/15 border border-success/30 text-success",
     secondary: "bg-fill-2 border border-hairline-strong text-text-muted",
   };
 

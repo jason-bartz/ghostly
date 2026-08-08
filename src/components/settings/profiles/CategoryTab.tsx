@@ -300,7 +300,7 @@ export const CategoryTab: React.FC<CategoryTabProps> = ({
                 <button
                   type="button"
                   onClick={() => removeVocab(w)}
-                  className="text-text/50 hover:text-red-400"
+                  className="text-text/50 hover:text-danger"
                   aria-label={t("common.remove")}
                 >
                   <X className="w-3 h-3" />

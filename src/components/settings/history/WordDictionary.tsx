@@ -187,7 +187,7 @@ export const WordDictionary: React.FC = () => {
               </button>
               <button
                 onClick={() => handleDelete(c.id)}
-                className="text-mid-gray/50 hover:text-red-400 transition-colors"
+                className="text-mid-gray/50 hover:text-danger transition-colors"
                 title={t("settings.history.dictionary.delete", "Delete")}
               >
                 <Trash2 className="w-4 h-4" />

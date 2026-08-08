@@ -198,7 +198,7 @@ export const ModelTierCard: React.FC<ModelTierCardProps> = ({
                   e.stopPropagation();
                   onCancel(model.id);
                 }}
-                className="text-[10.5px] text-text-faint hover:text-red-400 transition-colors cursor-pointer"
+                className="text-[10.5px] text-text-faint hover:text-danger transition-colors cursor-pointer"
               >
                 {t("modelSelector.cancel")}
               </button>

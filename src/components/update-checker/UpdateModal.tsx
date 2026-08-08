@@ -146,8 +146,8 @@ export const UpdateModal: React.FC = () => {
         )}
 
         {isError && error && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
-            <p className="text-[11px] font-semibold text-red-400 uppercase tracking-[0.08em] mb-1">
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+            <p className="text-[11px] font-semibold text-danger uppercase tracking-[0.08em] mb-1">
               {t("updater.modal.errorTitle")}
             </p>
             <p className="text-[13px] text-text-muted leading-relaxed break-words">

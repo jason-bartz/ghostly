@@ -6,7 +6,7 @@ import "./RecordingOverlay.css";
 import { commands } from "@/bindings";
 import i18n, { syncLanguageFromSettings } from "@/i18n";
 import { getLanguageDirection } from "@/lib/utils/rtl";
-import logoSrc from "@/assets/Ghostly-logo.svg";
+import GhostlyMark from "../components/icons/GhostlyMark";
 
 type OverlayState = "recording" | "transcribing" | "processing" | "staged";
 
@@ -40,7 +40,7 @@ function formatKeystroke(ks: string): string {
 }
 
 const GhostIcon: React.FC = () => (
-  <img src={logoSrc} width="22" height="22" className="ghost-icon" alt="" />
+  <GhostlyMark height={22} className="ghost-icon" style={{ color: "#DDD6FE" }} />
 );
 
 const RecordingOverlay: React.FC = () => {

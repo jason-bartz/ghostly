@@ -65,7 +65,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
         className={`h-8 px-3 text-[13px] font-medium bg-fill-1 border border-hairline-strong rounded-lg min-w-[200px] text-start text-text flex items-center justify-between transition-all duration-150 ${
           disabled
             ? "opacity-50 cursor-not-allowed"
-            : "hover:bg-fill-2 hover:border-accent/40 cursor-pointer focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            : "hover:bg-fill-2 hover:border-accent/40 cursor-pointer focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20"
         } ${isOpen ? "border-accent/60 bg-fill-2" : ""}`}
         onClick={handleToggle}
         disabled={disabled}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { commands } from "@/bindings";
 import { SettingContainer } from "../../ui/SettingContainer";
 import { PathDisplay } from "../../ui/PathDisplay";
+import { Alert } from "../../ui/Alert";
 
 interface LogDirectoryProps {
   descriptionMode?: "tooltip" | "inline";
@@ -59,13 +60,9 @@ export const LogDirectory: React.FC<LogDirectoryProps> = ({
       layout="stacked"
     >
       {loading ? (
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-100 rounded" />
-        </div>
+        <div className="h-8 rounded-md shimmer-skeleton" />
       ) : error ? (
-        <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-          {t("errors.loadDirectory", { error })}
-        </div>
+        <Alert variant="error">{t("errors.loadDirectory", { error })}</Alert>
       ) : (
         <PathDisplay path={logDir} onOpen={handleOpen} disabled={!logDir} />
       )}
