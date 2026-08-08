@@ -32,9 +32,21 @@ use tauri::AppHandle;
 
 use crate::settings::get_settings;
 
-/// Where reports go. Same Cloudflare Worker that serves license activation, on
-/// a separate route.
-const TELEMETRY_ENDPOINT: &str = "https://ghostly-license.jasonbartz.workers.dev/telemetry";
+/// Path on the license Worker that accepts error reports.
+///
+/// The host is taken from [`crate::license::DEFAULT_BASE`] rather than written
+/// out again here — an earlier copy of this constant hardcoded a hostname that
+/// did not resolve at all, so every report silently went nowhere. Deriving it
+/// means the two can never drift apart again.
+///
+/// NOTE: this route does not exist on the Worker yet. Reports 404 and are
+/// discarded, which is harmless (see `report` — failures are swallowed by
+/// design) but collects nothing until the handler is deployed.
+const TELEMETRY_PATH: &str = "/telemetry";
+
+fn telemetry_endpoint() -> String {
+    format!("{}{}", crate::license::base_url(), TELEMETRY_PATH)
+}
 
 /// Hard ceiling on reports per app run. A repeating failure is worth knowing
 /// about once; it is not worth several hundred requests.
@@ -181,7 +193,12 @@ pub fn report(app: &AppHandle, kind: ErrorKind, detail: ErrorDetail) {
         // Errors here are swallowed on purpose. A failed report is not the
         // user's problem and must never produce a toast or a log-level warning
         // that looks like a real fault.
-        match client.post(TELEMETRY_ENDPOINT).json(&payload).send().await {
+        match client
+            .post(telemetry_endpoint())
+            .json(&payload)
+            .send()
+            .await
+        {
             Ok(_) => debug!("Error report sent: {:?}", payload.kind),
             Err(e) => debug!("Error report not sent: {}", e),
         }
