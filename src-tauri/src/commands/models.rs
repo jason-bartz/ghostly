@@ -28,10 +28,27 @@ pub async fn download_model(
     model_manager: State<'_, Arc<ModelManager>>,
     model_id: String,
 ) -> Result<(), String> {
-    let result = model_manager
-        .download_model(&model_id)
-        .await
-        .map_err(|e| e.to_string());
+    let outcome = model_manager.download_model(&model_id).await;
+
+    if let Err(ref err) = outcome {
+        // Classify before stringifying. Downcasting to the concrete error type
+        // gives a far more accurate bucket than pattern-matching a message, and
+        // keeps the error text itself out of telemetry entirely.
+        let detail = if let Some(e) = err.downcast_ref::<reqwest::Error>() {
+            crate::telemetry::classify_reqwest(e)
+        } else if let Some(e) = err.downcast_ref::<std::io::Error>() {
+            crate::telemetry::classify_io(e)
+        } else {
+            crate::telemetry::ErrorDetail::Unclassified
+        };
+        crate::telemetry::report(
+            &app_handle,
+            crate::telemetry::ErrorKind::ModelDownloadFailed,
+            detail,
+        );
+    }
+
+    let result = outcome.map_err(|e| e.to_string());
 
     if let Err(ref error) = result {
         let _ = app_handle.emit(

@@ -11,11 +11,11 @@ export const Input: React.FC<InputProps> = ({
   ...props
 }) => {
   const baseClasses =
-    "text-sm font-medium bg-white/[0.03] border border-hairline-strong rounded-lg text-text text-start transition-all duration-150 placeholder:text-text-faint";
+    "text-sm font-medium bg-fill-1 border border-hairline-strong rounded-lg text-text text-start transition-all duration-150 placeholder:text-text-faint";
 
   const interactiveClasses = disabled
     ? "opacity-60 cursor-not-allowed"
-    : "hover:border-accent/40 hover:bg-white/[0.05] focus:outline-none focus:border-accent focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20";
+    : "hover:border-accent/40 hover:bg-fill-2 focus:outline-none focus:border-accent focus:bg-fill-3 focus:ring-2 focus:ring-accent/20";
 
   const variantClasses = {
     default: "h-8 px-3 py-1.5",

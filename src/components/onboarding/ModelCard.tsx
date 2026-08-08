@@ -168,7 +168,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
                 <p className="text-[10.5px] uppercase tracking-[0.08em] text-text-faint w-24 text-end">
                   {t("onboarding.modelCard.accuracy")}
                 </p>
-                <div className="w-16 h-1 bg-white/[0.08] rounded-full overflow-hidden">
+                <div className="w-16 h-1 bg-fill-4 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full"
                     style={{ width: `${model.accuracy_score * 100}%` }}
@@ -179,7 +179,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
                 <p className="text-[10.5px] uppercase tracking-[0.08em] text-text-faint w-24 text-end">
                   {t("onboarding.modelCard.speed")}
                 </p>
-                <div className="w-16 h-1 bg-white/[0.08] rounded-full overflow-hidden">
+                <div className="w-16 h-1 bg-fill-4 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full"
                     style={{ width: `${model.speed_score * 100}%` }}
@@ -240,7 +240,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
       {/* Download/extract progress */}
       {status === "downloading" && downloadProgress !== undefined && (
         <div className="w-full mt-3">
-          <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
+          <div className="w-full h-1 bg-fill-4 rounded-full overflow-hidden">
             <div
               className="h-full min-w-[2px] bg-gradient-to-r from-accent to-accent-deep rounded-full transition-all duration-300 ease-out"
               style={{ width: `${downloadProgress}%` }}
@@ -298,7 +298,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
       )}
       {status === "verifying" && (
         <div className="w-full mt-3">
-          <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
+          <div className="w-full h-1 bg-fill-4 rounded-full overflow-hidden">
             <div className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full animate-pulse w-full" />
           </div>
           <p className="text-xs text-text/50 mt-1">
@@ -308,7 +308,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
       )}
       {status === "extracting" && (
         <div className="w-full mt-3">
-          <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
+          <div className="w-full h-1 bg-fill-4 rounded-full overflow-hidden">
             <div className="h-full bg-gradient-to-r from-accent to-accent-deep rounded-full animate-pulse w-full" />
           </div>
           <p className="text-xs text-text/50 mt-1">

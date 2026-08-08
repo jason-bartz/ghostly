@@ -116,7 +116,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
       : "bg-logo-primary";
 
   return (
-    <div className="bg-background border border-mid-gray/20 rounded-lg p-5 space-y-4">
+    <div className="surface-card rounded-xl p-5 space-y-4">
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2">
@@ -145,7 +145,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
 
       {!stats.is_pro && (
         <div>
-          <div className="h-2 w-full rounded-full bg-mid-gray/10 overflow-hidden">
+          <div className="h-2 w-full rounded-full bg-fill-2 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ease-out ${barColor}`}
               style={{ width: `${Math.round(pct * 100)}%` }}
@@ -191,7 +191,7 @@ const HistoryList: React.FC<HistoryListProps> = ({ history, limitSecs }) => {
             <div className="w-24 shrink-0 text-sm tabular-nums">
               {formatWeekLabel(w.week_start_iso)}
             </div>
-            <div className="flex-1 h-1.5 rounded-full bg-mid-gray/10 overflow-hidden">
+            <div className="flex-1 h-1.5 rounded-full bg-fill-2 overflow-hidden">
               <div
                 className={`h-full rounded-full ${
                   w.hit_limit ? "bg-amber-500" : "bg-logo-primary"

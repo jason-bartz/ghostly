@@ -300,7 +300,7 @@ const ErrorBlock: React.FC<ErrorBlockProps> = ({
           <p className="text-xs text-mid-gray">
             {t("license.errors.deviceLimitHelp", { limit: error.limit })}
           </p>
-          <div className="divide-y divide-mid-gray/20 border border-mid-gray/20 rounded">
+          <div className="divide-y divide-[color:var(--color-hairline)] border border-hairline-strong rounded">
             {error.active_devices.map((d, i) => (
               <div
                 key={`${d.machine_id ?? i}-${i}`}

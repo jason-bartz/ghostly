@@ -15,6 +15,7 @@ import { ShowOverlay } from "../ShowOverlay";
 import { SoundPicker } from "../SoundPicker";
 import { ClamshellMicrophoneSelector } from "../ClamshellMicrophoneSelector";
 import { AlwaysOnMicrophone } from "../AlwaysOnMicrophone";
+import { AppearanceSelector } from "../AppearanceSelector";
 
 export const GeneralSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -66,6 +67,11 @@ export const GeneralSettings: React.FC = () => {
           disabled={!audioFeedbackEnabled}
         />
         <VolumeSlider disabled={!audioFeedbackEnabled} />
+      </SettingsGroup>
+
+      {/* ── Appearance ── */}
+      <SettingsGroup title={t("settings.appearance.group")}>
+        <AppearanceSelector />
       </SettingsGroup>
     </div>
   );

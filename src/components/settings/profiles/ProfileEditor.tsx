@@ -337,7 +337,7 @@ export const ProfileEditor: React.FC<Props> = ({
       />
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-mid-gray/20">
+      <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-hairline-strong">
         <Button variant="secondary" size="md" onClick={onCancel}>
           {t("settings.profiles.cancel")}
         </Button>

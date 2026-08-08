@@ -62,7 +62,7 @@ export const UpdateModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center modal-scrim"
       onClick={() => allowDismiss && closeModal()}
     >
       <div
@@ -160,13 +160,13 @@ export const UpdateModal: React.FC = () => {
           {!isDownloading && !isReady && (
             <>
               <button
-                className="px-4 py-2 text-sm font-medium rounded-full text-text-muted hover:text-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors"
+                className="px-4 py-2 text-sm font-medium rounded-full text-text-muted hover:text-text hover:bg-fill-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors"
                 onClick={skipCurrent}
               >
                 {t("updater.modal.skipButton")}
               </button>
               <button
-                className="px-4 py-2 text-sm font-medium rounded-full border border-hairline-strong text-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors"
+                className="px-4 py-2 text-sm font-medium rounded-full border border-hairline-strong text-text hover:bg-fill-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 transition-colors"
                 onClick={remindLater}
               >
                 {t("updater.modal.laterButton")}

@@ -11,6 +11,9 @@ import {
   ArrowUpNarrowWide,
   Calendar,
   Check,
+  AppWindow,
+  GalleryVerticalEnd,
+  List as ListIcon,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -48,6 +51,8 @@ import { HistoryLimit } from "../HistoryLimit";
 import { RecordingRetentionPeriodSelector } from "../RecordingRetentionPeriod";
 import { useSettings } from "@/hooks/useSettings";
 import { getAppInfoByName, categoryColors } from "@/lib/appIcons";
+import { SegmentedControl } from "../../ui/SegmentedControl";
+import { NotesTimeline, type TimelineGroup } from "./NotesTimeline";
 
 const IconButton: React.FC<{
   onClick: () => void;
@@ -85,7 +90,7 @@ const ToolbarButton: React.FC<{
     className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
       active
         ? "bg-accent/15 border-accent/40 text-accent-bright"
-        : "bg-white/[0.03] border-hairline-strong text-text-muted hover:text-accent-bright hover:border-accent/40"
+        : "bg-fill-1 border-hairline-strong text-text-muted hover:text-accent-bright hover:border-accent/40"
     }`}
   >
     {children}
@@ -95,6 +100,15 @@ const ToolbarButton: React.FC<{
 const PAGE_SIZE = 30;
 
 type SortMode = "newest" | "oldest" | "saved";
+
+/**
+ * How notes are arranged.
+ *
+ * `timeline` is the default because it answers a question a flat list can't:
+ * *when* did I say this, and *where* was I? Dictation is bursty and
+ * context-bound — the rail makes that shape visible at a glance.
+ */
+type ViewMode = "timeline" | "list" | "app";
 
 function sortEntries(entries: HistoryEntry[], mode: SortMode): HistoryEntry[] {
   if (mode === "newest") return entries;
@@ -147,6 +161,7 @@ export const HistorySettings: React.FC = () => {
 
   // Sort state
   const [sortMode, setSortMode] = useState<SortMode>("newest");
+  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
 
   // Retention popover
   const [showRetention, setShowRetention] = useState(false);
@@ -694,6 +709,72 @@ export const HistorySettings: React.FC = () => {
       groupedEntries.push({ type: "entry", entry });
   }
 
+  /**
+   * Day-bucketed groups for the timeline.
+   *
+   * The `meta` line counts notes *and* distinct source apps — "8 notes ·
+   * 3 apps" tells you at a glance whether a day was focused or scattered,
+   * which the note count alone does not.
+   */
+  const timelineGroups: TimelineGroup[] = (() => {
+    const buckets = new Map<string, HistoryEntry[]>();
+    for (const entry of displayedEntries) {
+      const key = dayKey(entry.timestamp);
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(entry);
+      else buckets.set(key, [entry]);
+    }
+    return Array.from(buckets.entries()).map(([key, group]) => {
+      const apps = new Set(
+        group.map((e) => e.source_app).filter((a): a is string => !!a),
+      );
+      const parts = [
+        t("settings.history.view.noteCount", { count: group.length }),
+      ];
+      if (apps.size > 0) {
+        parts.push(t("settings.history.view.appCount", { count: apps.size }));
+      }
+      return {
+        key,
+        label: dayLabel(group[0].timestamp, locale),
+        meta: parts.join(" · "),
+        entries: group,
+      };
+    });
+  })();
+
+  /**
+   * App-bucketed groups, ordered by volume so the apps you actually dictate
+   * into rise to the top. Notes with no captured source app collect into one
+   * trailing bucket rather than being dropped.
+   */
+  const appGroups: TimelineGroup[] = (() => {
+    const buckets = new Map<string, HistoryEntry[]>();
+    for (const entry of displayedEntries) {
+      const key = entry.source_app ?? "";
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(entry);
+      else buckets.set(key, [entry]);
+    }
+    return Array.from(buckets.entries())
+      .sort((a, b) => {
+        // Unknown-app bucket always last, regardless of size.
+        if (a[0] === "") return 1;
+        if (b[0] === "") return -1;
+        return b[1].length - a[1].length;
+      })
+      .map(([key, group]) => ({
+        key: key || "__unknown__",
+        // `||` rather than `??`: the unknown bucket's key is "", which is not
+        // nullish and would otherwise become an empty heading.
+        label:
+          (key && (getAppInfoByName(key)?.label ?? key)) ||
+          t("settings.history.view.unknownApp"),
+        meta: t("settings.history.view.noteCount", { count: group.length }),
+        entries: group,
+      }));
+  })();
+
   const renderEntry = (entry: HistoryEntry) => (
     <HistoryEntryComponent
       key={entry.id}
@@ -762,30 +843,80 @@ export const HistorySettings: React.FC = () => {
       </div>
     );
   } else {
-    content = (
-      <>
-        <div className="divide-y divide-[color:var(--color-hairline)]">
-          {groupedEntries.map((item) =>
-            item.type === "header" ? (
-              <div
-                key={`h-${item.key}`}
-                className="px-4 py-1.5 text-[11px] uppercase tracking-wide font-semibold text-text-muted bg-white/[0.02] sticky top-0 z-[1]"
-              >
-                {item.label}
-              </div>
-            ) : (
-              renderEntry(item.entry)
-            ),
-          )}
-        </div>
-        {/* Sentinel for infinite scroll (only in browse mode) */}
-        {!isSearchMode && <div ref={sentinelRef} className="h-1" />}
-      </>
-    );
+    // Sentinel for infinite scroll (browse mode only — search returns a
+    // complete result set, so there is nothing further to page in).
+    const sentinel = !isSearchMode ? (
+      <div ref={sentinelRef} className="h-1" />
+    ) : null;
+
+    if (viewMode === "timeline" || viewMode === "app") {
+      content = (
+        <NotesTimeline
+          groups={viewMode === "timeline" ? timelineGroups : appGroups}
+          renderEntry={renderEntry}
+          footer={sentinel}
+        />
+      );
+    } else {
+      content = (
+        <>
+          <div className="divide-y divide-[color:var(--color-hairline)]">
+            {groupedEntries.map((item) =>
+              item.type === "header" ? (
+                <div
+                  key={`h-${item.key}`}
+                  className="glass sticky top-0 z-20 px-4 py-2 rounded-none border-x-0 border-t-0 text-[12.5px] font-semibold tracking-tight text-text"
+                >
+                  {item.label}
+                </div>
+              ) : (
+                renderEntry(item.entry)
+              ),
+            )}
+          </div>
+          {sentinel}
+        </>
+      );
+    }
   }
 
   return (
     <div className="w-full flex flex-col gap-3 pt-1">
+      {/* Header: identity + the primary way of looking at the data. Sits above
+          the utility toolbar so the view choice reads as a mode, not a filter. */}
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight leading-none">
+            {t("settings.history.title")}
+          </h1>
+          <p className="text-[12.5px] text-text-muted mt-1.5 leading-snug">
+            {t("settings.history.subtitle")}
+          </p>
+        </div>
+        <SegmentedControl<ViewMode>
+          value={viewMode}
+          onChange={setViewMode}
+          ariaLabel={t("settings.history.view.label")}
+          options={[
+            {
+              value: "timeline",
+              label: t("settings.history.view.timeline"),
+              Icon: GalleryVerticalEnd,
+            },
+            {
+              value: "app",
+              label: t("settings.history.view.byApp"),
+              Icon: AppWindow,
+            },
+            {
+              value: "list",
+              label: t("settings.history.view.list"),
+              Icon: ListIcon,
+            },
+          ]}
+        />
+      </div>
+
       {/* Toolbar: search + sort + actions — all 32px tall for a clean grid */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1 min-w-0">
@@ -798,7 +929,7 @@ export const HistorySettings: React.FC = () => {
               "settings.history.searchPlaceholder",
               "Search transcriptions…",
             )}
-            className="w-full h-8 pl-9 pr-8 text-sm bg-white/[0.03] border border-hairline-strong rounded-md
+            className="w-full h-8 pl-9 pr-8 text-sm bg-fill-1 border border-hairline-strong rounded-md
                        focus:outline-none focus:border-accent/60 placeholder:text-text-faint"
           />
           {searchQuery && (
@@ -821,7 +952,7 @@ export const HistorySettings: React.FC = () => {
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as SortMode)}
-            className="h-8 pl-7 pr-2 bg-white/[0.03] border border-hairline-strong rounded-md text-sm
+            className="h-8 pl-7 pr-2 bg-fill-1 border border-hairline-strong rounded-md text-sm
                        focus:outline-none focus:border-accent/60 cursor-pointer appearance-none"
             title={t("settings.history.sort", "Sort")}
           >
@@ -934,7 +1065,7 @@ export const HistorySettings: React.FC = () => {
             return (
               <span
                 key={tag}
-                className={`pill pill-interactive group inline-flex items-center gap-1 ${active ? "pill-accent" : ""}`}
+                className={`tag tag-interactive group inline-flex items-center gap-1 ${active ? "tag-accent" : ""}`}
               >
                 <button
                   onClick={() => toggleFilterTag(tag)}
@@ -978,7 +1109,7 @@ export const HistorySettings: React.FC = () => {
       {dateRange && (
         <div className="flex items-center gap-1.5">
           <Calendar className="w-3.5 h-3.5 text-text-faint shrink-0" />
-          <span className="pill pill-accent">
+          <span className="tag tag-accent">
             {dateRange.start.toLocaleDateString(i18n.language)} –{" "}
             {dateRange.end.toLocaleDateString(i18n.language)}
             <button
@@ -1048,7 +1179,7 @@ export const HistorySettings: React.FC = () => {
           </button>
           <button
             onClick={clearSelection}
-            className="flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-white/[0.05] transition-colors cursor-pointer"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text hover:bg-fill-2 transition-colors cursor-pointer"
             title={t("settings.history.bulk.clear", "Clear selection")}
           >
             <X className="w-3.5 h-3.5" />
@@ -1148,15 +1279,14 @@ const EntryMoreMenu: React.FC<{
       </IconButton>
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded-md border border-hairline-strong
-                     bg-surface-2 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.6)] py-1 text-sm"
+          className="absolute end-0 top-full mt-1.5 z-30 min-w-[180px] rounded-xl glass-raised py-1 text-sm"
           role="menu"
         >
           <button
             role="menuitem"
             onClick={() => run(onGenerate)}
             disabled={retrying || generating || !hasTranscription}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-text/90 hover:bg-white/[0.05]
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-text/90 hover:bg-fill-2
                        disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             {generating ? (
@@ -1170,7 +1300,7 @@ const EntryMoreMenu: React.FC<{
             role="menuitem"
             onClick={() => run(onRetranscribe)}
             disabled={retrying}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-text/90 hover:bg-white/[0.05]
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-text/90 hover:bg-fill-2
                        disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             <RotateCcw width={14} height={14} />
@@ -1359,7 +1489,7 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
                 "settings.history.titlePlaceholder",
                 "Add a title…",
               )}
-              className="text-sm font-medium bg-white/[0.03] border border-hairline-strong rounded px-2 py-0.5 w-full
+              className="text-sm font-medium bg-fill-1 border border-hairline-strong rounded px-2 py-0.5 w-full
                          focus:outline-none focus:border-accent/60"
             />
           ) : (
@@ -1427,11 +1557,7 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
               const colors = appInfo ? categoryColors[appInfo.category] : null;
               return (
                 <span
-                  className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium border ${
-                    colors
-                      ? `${colors.chipBg} ${colors.chipBorder} ${colors.chipText}`
-                      : "bg-white/[0.04] border-hairline-strong text-text-muted"
-                  }`}
+                  className={`tag ${colors?.tagClass ?? ""}`}
                   title={t("settings.history.sourceApp", "Captured in")}
                 >
                   {appInfo && (
@@ -1448,7 +1574,7 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
           {tags.map((tag) => (
             <span
               key={tag.name}
-              className={`pill ${tag.auto ? "pill-accent" : ""}`}
+              className={`tag ${tag.auto ? "tag-accent" : ""}`}
               title={
                 tag.auto
                   ? t("settings.history.tags.autoApplied", "Auto-applied by AI")
@@ -1483,13 +1609,13 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
               }}
               placeholder={t("settings.history.tags.placeholder", "tag…")}
               maxLength={64}
-              className="text-xs px-2 py-0.5 w-24 bg-white/[0.03] border border-hairline-strong rounded-full text-text
+              className="text-[11.5px] px-2 py-0.5 w-24 bg-fill-1 border border-hairline-strong rounded-md text-text
                          focus:outline-none focus:border-accent/60"
             />
           ) : (
             <button
               onClick={() => setAddingTag(true)}
-              className="pill pill-dashed pill-interactive"
+              className="tag tag-add tag-interactive"
               title={t("settings.history.tags.add", "Add tag")}
             >
               <Plus width={10} height={10} />

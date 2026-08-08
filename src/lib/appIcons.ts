@@ -95,6 +95,9 @@ export const categoryColors: Record<
     chipBg: string;
     chipBorder: string;
     chipText: string;
+    /** Theme-aware flat-tag class defined in App.css. Prefer this over the
+     *  `chip*` Tailwind fields, whose text tones only work on dark. */
+    tagClass: string;
   }
 > = {
   developer: {
@@ -104,6 +107,7 @@ export const categoryColors: Record<
     chipBg: "bg-emerald-400/10",
     chipBorder: "border-emerald-400/25",
     chipText: "text-emerald-200",
+    tagClass: "tag-cat-developer",
   },
   casual: {
     bg: "bg-sky-600",
@@ -112,6 +116,7 @@ export const categoryColors: Record<
     chipBg: "bg-sky-400/10",
     chipBorder: "border-sky-400/25",
     chipText: "text-sky-200",
+    tagClass: "tag-cat-casual",
   },
   email: {
     bg: "bg-amber-600",
@@ -120,6 +125,7 @@ export const categoryColors: Record<
     chipBg: "bg-amber-400/10",
     chipBorder: "border-amber-400/25",
     chipText: "text-amber-200",
+    tagClass: "tag-cat-email",
   },
   structured: {
     bg: "bg-violet-600",
@@ -128,6 +134,7 @@ export const categoryColors: Record<
     chipBg: "bg-violet-400/10",
     chipBorder: "border-violet-400/25",
     chipText: "text-violet-200",
+    tagClass: "tag-cat-structured",
   },
 };
 

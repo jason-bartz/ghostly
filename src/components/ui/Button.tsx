@@ -27,13 +27,13 @@ export const Button: React.FC<ButtonProps> = ({
     "primary-soft":
       "text-accent-bright bg-accent/10 border-accent/25 hover:bg-accent/15 hover:border-accent/40 focus:ring-2 focus:ring-accent/30",
     secondary:
-      "text-text bg-white/[0.03] border-hairline-strong hover:bg-white/[0.06] hover:border-hairline-strong focus:ring-2 focus:ring-accent/30",
+      "text-text bg-fill-1 border-hairline-strong hover:bg-fill-3 hover:border-hairline-strong focus:ring-2 focus:ring-accent/30",
     danger:
       "text-white bg-red-500/90 border-transparent hover:bg-red-500 focus:ring-2 focus:ring-red-500/40",
     "danger-ghost":
       "text-red-400 bg-transparent border-transparent hover:text-red-300 hover:bg-red-500/10 focus:bg-red-500/15",
     ghost:
-      "text-text-muted bg-transparent border-transparent hover:text-text hover:bg-white/[0.04] focus:bg-white/[0.06]",
+      "text-text-muted bg-transparent border-transparent hover:text-text hover:bg-fill-2 focus:bg-fill-3",
   };
 
   const sizeClasses = {

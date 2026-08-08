@@ -139,12 +139,19 @@ const settingUpdaters: {
     commands.changeAppendTrailingSpaceSetting(value as boolean),
   refinement_enabled: (value) =>
     commands.changeRefinementEnabledSetting(value as boolean),
+  deterministic_cleanup_in_ai_apps: (value) =>
+    commands.changeDeterministicCleanupInAiAppsSetting(value as boolean),
   log_level: (value) => commands.setLogLevel(value as any),
   app_language: (value) => commands.changeAppLanguageSetting(value as string),
   experimental_enabled: (value) =>
     commands.changeExperimentalEnabledSetting(value as boolean),
   lazy_stream_close: (value) =>
     commands.changeLazyStreamCloseSetting(value as boolean),
+  // The backend also flips `error_reporting_prompted` so the one-time ask
+  // doesn't reappear after an explicit choice either way.
+  error_reporting_enabled: (value) =>
+    commands.changeErrorReportingSetting(value as boolean),
+  appearance: (value) => commands.changeAppearanceSetting(value as any),
   continuous_dictation_enabled: (value) =>
     commands.changeContinuousDictationEnabledSetting(value as boolean),
   continuous_silence_ms: (value) =>

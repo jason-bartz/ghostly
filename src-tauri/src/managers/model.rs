@@ -29,6 +29,45 @@ pub enum EngineType {
     Cohere,
 }
 
+/// The three named choices surfaced in the primary model picker.
+///
+/// Seventeen model IDs is an inventory, not a decision — users cannot rank
+/// "Parakeet V3" against "Canary 1B v2" and shouldn't have to. Exactly one
+/// model carries each tier; everything else lives behind "All models" for the
+/// people who genuinely want to pick an engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub enum ModelTier {
+    /// Near-instant, English only. Streaming encoder.
+    Fast,
+    /// The default. Fast enough to feel immediate, accurate enough to trust.
+    Balanced,
+    /// Highest accuracy, widest language coverage, slowest.
+    Accurate,
+}
+
+/// Tier assignments. Keep this table as the single source of truth — the
+/// frontend reads `tier` off `ModelInfo` rather than hardcoding IDs.
+const TIER_ASSIGNMENTS: &[(&str, ModelTier)] = &[
+    ("moonshine-small-streaming-en", ModelTier::Fast),
+    ("parakeet-tdt-0.6b-v3", ModelTier::Balanced),
+    ("large", ModelTier::Accurate),
+];
+
+/// Shipped inside the app bundle so the very first dictation works before any
+/// download finishes. See `migrate_bundled_models`.
+const BUNDLED_MODEL_IDS: &[&str] = &["moonshine-tiny-streaming-en"];
+
+/// Deterministic preference order for `auto_select_model_if_needed`. Iterating
+/// a `HashMap` picks an arbitrary model, which means two launches on identical
+/// installs can end up on different engines.
+const AUTO_SELECT_PREFERENCE: &[&str] = &[
+    "parakeet-tdt-0.6b-v3",
+    "large",
+    "turbo",
+    "moonshine-small-streaming-en",
+    "moonshine-tiny-streaming-en",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ModelInfo {
     pub id: String,
@@ -50,6 +89,12 @@ pub struct ModelInfo {
     pub supported_languages: Vec<String>, // Languages this model can transcribe
     pub supports_language_selection: bool, // Whether the user can explicitly pick a language
     pub is_custom: bool,            // Whether this is a user-provided custom model
+    /// Set for the three models surfaced in the primary picker; `None` for the
+    /// rest, which only appear under "All models".
+    pub tier: Option<ModelTier>,
+    /// True for models shipped inside the app bundle — these are always
+    /// present, cannot be deleted, and never need downloading.
+    pub is_bundled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -147,6 +192,8 @@ impl ModelManager {
                 supported_languages: whisper_languages.clone(),
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -175,6 +222,8 @@ impl ModelManager {
                 supported_languages: whisper_languages.clone(),
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -202,6 +251,8 @@ impl ModelManager {
                 supported_languages: whisper_languages.clone(),
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -229,6 +280,8 @@ impl ModelManager {
                 supported_languages: whisper_languages.clone(),
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -257,6 +310,8 @@ impl ModelManager {
                 supported_languages: whisper_languages,
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -285,6 +340,8 @@ impl ModelManager {
                 supported_languages: vec!["en".to_string()],
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -322,6 +379,8 @@ impl ModelManager {
                 supported_languages: parakeet_v3_languages,
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -349,6 +408,8 @@ impl ModelManager {
                 supported_languages: vec!["en".to_string()],
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -378,6 +439,8 @@ impl ModelManager {
                 supported_languages: vec!["en".to_string()],
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -407,6 +470,8 @@ impl ModelManager {
                 supported_languages: vec!["en".to_string()],
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -436,6 +501,8 @@ impl ModelManager {
                 supported_languages: vec!["en".to_string()],
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -471,6 +538,8 @@ impl ModelManager {
                 supported_languages: sense_voice_languages,
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -501,6 +570,8 @@ impl ModelManager {
                 supported_languages: gigaam_languages,
                 supports_language_selection: false,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -535,6 +606,8 @@ impl ModelManager {
                 supported_languages: canary_flash_languages,
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -572,6 +645,8 @@ impl ModelManager {
                 supported_languages: canary_1b_languages,
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
@@ -607,12 +682,32 @@ impl ModelManager {
                 supported_languages: cohere_languages,
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 
         // Auto-discover custom Whisper models (.bin files) in the models directory
         if let Err(e) = Self::discover_custom_whisper_models(&models_dir, &mut available_models) {
             warn!("Failed to discover custom models: {}", e);
+        }
+
+        // Apply tier and bundling metadata from the tables above rather than
+        // repeating it across seventeen struct literals.
+        for (id, tier) in TIER_ASSIGNMENTS {
+            match available_models.get_mut(*id) {
+                Some(model) => model.tier = Some(*tier),
+                // A typo in TIER_ASSIGNMENTS would silently leave the primary
+                // picker a tier short, which is exactly the kind of bug that
+                // ships. Make it loud in the logs.
+                None => warn!("TIER_ASSIGNMENTS references unknown model id '{}'", id),
+            }
+        }
+        for id in BUNDLED_MODEL_IDS {
+            match available_models.get_mut(*id) {
+                Some(model) => model.is_bundled = true,
+                None => warn!("BUNDLED_MODEL_IDS references unknown model id '{}'", id),
+            }
         }
 
         let manager = Self {
@@ -648,26 +743,80 @@ impl ModelManager {
         models.get(model_id).cloned()
     }
 
+    /// Copy models shipped inside the app bundle into the user models
+    /// directory, so the app can transcribe on first launch without waiting on
+    /// a 465 MB–1.6 GB download.
+    ///
+    /// Handles both file-based models (a single `.bin`) and directory-based
+    /// ONNX models (Moonshine/Parakeet, which are a folder of `.ort` files).
+    /// The copy is done into a temp directory and then renamed into place, so a
+    /// crash or force-quit mid-copy can never leave a half-populated model
+    /// directory that `update_download_status` would then report as ready.
     fn migrate_bundled_models(&self) -> Result<()> {
-        // Check for bundled models and copy them to user directory
-        let bundled_models = ["ggml-small.bin"]; // Add other bundled models here if any
+        // Filenames on disk, not model IDs — these must match `ModelInfo.filename`.
+        let bundled_files = ["ggml-small.bin"];
+        let bundled_dirs = ["moonshine-tiny-streaming-en"];
 
-        for filename in &bundled_models {
-            let bundled_path = self.app_handle.path().resolve(
-                &format!("resources/models/{}", filename),
+        for filename in &bundled_files {
+            let Ok(bundled_path) = self.app_handle.path().resolve(
+                format!("resources/models/{}", filename),
                 tauri::path::BaseDirectory::Resource,
+            ) else {
+                continue;
+            };
+            if !bundled_path.exists() {
+                continue;
+            }
+            let user_path = self.models_dir.join(filename);
+            if user_path.exists() {
+                continue;
+            }
+            info!(
+                "Installing bundled model {} into models directory",
+                filename
             );
+            // Copy to a temp name first so an interrupted copy can't be
+            // mistaken for a complete model on the next launch.
+            let temp_path = self.models_dir.join(format!("{}.installing", filename));
+            let _ = fs::remove_file(&temp_path);
+            fs::copy(&bundled_path, &temp_path)?;
+            fs::rename(&temp_path, &user_path)?;
+            info!("Installed bundled model {}", filename);
+        }
 
-            if let Ok(bundled_path) = bundled_path {
-                if bundled_path.exists() {
-                    let user_path = self.models_dir.join(filename);
-
-                    // Only copy if user doesn't already have the model
-                    if !user_path.exists() {
-                        info!("Migrating bundled model {} to user directory", filename);
-                        fs::copy(&bundled_path, &user_path)?;
-                        info!("Successfully migrated {}", filename);
-                    }
+        for dirname in &bundled_dirs {
+            let Ok(bundled_path) = self.app_handle.path().resolve(
+                format!("resources/models/{}", dirname),
+                tauri::path::BaseDirectory::Resource,
+            ) else {
+                continue;
+            };
+            if !bundled_path.is_dir() {
+                warn!(
+                    "Bundled model directory '{}' missing from app resources",
+                    dirname
+                );
+                continue;
+            }
+            let user_path = self.models_dir.join(dirname);
+            if user_path.is_dir() {
+                continue;
+            }
+            info!(
+                "Installing bundled model directory {} into models directory",
+                dirname
+            );
+            let temp_path = self.models_dir.join(format!("{}.installing", dirname));
+            let _ = fs::remove_dir_all(&temp_path);
+            match copy_dir_recursive(&bundled_path, &temp_path)
+                .and_then(|()| fs::rename(&temp_path, &user_path).map_err(Into::into))
+            {
+                Ok(()) => info!("Installed bundled model directory {}", dirname),
+                Err(e) => {
+                    // A failed bundled-model install must not prevent startup —
+                    // the user can still download a model normally.
+                    warn!("Failed to install bundled model '{}': {}", dirname, e);
+                    let _ = fs::remove_dir_all(&temp_path);
                 }
             }
         }
@@ -791,11 +940,18 @@ impl ModelManager {
             }
         }
 
-        // If no model is selected, pick the first downloaded one
+        // If no model is selected, pick the best downloaded one.
         if settings.selected_model.is_empty() {
-            // Find the first available (downloaded) model
             let models = self.available_models.lock().unwrap();
-            if let Some(available_model) = models.values().find(|model| model.is_downloaded) {
+            // Walk the explicit preference list first so the choice is
+            // reproducible; only fall back to arbitrary `HashMap` order if the
+            // user has nothing but custom or exotic models installed.
+            let preferred = AUTO_SELECT_PREFERENCE
+                .iter()
+                .find_map(|id| models.get(*id).filter(|m| m.is_downloaded));
+            if let Some(available_model) =
+                preferred.or_else(|| models.values().find(|model| model.is_downloaded))
+            {
                 info!(
                     "Auto-selecting model: {} ({})",
                     available_model.id, available_model.name
@@ -927,6 +1083,8 @@ impl ModelManager {
                     supported_languages: vec![],
                     supports_language_selection: true,
                     is_custom: true,
+                    tier: None,
+                    is_bundled: false,
                 },
             );
         }
@@ -1335,6 +1493,16 @@ impl ModelManager {
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
+        // Bundled models are reinstalled from app resources on the next launch,
+        // so "deleting" one frees nothing and leaves the user in a confusing
+        // state where a model reappears. Refuse rather than pretend.
+        if model_info.is_bundled {
+            return Err(anyhow::anyhow!(
+                "'{}' is built into Ghostly and cannot be removed",
+                model_info.name
+            ));
+        }
+
         debug!("ModelManager: Found model info: {:?}", model_info);
 
         let model_path = self.models_dir.join(&model_info.filename);
@@ -1472,6 +1640,23 @@ impl ModelManager {
     }
 }
 
+/// Copy a directory tree. Used to install bundled model directories out of the
+/// read-only app bundle; model directories are flat in practice, but recursing
+/// keeps this correct if a future model ships subfolders.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1520,6 +1705,8 @@ mod tests {
                 supported_languages: vec!["en".to_string()],
                 supports_language_selection: true,
                 is_custom: false,
+                tier: None,
+                is_bundled: false,
             },
         );
 

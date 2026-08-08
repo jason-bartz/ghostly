@@ -412,7 +412,8 @@ pub async fn send_chat_completion_stream<F>(
     provider: &PostProcessProvider,
     api_key: String,
     model: &str,
-    prompt: String,
+    user_content: String,
+    system_prompt: Option<String>,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     mut on_delta: F,
 ) -> Result<String, String>
@@ -429,10 +430,21 @@ where
 
     let client = create_client(provider, &api_key)?;
 
-    let messages = vec![ChatMessage {
+    // Rules go in the system turn, the dictated text in the user turn. Keeping
+    // them separate leans on the provider's instruction hierarchy so a
+    // command-shaped transcript ("write a function that parses JSON") reads as
+    // data to clean rather than as an instruction competing with the rules.
+    let mut messages = Vec::with_capacity(2);
+    if let Some(system) = system_prompt.filter(|s| !s.trim().is_empty()) {
+        messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: Value::String(system),
+        });
+    }
+    messages.push(ChatMessage {
         role: "user".to_string(),
-        content: Value::String(prompt),
-    }];
+        content: Value::String(user_content),
+    });
 
     // Match reasoning handling from the non-streaming path so reasoning tokens
     // don't leak into the streamed text for providers that expose them.
