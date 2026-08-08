@@ -37,7 +37,10 @@ static VERIFY_KEY: Lazy<VerifyingKey> = Lazy::new(|| {
 
 static MACHINE_ID_CACHE: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
-fn base_url() -> String {
+/// Base URL of the license Worker. Also the host for error reporting — see
+/// `telemetry::telemetry_endpoint`, which derives from this so the two cannot
+/// point at different deployments.
+pub(crate) fn base_url() -> String {
     std::env::var("GHOSTLY_LICENSE_BASE").unwrap_or_else(|_| DEFAULT_BASE.to_string())
 }
 
