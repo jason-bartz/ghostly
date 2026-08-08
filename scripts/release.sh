@@ -5,9 +5,20 @@
 #
 # Bumps version in tauri.conf.json / Cargo.toml / package.json, refreshes
 # Cargo.lock, commits + pushes to main, and triggers the GitHub Release
-# workflow. The workflow builds, signs, notarizes, and uploads the DMG to
-# both GitHub Releases (as a draft) and Cloudflare R2. Publish the draft
-# manually once you've smoke-tested the build.
+# workflow. The workflow builds, signs, and notarizes the app, then uploads
+# the DMG to GitHub Releases (as a draft) and Cloudflare R2.
+#
+# IMPORTANT: the GitHub draft is NOT the release gate.
+#
+# The workflow pushes to R2 as part of the build — both the DMG at
+# downloads.try-ghostly.com/Ghostly-latest.dmg and the updater manifest at
+# updates.json. The moment the build goes green, new downloads get this
+# version and existing installs are offered it by the auto-updater. Leaving
+# the GitHub release in draft changes nothing about that.
+#
+# So smoke-test BEFORE running this script, not before publishing the draft.
+# Publishing the draft only fixes /releases/latest:
+#   gh release edit vX.Y.Z --repo jason-bartz/ghostly --draft=false --latest
 
 set -euo pipefail
 
