@@ -60,6 +60,14 @@ impl TranscriptionManager {
     pub fn transcribe(&self, _audio: Vec<f32>) -> Result<String> {
         Ok(String::new())
     }
+
+    /// Mirrors the real manager's non-logging variant, used by Meeting Mode.
+    /// This file is swapped over `transcription.rs` in CI, so every public
+    /// method the rest of the crate calls has to exist here too or the whole
+    /// build fails on a signature the local build never exercises.
+    pub fn transcribe_private(&self, _audio: Vec<f32>) -> Result<String> {
+        Ok(String::new())
+    }
 }
 
 /// No-op in CI mock.
