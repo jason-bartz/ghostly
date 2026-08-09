@@ -12,7 +12,7 @@ export const DeveloperSettings: React.FC = () => {
   const openDictionary = () => {
     window.dispatchEvent(
       new CustomEvent("ghostly:navigate", {
-        detail: { section: "dictionary" },
+        detail: { section: "transcription" },
       }),
     );
   };

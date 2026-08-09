@@ -1,70 +1,36 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ModelUnloadTimeoutSetting } from "../ModelUnloadTimeout";
-import { FillerWords } from "../FillerWords";
 import { SettingsGroup } from "../../ui/SettingsGroup";
-import { StartHidden } from "../StartHidden";
-import { AutostartToggle } from "../AutostartToggle";
-import { ShowTrayIcon } from "../ShowTrayIcon";
-import { ShowDockIcon } from "../ShowDockIcon";
 import { PasteMethodSetting } from "../PasteMethod";
 import { TypingToolSetting } from "../TypingTool";
 import { ClipboardHandlingSetting } from "../ClipboardHandling";
 import { AppendTrailingSpace } from "../AppendTrailingSpace";
-import { ExperimentalToggle } from "../ExperimentalToggle";
-import { useSettings } from "../../../hooks/useSettings";
-import { KeyboardImplementationSelector } from "../debug/KeyboardImplementationSelector";
-import { AccelerationSelector } from "../AccelerationSelector";
-import { LazyStreamClose } from "../LazyStreamClose";
-import { ContinuousDictation } from "../ContinuousDictation";
+import { PageHeader } from "../../ui/PageHeader";
 
+/**
+ * The last step of the pipeline: how finished text reaches the app you were
+ * typing into.
+ *
+ * This pane used to be called "Output" and also carried transcription tuning,
+ * startup behaviour and GPU settings — four unrelated domains under a name
+ * that described one of them. Those moved to Transcription, General and
+ * Performance respectively; what is left actually is text output.
+ */
 export const AdvancedSettings: React.FC = () => {
   const { t } = useTranslation();
-  const { getSetting } = useSettings();
-  const experimentalEnabled = getSetting("experimental_enabled") || false;
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
-      {/* ── Text Output ── how transcribed text reaches apps */}
+      <PageHeader
+        title={t("settings.pages.advanced.title")}
+        description={t("settings.pages.advanced.subtitle")}
+      />
       <SettingsGroup title={t("settings.advanced.groups.output")}>
         <PasteMethodSetting descriptionMode="tooltip" grouped={true} />
         <TypingToolSetting descriptionMode="tooltip" grouped={true} />
         <ClipboardHandlingSetting descriptionMode="tooltip" grouped={true} />
         <AppendTrailingSpace descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
-
-      {/* ── Transcription ── word corrections & model behavior */}
-      <SettingsGroup title={t("settings.advanced.groups.transcription")}>
-        <FillerWords descriptionMode="tooltip" grouped />
-        <ModelUnloadTimeoutSetting descriptionMode="tooltip" grouped={true} />
-      </SettingsGroup>
-
-      {/* ── Startup & System ── how the app launches and sits in the tray */}
-      <SettingsGroup title={t("settings.advanced.groups.app")}>
-        <StartHidden descriptionMode="tooltip" grouped={true} />
-        <AutostartToggle descriptionMode="tooltip" grouped={true} />
-        <ShowTrayIcon descriptionMode="tooltip" grouped={true} />
-        <ShowDockIcon descriptionMode="tooltip" grouped={true} />
-      </SettingsGroup>
-
-      {/* ── Performance ── always visible; no experimental gate */}
-      <SettingsGroup title={t("settings.advanced.groups.experimental")}>
-        <AccelerationSelector descriptionMode="tooltip" grouped={true} />
-        <LazyStreamClose descriptionMode="tooltip" grouped={true} />
-        <KeyboardImplementationSelector
-          descriptionMode="tooltip"
-          grouped={true}
-        />
-        <ExperimentalToggle descriptionMode="tooltip" grouped={true} />
-      </SettingsGroup>
-
-      {experimentalEnabled && (
-        <SettingsGroup
-          title={t("settings.advanced.groups.continuousDictation")}
-        >
-          <ContinuousDictation descriptionMode="tooltip" grouped={true} />
-        </SettingsGroup>
-      )}
     </div>
   );
 };

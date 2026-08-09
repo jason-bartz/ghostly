@@ -125,13 +125,16 @@ impl ContinuousDictationManager {
             return Ok(());
         }
 
-        // Enforce dev-mode gate at the boundary.
+        // Enforce the feature's own switch at the boundary. This used to also
+        // require `experimental_enabled`; Open Mic is a shipped feature now, and
+        // a second hidden gate meant the visible toggle could be on while the
+        // shortcut silently did nothing.
         let settings = get_settings(&self.app);
-        if !settings.experimental_enabled || !settings.continuous_dictation_enabled {
-            return Err("Continuous dictation is not enabled".to_string());
+        if !settings.continuous_dictation_enabled {
+            return Err("Open Mic is not enabled".to_string());
         }
 
-        info!("Arming continuous dictation");
+        info!("Opening the mic (continuous dictation)");
 
         // Spin up the transcribe worker.
         let (tx, rx) = mpsc::sync_channel::<Job>(2);
@@ -163,12 +166,15 @@ impl ContinuousDictationManager {
         let job_sender = self.job_tx.lock().unwrap().as_ref().unwrap().clone();
         let app_for_cb = self.app.clone();
 
-        rm.set_raw_frame_listener(Some(Box::new(move |frame: &[f32]| {
-            if !armed.load(Ordering::SeqCst) {
-                return;
-            }
-            on_frame(&app_for_cb, &state, &job_sender, frame);
-        })));
+        rm.add_raw_frame_listener(
+            crate::managers::audio::RAW_FRAME_LISTENER_CONTINUOUS,
+            Arc::new(move |frame: &[f32]| {
+                if !armed.load(Ordering::SeqCst) {
+                    return;
+                }
+                on_frame(&app_for_cb, &state, &job_sender, frame);
+            }),
+        );
 
         self.armed.store(true, Ordering::SeqCst);
         change_tray_icon(&self.app, TrayIconState::Recording);
@@ -185,9 +191,10 @@ impl ContinuousDictationManager {
         info!("Disarming continuous dictation");
         self.armed.store(false, Ordering::SeqCst);
 
-        // Detach the listener first so no more frames are pushed.
+        // Detach the listener first so no more frames are pushed. Keyed
+        // removal leaves any other subsystem's listener (Meeting Mode) intact.
         let rm = self.app.state::<Arc<AudioRecordingManager>>();
-        rm.set_raw_frame_listener(None);
+        rm.remove_raw_frame_listener(crate::managers::audio::RAW_FRAME_LISTENER_CONTINUOUS);
 
         // Flush any partial segment synchronously into the queue.
         let leftover = {

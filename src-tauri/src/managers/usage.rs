@@ -1,6 +1,6 @@
 //! Weekly usage tracking for the free-tier cap.
 //!
-//! Free users get 30 minutes of successful transcription per ISO calendar
+//! Free users get 60 minutes of successful transcription per ISO calendar
 //! week (Monday 00:00 local time → next Monday 00:00 local). Pro users are
 //! not capped but their totals are still recorded for the vanity stats shown
 //! in the Usage settings pane.
@@ -20,8 +20,8 @@ use sha2::{Digest, Sha256};
 use specta::Type;
 use std::sync::Mutex;
 
-/// Free-tier weekly limit: 30 minutes = 1800 seconds.
-pub const FREE_WEEKLY_LIMIT_SECS: u64 = 30 * 60;
+/// Free-tier weekly limit: 60 minutes = 3600 seconds.
+pub const FREE_WEEKLY_LIMIT_SECS: u64 = 60 * 60;
 
 /// Fraction of the limit at which we emit a warning event (first crossing
 /// per week). 0.8 = 80%.
@@ -459,7 +459,7 @@ fn load_blob() -> Option<UsageBlob> {
     }
     // Tamper / corruption. Treat as fresh-but-over-limit so we don't
     // accidentally reward tampering: if the blob says 0 and the real
-    // value was 1800, returning 0 is worse than returning nothing.
+    // value was 3600, returning 0 is worse than returning nothing.
     // Caller uses None -> fresh blob, so the user effectively gets a
     // reset week. This is the lesser evil; if abuse turns out to be
     // material, we switch to server-side enforcement.

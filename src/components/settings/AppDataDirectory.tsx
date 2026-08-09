@@ -59,7 +59,9 @@ export const AppDataDirectory: React.FC<AppDataDirectoryProps> = ({
   }
 
   if (error) {
-    return <Alert variant="error">{t("errors.loadDirectory", { error })}</Alert>;
+    return (
+      <Alert variant="error">{t("errors.loadDirectory", { error })}</Alert>
+    );
   }
 
   return (

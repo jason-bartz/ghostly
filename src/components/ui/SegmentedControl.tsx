@@ -75,7 +75,12 @@ export function SegmentedControl<T extends string>({
         <span
           aria-hidden
           className="absolute top-1 bottom-1 rounded-[7px] glass transition-[left,width] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-          style={{ left: thumb.left, width: thumb.width }}
+          // `position` is set inline because `.glass` declares
+          // `position: relative` from inside `@layer utilities` — the same
+          // layer as Tailwind's `absolute`, and App.css is loaded later, so it
+          // wins on source order. That put the thumb *in flow*, indenting every
+          // label by the width of the active segment.
+          style={{ position: "absolute", left: thumb.left, width: thumb.width }}
         />
       )}
 

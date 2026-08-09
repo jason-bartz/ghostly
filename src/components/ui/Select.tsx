@@ -99,6 +99,9 @@ const selectStyles: StylesConfig<SelectOption, false> = {
     boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.6)",
     overflow: "hidden",
   }),
+  // Portalled menus sit outside the settings pane's stacking context, so they
+  // need to out-rank it explicitly.
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
   option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
@@ -164,6 +167,13 @@ export const Select: React.FC<SelectProps> = React.memo(
       onBlur,
       isClearable,
       styles: selectStyles,
+      // Same reason as `Dropdown`: rendered in place, the menu stretches the
+      // scrolling settings pane and is clipped by any ancestor hiding its
+      // overflow. Portalled + fixed, it floats and costs no layout.
+      menuPortalTarget:
+        typeof document === "undefined" ? undefined : document.body,
+      menuPosition: "fixed" as const,
+      menuShouldBlockScroll: true,
     };
 
     if (isCreatable) {

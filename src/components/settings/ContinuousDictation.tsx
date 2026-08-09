@@ -7,7 +7,6 @@ import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Dropdown } from "../ui/Dropdown";
-import { SettingContainer } from "../ui/SettingContainer";
 import { useSettings } from "../../hooks/useSettings";
 import { commands } from "../../bindings";
 
@@ -57,8 +56,12 @@ export const ContinuousDictation: React.FC<Props> = ({
     }
   };
 
+  // Rendered as a flat list of rows, not a nested `space-y` stack: the parent
+  // SettingsGroup draws hairlines between its direct children, so a wrapper
+  // div would collapse the whole panel into one undivided row and leave the
+  // free-standing controls without the group's horizontal padding.
   return (
-    <div className="space-y-3">
+    <>
       <ToggleSwitch
         checked={enabled}
         onChange={(v) => updateSetting("continuous_dictation_enabled", v)}
@@ -71,11 +74,11 @@ export const ContinuousDictation: React.FC<Props> = ({
 
       {enabled && (
         <>
-          <Alert variant="warning">
+          <Alert variant="warning" contained={grouped}>
             {t("settings.advanced.continuousDictation.warning")}
           </Alert>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 px-4 py-3">
             <Button
               variant={armed ? "danger" : "primary"}
               onClick={toggleArmed}
@@ -84,7 +87,7 @@ export const ContinuousDictation: React.FC<Props> = ({
                 ? t("settings.advanced.continuousDictation.disarm")
                 : t("settings.advanced.continuousDictation.arm")}
             </Button>
-            <span className="text-sm opacity-70">
+            <span className="text-[13px] text-text-muted">
               {armed
                 ? t("settings.advanced.continuousDictation.statusArmed")
                 : t("settings.advanced.continuousDictation.statusDisarmed")}
@@ -157,61 +160,48 @@ export const ContinuousDictation: React.FC<Props> = ({
           />
 
           {submitPhraseEnabled && (
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <SettingContainer
-                  title=""
-                  description=""
-                  descriptionMode="tooltip"
-                  grouped={grouped}
-                >
-                  <Input
-                    type="text"
-                    value={submitPhrase}
-                    onChange={(e) =>
-                      updateSetting("continuous_submit_phrase", e.target.value)
-                    }
-                    placeholder={t(
-                      "settings.advanced.continuousDictation.submitPhrasePlaceholder",
-                    )}
-                    disabled={isUpdating("continuous_submit_phrase")}
-                  />
-                </SettingContainer>
-              </div>
-              <div className="w-40">
-                <SettingContainer
-                  title=""
-                  description=""
-                  descriptionMode="tooltip"
-                  grouped={grouped}
-                >
-                  <Dropdown
-                    options={[
-                      {
-                        value: "enter",
-                        label: t(
-                          "settings.advanced.continuousDictation.submitKeyEnter",
-                        ),
-                      },
-                      {
-                        value: "cmd_enter",
-                        label: t(
-                          "settings.advanced.continuousDictation.submitKeyCmdEnter",
-                        ),
-                      },
-                    ]}
-                    selectedValue={submitKey}
-                    onSelect={(v) =>
-                      updateSetting("continuous_submit_key", v as any)
-                    }
-                    disabled={isUpdating("continuous_submit_key")}
-                  />
-                </SettingContainer>
-              </div>
+            /* The phrase field takes the slack and the key picker keeps its
+               intrinsic width — boxing the Dropdown into a narrower column
+               fought its own min-width and pushed it past the card edge. */
+            <div className="flex items-center gap-3 px-4 py-3">
+              <Input
+                type="text"
+                className="flex-1 min-w-0"
+                value={submitPhrase}
+                onChange={(e) =>
+                  updateSetting("continuous_submit_phrase", e.target.value)
+                }
+                placeholder={t(
+                  "settings.advanced.continuousDictation.submitPhrasePlaceholder",
+                )}
+                disabled={isUpdating("continuous_submit_phrase")}
+              />
+              <Dropdown
+                className="shrink-0"
+                options={[
+                  {
+                    value: "enter",
+                    label: t(
+                      "settings.advanced.continuousDictation.submitKeyEnter",
+                    ),
+                  },
+                  {
+                    value: "cmd_enter",
+                    label: t(
+                      "settings.advanced.continuousDictation.submitKeyCmdEnter",
+                    ),
+                  },
+                ]}
+                selectedValue={submitKey}
+                onSelect={(v) =>
+                  updateSetting("continuous_submit_key", v as any)
+                }
+                disabled={isUpdating("continuous_submit_key")}
+              />
             </div>
           )}
         </>
       )}
-    </div>
+    </>
   );
 };

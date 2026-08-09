@@ -13,10 +13,7 @@ import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import { EulaGate } from "./components/EulaGate";
 import { PaywallModal } from "./components/PaywallModal";
 import Footer from "./components/footer";
-import Onboarding, {
-  AccessibilityOnboarding,
-  RefinementOnboarding,
-} from "./components/onboarding";
+import { Tour, type TourMode } from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
 import { UpdateModal } from "./components/update-checker";
 import { useSettings } from "./hooks/useSettings";
@@ -26,7 +23,8 @@ import { commands } from "@/bindings";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
 import { useAppearanceSync } from "./hooks/useAppearance";
 
-type OnboardingStep = "accessibility" | "model" | "refinement" | "done";
+/** `null` while we're still resolving; a mode means the tour is on screen. */
+type TourState = TourMode | "done" | null;
 
 const renderSettingsContent = (section: SidebarSection) => {
   const ActiveComponent =
@@ -43,14 +41,9 @@ const renderSettingsContent = (section: SidebarSection) => {
 
 function App() {
   const { t, i18n } = useTranslation();
-  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(
-    null,
-  );
+  const [tourState, setTourState] = useState<TourState>(null);
   // null = still resolving, true = gate active, false = accepted (or skipped)
   const [eulaRequired, setEulaRequired] = useState<boolean | null>(null);
-  // Track if this is a returning user who just needs to grant permissions
-  // (vs a new user who needs full onboarding including model selection)
-  const [isReturningUser, setIsReturningUser] = useState(false);
   const [currentSection, setCurrentSection] =
     useState<SidebarSection>("history");
   const { settings, updateSetting } = useSettings();
@@ -113,7 +106,7 @@ function App() {
 
   // Initialize Enigo, shortcuts, and refresh audio devices when main app loads
   useEffect(() => {
-    if (onboardingStep === "done" && !hasCompletedPostOnboardingInit.current) {
+    if (tourState === "done" && !hasCompletedPostOnboardingInit.current) {
       hasCompletedPostOnboardingInit.current = true;
       Promise.all([
         commands.initializeEnigo(),
@@ -133,7 +126,16 @@ function App() {
       }, 2500);
       return () => window.clearTimeout(timer);
     }
-  }, [onboardingStep, refreshAudioDevices, refreshOutputDevices]);
+  }, [tourState, refreshAudioDevices, refreshOutputDevices]);
+
+  // Replaying the tour from Settings → App. Everything it teaches is still
+  // true after first run, and the features it surfaces are the ones people
+  // never find on their own.
+  useEffect(() => {
+    const onReplay = () => setTourState("replay");
+    window.addEventListener("ghostly:replay-tour", onReplay);
+    return () => window.removeEventListener("ghostly:replay-tour", onReplay);
+  }, []);
 
   // Handle keyboard shortcuts for debug mode toggle
   useEffect(() => {
@@ -238,10 +240,10 @@ function App() {
   // Navigate to the License settings pane when the paywall's "I have a key"
   // button is clicked, or when an auto-activate deep link arrives.
   useEffect(() => {
-    const onNav = () => setCurrentSection("license");
+    const onNav = () => setCurrentSection("account");
     window.addEventListener("ghostly-navigate-to-license", onNav);
     const unlistenAuto = listen("license-auto-activate", () => {
-      setCurrentSection("license");
+      setCurrentSection("account");
     });
     return () => {
       window.removeEventListener("ghostly-navigate-to-license", onNav);
@@ -298,77 +300,40 @@ function App() {
       // users forward so an upgrade never re-runs onboarding).
       const result = await commands.needsOnboarding();
       const isNewUser = result.status === "ok" ? result.data : false;
-      const currentPlatform = platform();
 
-      if (!isNewUser) {
-        // Returning user - check if they need to grant permissions first
-        setIsReturningUser(true);
-
-        if (currentPlatform === "macos") {
-          try {
-            const [hasAccessibility, hasMicrophone] = await Promise.all([
-              checkAccessibilityPermission(),
-              checkMicrophonePermission(),
-            ]);
-            if (!hasAccessibility || !hasMicrophone) {
-              await revealMainWindowForPermissions();
-              setOnboardingStep("accessibility");
-              return;
-            }
-          } catch (e) {
-            console.warn("Failed to check macOS permissions:", e);
-            // If we can't check, proceed to main app and let them fix it there
-          }
-        }
-
-        if (currentPlatform === "windows") {
-          try {
-            const microphoneStatus =
-              await commands.getWindowsMicrophonePermissionStatus();
-            if (
-              microphoneStatus.supported &&
-              microphoneStatus.overall_access === "denied"
-            ) {
-              await revealMainWindowForPermissions();
-              setOnboardingStep("accessibility");
-              return;
-            }
-          } catch (e) {
-            console.warn("Failed to check Windows microphone permissions:", e);
-            // If we can't check, proceed to main app and let them fix it there
-          }
-        }
-
-        setOnboardingStep("done");
-      } else {
-        // New user - start full onboarding
-        setIsReturningUser(false);
-        setOnboardingStep("accessibility");
+      if (isNewUser) {
+        setTourState("first-run");
+        return;
       }
+
+      // Returning user — the only thing that can still block them is a
+      // permission that was revoked (or never granted after a skip).
+      if (platform() === "macos") {
+        try {
+          const [hasAccessibility, hasMicrophone] = await Promise.all([
+            checkAccessibilityPermission(),
+            checkMicrophonePermission(),
+          ]);
+          if (!hasAccessibility || !hasMicrophone) {
+            await revealMainWindowForPermissions();
+            setTourState("permissions");
+            return;
+          }
+        } catch (e) {
+          console.warn("Failed to check macOS permissions:", e);
+          // If we can't check, proceed to main app and let them fix it there
+        }
+      }
+
+      setTourState("done");
     } catch (error) {
       console.error("Failed to check onboarding status:", error);
-      setOnboardingStep("accessibility");
+      setTourState("first-run");
     }
   };
 
-  const handleAccessibilityComplete = () => {
-    // Returning users already have models, skip to main app
-    // New users need to select a model
-    setOnboardingStep(isReturningUser ? "done" : "model");
-  };
-
-  const handleModelSelected = () => {
-    // Ask new users to pick a refinement provider before dropping into the main
-    // app. Returning users already have their config and skip this step.
-    setOnboardingStep("refinement");
-  };
-
-  const handleRefinementComplete = () => {
-    setOnboardingStep("done");
-  };
-
   // Still resolving either check
-  if (onboardingStep === null || eulaRequired === null) {
+  if (tourState === null || eulaRequired === null) {
     return null;
   }
 
@@ -377,16 +342,14 @@ function App() {
     return <EulaGate onAccepted={() => setEulaRequired(false)} />;
   }
 
-  if (onboardingStep === "accessibility") {
-    return <AccessibilityOnboarding onComplete={handleAccessibilityComplete} />;
-  }
-
-  if (onboardingStep === "model") {
-    return <Onboarding onModelSelected={handleModelSelected} />;
-  }
-
-  if (onboardingStep === "refinement") {
-    return <RefinementOnboarding onComplete={handleRefinementComplete} />;
+  if (tourState !== "done") {
+    return (
+      <Tour
+        key={tourState}
+        mode={tourState}
+        onComplete={() => setTourState("done")}
+      />
+    );
   }
 
   return (

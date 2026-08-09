@@ -40,7 +40,11 @@ function formatKeystroke(ks: string): string {
 }
 
 const GhostIcon: React.FC = () => (
-  <GhostlyMark height={22} className="ghost-icon" style={{ color: "#DDD6FE" }} />
+  <GhostlyMark
+    height={22}
+    className="ghost-icon"
+    style={{ color: "#DDD6FE" }}
+  />
 );
 
 const RecordingOverlay: React.FC = () => {

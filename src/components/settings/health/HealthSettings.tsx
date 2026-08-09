@@ -25,6 +25,7 @@ import { SettingsGroup } from "@/components/ui/SettingsGroup";
 import { SettingContainer } from "@/components/ui/SettingContainer";
 import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import { useSettings } from "@/hooks/useSettings";
+import { PageHeader } from "../../ui/PageHeader";
 
 /** Jump to another settings screen. Mirrors the app-wide navigation event. */
 const navigate = (section: string) => {
@@ -93,7 +94,7 @@ export const HealthSettings: React.FC = () => {
         await requestAccessibilityPermission();
         break;
       case "OpenModels":
-        navigate("models");
+        navigate("transcription");
         return;
       case "OpenRefinement":
         navigate("postprocessing");
@@ -130,14 +131,10 @@ export const HealthSettings: React.FC = () => {
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-5">
-      <header>
-        <h1 className="text-xl font-semibold mb-1.5">
-          {t("settings.health.title")}
-        </h1>
-        <p className="text-sm text-text-muted leading-relaxed">
-          {t("settings.health.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("settings.health.title")}
+        description={t("settings.health.subtitle")}
+      />
 
       {/* --- Summary banner ------------------------------------------------ */}
       <div

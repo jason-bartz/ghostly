@@ -9,6 +9,7 @@ import { LogDirectory } from "../debug";
 import { LegalViewer } from "./LegalViewer";
 import { UpdateCheckRow } from "./UpdateCheckRow";
 import { commands } from "@/bindings";
+import { PageHeader } from "../../ui/PageHeader";
 
 type ViewerKind = "eula" | "notices" | null;
 
@@ -41,6 +42,10 @@ export const AboutSettings: React.FC = () => {
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
+      <PageHeader
+        title={t("settings.pages.about.title")}
+        description={t("settings.pages.about.subtitle")}
+      />
       <SettingsGroup title={t("settings.about.title")}>
         <AppLanguageSelector descriptionMode="tooltip" grouped={true} />
         <SettingContainer

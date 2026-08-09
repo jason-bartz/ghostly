@@ -155,6 +155,13 @@ pub async fn run_health_check(app: AppHandle) -> Result<HealthReport, String> {
     // --- Refinement provider ---------------------------------------------
     checks.push(check_refinement(&app, &settings).await);
 
+    // --- Meeting capture ---------------------------------------------------
+    // Only reported when Meeting Mode is on: an unused capability failing a
+    // check would be noise for everyone who does not transcribe calls.
+    if settings.meeting.enabled {
+        checks.push(check_meeting_capture(&settings));
+    }
+
     // --- Shortcut bound ---------------------------------------------------
     // An unbound transcribe shortcut is a silently dead app.
     let has_transcribe_binding = settings
@@ -184,6 +191,30 @@ pub async fn run_health_check(app: AppHandle) -> Result<HealthReport, String> {
         });
 
     Ok(HealthReport { checks, overall })
+}
+
+/// Can Ghostly capture the far side of a meeting?
+///
+/// A warning rather than a failure: without system audio Ghostly still
+/// transcribes the user's own microphone, which is degraded but not broken.
+/// The distinction matters because the transcript being one-sided is something
+/// the user needs to understand, not something they can necessarily fix.
+fn check_meeting_capture(settings: &crate::settings::AppSettings) -> HealthCheck {
+    if !settings.meeting.capture_system_audio {
+        return HealthCheck::warn(
+            "meetingCapture",
+            Some("Turned off — transcripts will contain your side only".to_string()),
+            None,
+        );
+    }
+    if !crate::system_audio::is_supported() {
+        return HealthCheck::warn(
+            "meetingCapture",
+            Some("Requires macOS 14.2 or later".to_string()),
+            None,
+        );
+    }
+    HealthCheck::pass("meetingCapture", None)
 }
 
 /// Verify the selected model exists on disk and is non-empty.

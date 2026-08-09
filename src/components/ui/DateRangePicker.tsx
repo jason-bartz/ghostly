@@ -103,6 +103,11 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   return (
     <div
       ref={ref}
+      // Inline `position` for the same reason as SegmentedControl's thumb:
+      // `.glass-raised` sets `position: relative` from `@layer utilities`, which
+      // beat this element's `absolute` utility and made the picker push the
+      // toolbar open instead of floating over it.
+      style={{ position: "absolute" }}
       className="absolute top-full mt-1.5 end-0 z-50 glass-raised rounded-xl p-3 w-[260px] select-none"
     >
       <div className="flex items-center justify-between mb-2">

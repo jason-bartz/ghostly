@@ -109,6 +109,89 @@ static MIGRATIONS: &[M] = &[
             updated_at INTEGER NOT NULL
         );",
     ),
+    // ---- Meeting Mode -----------------------------------------------------
+    //
+    // Deliberately separate from `transcription_history`: a meeting produces
+    // hundreds of short segments, and mixing them in would bloat the history
+    // UI and break `get_all_history_for_export`, which SELECTs the whole table
+    // into memory unbounded.
+    M::up(
+        "CREATE TABLE IF NOT EXISTS meetings (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            app_bundle_id TEXT,
+            app_display_name TEXT,
+            detection_source TEXT NOT NULL,
+            captured_system_audio BOOLEAN NOT NULL DEFAULT 0,
+            notes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_meetings_started_at
+            ON meetings(started_at DESC);
+
+        -- One row per distinct voice in a meeting. `lane` records where the
+        -- audio came from; `pinned` marks a label the user set by hand so the
+        -- end-of-meeting re-clustering pass never overwrites it.
+        CREATE TABLE IF NOT EXISTS meeting_speakers (
+            id TEXT PRIMARY KEY,
+            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            display_name TEXT,
+            kind TEXT NOT NULL,
+            lane TEXT NOT NULL,
+            cluster_index INTEGER,
+            voiceprint_id TEXT,
+            pinned BOOLEAN NOT NULL DEFAULT 0,
+            color_index INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_meeting_speakers_meeting
+            ON meeting_speakers(meeting_id);
+
+        CREATE TABLE IF NOT EXISTS meeting_segments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            speaker_id TEXT REFERENCES meeting_speakers(id) ON DELETE SET NULL,
+            lane TEXT NOT NULL,
+            start_ms INTEGER NOT NULL,
+            end_ms INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            label_source TEXT NOT NULL,
+            is_crosstalk BOOLEAN NOT NULL DEFAULT 0,
+            embedding BLOB
+        );
+        CREATE INDEX IF NOT EXISTS idx_meeting_segments_meeting_time
+            ON meeting_segments(meeting_id, start_ms);
+
+        -- Rolling summaries. `covers_from_ms`/`covers_to_ms` let 'catch me up'
+        -- summarise the summaries instead of the raw transcript on a long call.
+        CREATE TABLE IF NOT EXISTS meeting_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            covers_from_ms INTEGER NOT NULL,
+            covers_to_ms INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            body TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_meeting_summaries_meeting
+            ON meeting_summaries(meeting_id, covers_to_ms);",
+    ),
+    // Meeting tags. Deliberately a separate table from `history_tags` rather
+    // than a shared one: the foreign key is what makes deletion cascade
+    // correctly, and meeting ids are TEXT while history ids are INTEGER.
+    M::up(
+        "CREATE TABLE IF NOT EXISTS meeting_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meeting_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_meeting_tags_meeting_name
+            ON meeting_tags(meeting_id, LOWER(name));
+        CREATE INDEX IF NOT EXISTS idx_meeting_tags_name
+            ON meeting_tags(LOWER(name));",
+    ),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -1809,6 +1892,97 @@ fn has_window(sorted_ts: &[i64], window_secs: i64, min_count: usize) -> bool {
 mod tests {
     use super::*;
     use rusqlite::{params, Connection};
+
+    /// The migration set must apply cleanly to an empty database.
+    ///
+    /// Worth asserting because the Meeting Mode migration is the first
+    /// multi-statement `M::up` in the list, and because a broken migration is
+    /// only discovered at app launch on a user's machine otherwise.
+    #[test]
+    fn migrations_apply_to_a_fresh_database() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        let migrations = Migrations::new(MIGRATIONS.to_vec());
+        migrations
+            .to_latest(&mut conn)
+            .expect("migrations must apply to a fresh database");
+
+        // Every Meeting Mode table exists and is queryable.
+        for table in [
+            "meetings",
+            "meeting_speakers",
+            "meeting_segments",
+            "meeting_summaries",
+            "meeting_tags",
+        ] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap_or_else(|e| panic!("table {table} is missing or invalid: {e}"));
+            assert_eq!(count, 0);
+        }
+    }
+
+    /// Deleting a meeting must take its segments, speakers and summaries with
+    /// it — retention and the delete command both rely on the cascade rather
+    /// than issuing their own DELETEs.
+    #[test]
+    fn deleting_a_meeting_cascades_to_its_children() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        Migrations::new(MIGRATIONS.to_vec())
+            .to_latest(&mut conn)
+            .expect("migrations apply");
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+
+        conn.execute(
+            "INSERT INTO meetings (id, started_at, detection_source) VALUES ('m1', 0, 'manual')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_speakers (id, meeting_id, kind, lane) \
+             VALUES ('s1', 'm1', 'me', 'mic')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_segments \
+             (meeting_id, speaker_id, lane, start_ms, end_ms, text, label_source) \
+             VALUES ('m1', 's1', 'mic', 0, 100, 'hello', 'lane')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_summaries \
+             (meeting_id, created_at, covers_from_ms, covers_to_ms, kind, body) \
+             VALUES ('m1', 0, 0, 100, 'rolling', 'summary')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_tags (meeting_id, name, created_at) \
+             VALUES ('m1', 'standup', 0)",
+            [],
+        )
+        .unwrap();
+
+        conn.execute("DELETE FROM meetings WHERE id = 'm1'", [])
+            .unwrap();
+
+        for table in [
+            "meeting_segments",
+            "meeting_speakers",
+            "meeting_summaries",
+            "meeting_tags",
+        ] {
+            let remaining: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(remaining, 0, "{table} rows survived the cascade");
+        }
+    }
 
     fn setup_conn() -> Connection {
         let conn = Connection::open_in_memory().expect("open in-memory db");

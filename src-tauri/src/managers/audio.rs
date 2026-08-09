@@ -121,17 +121,63 @@ pub enum MicrophoneMode {
 
 /* ──────────────────────────────────────────────────────────────── */
 
-/// Shared fan-out slot for a raw 16 kHz frame callback. The
-/// `AudioRecordingManager` installs a forwarder on the recorder that reads
-/// this slot per-frame; external subsystems (e.g. the continuous-dictation
-/// loop) set/clear their callback here without needing to rebuild the
+/// Shared fan-out for raw 16 kHz frame callbacks. The `AudioRecordingManager`
+/// installs a single forwarder on the recorder that reads this registry
+/// per-frame; external subsystems (continuous dictation, Meeting Mode's
+/// microphone lane) register and unregister by key without rebuilding the
 /// recorder.
-pub type RawFrameCallback = Box<dyn Fn(&[f32]) + Send + Sync + 'static>;
+///
+/// `Arc` rather than `Box` so the forwarder can take a cheap snapshot of the
+/// current listeners and release the lock before invoking any of them.
+pub type RawFrameCallback = Arc<dyn Fn(&[f32]) + Send + Sync + 'static>;
+
+/// Identifies a raw-frame listener. Registering the same key twice replaces
+/// the previous listener, which keeps re-arming idempotent.
+pub type RawFrameListenerKey = &'static str;
+
+pub const RAW_FRAME_LISTENER_CONTINUOUS: RawFrameListenerKey = "continuous-dictation";
+pub const RAW_FRAME_LISTENER_MEETING: RawFrameListenerKey = "meeting-mic-lane";
+
+/// Registry plus a pre-built snapshot for the audio hot path.
+///
+/// The snapshot is rebuilt only when listeners change, so dispatching a frame
+/// costs one mutex acquisition and one `Arc` clone — no allocation, no
+/// iteration over a map, and no user callback is ever run while the lock is
+/// held (a listener that re-enters the manager would otherwise deadlock).
+#[derive(Default)]
+pub struct RawFrameListeners {
+    listeners: Vec<(RawFrameListenerKey, RawFrameCallback)>,
+    snapshot: Arc<Vec<RawFrameCallback>>,
+}
+
+impl RawFrameListeners {
+    fn rebuild_snapshot(&mut self) {
+        self.snapshot = Arc::new(
+            self.listeners
+                .iter()
+                .map(|(_, cb)| Arc::clone(cb))
+                .collect(),
+        );
+    }
+
+    fn insert(&mut self, key: RawFrameListenerKey, cb: RawFrameCallback) {
+        match self.listeners.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = cb,
+            None => self.listeners.push((key, cb)),
+        }
+        self.rebuild_snapshot();
+    }
+
+    fn remove(&mut self, key: RawFrameListenerKey) {
+        self.listeners.retain(|(k, _)| *k != key);
+        self.rebuild_snapshot();
+    }
+}
 
 fn create_audio_recorder(
     vad_path: &str,
     app_handle: &tauri::AppHandle,
-    raw_frame_slot: Arc<Mutex<Option<RawFrameCallback>>>,
+    raw_frame_slot: Arc<Mutex<RawFrameListeners>>,
 ) -> Result<AudioRecorder, anyhow::Error> {
     let silero = SileroVad::new(vad_path, 0.3)
         .map_err(|e| anyhow::anyhow!("Failed to create SileroVad: {}", e))?;
@@ -149,10 +195,13 @@ fn create_audio_recorder(
             }
         })
         .with_raw_frame_callback(move |frame| {
-            if let Ok(slot) = raw_frame_slot.lock() {
-                if let Some(cb) = slot.as_ref() {
-                    cb(frame);
-                }
+            // Snapshot under the lock, dispatch outside it.
+            let listeners = match raw_frame_slot.lock() {
+                Ok(slot) => Arc::clone(&slot.snapshot),
+                Err(_) => return,
+            };
+            for cb in listeners.iter() {
+                cb(frame);
             }
         });
 
@@ -172,9 +221,9 @@ pub struct AudioRecordingManager {
     is_recording: Arc<Mutex<bool>>,
     did_mute: Arc<Mutex<bool>>,
     close_generation: Arc<AtomicU64>,
-    /// External subsystems may install a single raw-frame listener here. The
-    /// recorder's worker forwards every 16 kHz frame through this slot.
-    raw_frame_slot: Arc<Mutex<Option<RawFrameCallback>>>,
+    /// External subsystems register raw-frame listeners here by key. The
+    /// recorder's worker forwards every 16 kHz frame to all of them.
+    raw_frame_slot: Arc<Mutex<RawFrameListeners>>,
     /// Human-readable name of the app that was frontmost when recording began.
     /// Captured synchronously in `try_start_recording`, before Ghostly's own
     /// overlay/windows can steal focus. Read by the transcription pipeline so
@@ -211,7 +260,7 @@ impl AudioRecordingManager {
             is_recording: Arc::new(Mutex::new(false)),
             did_mute: Arc::new(Mutex::new(false)),
             close_generation: Arc::new(AtomicU64::new(0)),
-            raw_frame_slot: Arc::new(Mutex::new(None)),
+            raw_frame_slot: Arc::new(Mutex::new(RawFrameListeners::default())),
             source_app: Arc::new(Mutex::new(None)),
             device_watcher: Arc::new(Mutex::new(None)),
             pending_device_restart: Arc::new(AtomicBool::new(false)),
@@ -286,13 +335,22 @@ impl AudioRecordingManager {
         });
     }
 
-    /// Install (or clear, with `None`) a listener that receives every
-    /// resampled 16 kHz audio frame while the microphone stream is open.
-    /// Only one listener is supported at a time; installing a new one
-    /// replaces the previous. The continuous-dictation manager is the
-    /// primary consumer.
-    pub fn set_raw_frame_listener(&self, cb: Option<RawFrameCallback>) {
-        *self.raw_frame_slot.lock().unwrap() = cb;
+    /// Register a listener that receives every resampled 16 kHz audio frame
+    /// while the microphone stream is open.
+    ///
+    /// Listeners are keyed, so multiple subsystems can tap the stream at once
+    /// (continuous dictation and Meeting Mode's microphone lane). Registering
+    /// an existing key replaces that listener, making re-arming idempotent.
+    ///
+    /// The callback runs on the recorder's worker thread once per 30 ms frame
+    /// and must not block.
+    pub fn add_raw_frame_listener(&self, key: RawFrameListenerKey, cb: RawFrameCallback) {
+        self.raw_frame_slot.lock().unwrap().insert(key, cb);
+    }
+
+    /// Remove a previously registered listener. Unknown keys are ignored.
+    pub fn remove_raw_frame_listener(&self, key: RawFrameListenerKey) {
+        self.raw_frame_slot.lock().unwrap().remove(key);
     }
 
     /// True when the microphone stream is currently open.

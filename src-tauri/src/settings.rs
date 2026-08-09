@@ -490,9 +490,14 @@ pub struct AppSettings {
     pub experimental_enabled: bool,
     #[serde(default)]
     pub lazy_stream_close: bool,
-    /// Enables the hands-free continuous dictation mode. Dev-mode gated in UI.
-    /// When true, an additional shortcut arms/disarms a VAD-driven loop that
-    /// transcribes each utterance on silence without any key press.
+    /// Enables Open Mic, the hands-free dictation mode. When true, an
+    /// additional shortcut opens/closes a VAD-driven loop that transcribes each
+    /// utterance on silence without any key press.
+    ///
+    /// Defaults off: leaving the microphone open has real costs (Bluetooth
+    /// audio quality degrades system-wide, and any nearby voice can trigger a
+    /// segment), so it stays an explicit opt-in even though it is no longer
+    /// hidden behind the experimental flag.
     #[serde(default)]
     pub continuous_dictation_enabled: bool,
     /// Milliseconds of trailing silence that closes a segment.
@@ -637,7 +642,165 @@ pub struct AppSettings {
     /// launch, so the old check would skip onboarding for genuinely new users.
     #[serde(default)]
     pub onboarding_completed: bool,
+
+    /// Meeting Mode. Nested so adding a knob touches one field here rather
+    /// than three places in this file plus the exhaustive literal in
+    /// [`get_default_settings`].
+    #[serde(default)]
+    pub meeting: MeetingSettings,
 }
+
+/// What Ghostly should do when it notices a call has started.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingAutoConnect {
+    /// Never react to a detected meeting.
+    Off,
+    /// Show a prompt and wait for an explicit choice.
+    #[default]
+    Ask,
+    /// Show a countdown that starts capture unless cancelled.
+    Auto,
+}
+
+/// Per-application override for [`MeetingAutoConnect`].
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingAppPolicy {
+    /// Genuine bundle identifier, e.g. `us.zoom.xos`.
+    pub bundle_id: String,
+    pub display_name: String,
+    pub policy: MeetingAutoConnect,
+}
+
+/// Where "Catch me up" summaries are generated.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingSummaryBackend {
+    /// Apple Intelligence when available, otherwise the local extractive
+    /// fallback. Never leaves the device.
+    #[default]
+    OnDevice,
+    /// The configured post-processing provider. Requires explicit opt-in
+    /// because meeting audio is a different sensitivity class from dictation.
+    Cloud,
+    /// Keyword-based extractive summary. Always available, no model needed.
+    Extractive,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSettings {
+    /// Master switch. Everything below is inert while this is false.
+    pub enabled: bool,
+    /// Capture the far side of the call via a CoreAudio process tap. When
+    /// false only the microphone lane runs, and the transcript is your side
+    /// only.
+    pub capture_system_audio: bool,
+    /// Default behaviour when a meeting is detected.
+    pub auto_connect: MeetingAutoConnect,
+    /// Seconds the countdown runs before capture starts under
+    /// [`MeetingAutoConnect::Auto`].
+    pub auto_connect_countdown_secs: u32,
+    /// Per-app overrides, keyed by real bundle id.
+    pub app_policies: Vec<MeetingAppPolicy>,
+    /// Case-insensitive substrings that suppress auto-connect when they appear
+    /// in a meeting or calendar title.
+    pub excluded_title_patterns: Vec<String>,
+    /// Seconds of microphone audio retained ahead of detection so the
+    /// transcript catches the start of the call. Requires an always-on
+    /// microphone; ignored otherwise.
+    pub pre_roll_secs: u32,
+    /// Sustained seconds with no conferencing app before capture auto-stops.
+    /// Generous because apps briefly release audio on mute/unmute.
+    pub auto_stop_grace_secs: u32,
+    /// Where summaries run.
+    pub summary_backend: MeetingSummaryBackend,
+    /// Minutes between background rolling summaries. Keeps "catch me up"
+    /// instant on a long call instead of re-summarising the whole transcript.
+    pub rolling_summary_minutes: u32,
+    /// Name used to detect when someone addresses the user directly. Empty
+    /// disables mention alerts.
+    pub user_display_name: String,
+    /// Notify when a remote speaker says the user's name.
+    pub mention_alerts: bool,
+    /// Reserved for embedding-based speaker separation on the far-side lane.
+    ///
+    /// Not yet surfaced in the UI: separating individual remote participants
+    /// needs a speaker-embedding model that is not bundled, so exposing a
+    /// toggle would promise something the app cannot do. Lane attribution
+    /// (You vs the call) and manual speaker naming both work today.
+    pub diarization_enabled: bool,
+    /// Show the floating live transcript panel while capturing.
+    pub show_live_panel: bool,
+    /// Days to keep meeting transcripts. 0 keeps them until deleted by hand.
+    pub retention_days: u32,
+}
+
+impl Default for MeetingSettings {
+    fn default() -> Self {
+        Self {
+            // Off by default: capturing a conversation is a decision the user
+            // makes deliberately, not something an update turns on for them.
+            enabled: false,
+            capture_system_audio: true,
+            auto_connect: MeetingAutoConnect::Ask,
+            auto_connect_countdown_secs: 5,
+            app_policies: Vec::new(),
+            excluded_title_patterns: vec![
+                "1:1".to_string(),
+                "therapy".to_string(),
+                "interview".to_string(),
+            ],
+            pre_roll_secs: 45,
+            auto_stop_grace_secs: 25,
+            summary_backend: MeetingSummaryBackend::OnDevice,
+            rolling_summary_minutes: 5,
+            user_display_name: String::new(),
+            mention_alerts: true,
+            diarization_enabled: true,
+            show_live_panel: true,
+            retention_days: 30,
+        }
+    }
+}
+
+/// Conferencing applications, by **genuine** bundle identifier.
+///
+/// These are compared against [`crate::app_identity`] output, not against
+/// `AppContext::bundle_id` — see [`crate::profiles::context_identifiers`] for
+/// why that distinction matters.
+pub const MEETING_APP_BUNDLE_IDS: &[(&str, &str)] = &[
+    ("us.zoom.xos", "Zoom"),
+    ("com.microsoft.teams2", "Microsoft Teams"),
+    ("com.microsoft.teams", "Microsoft Teams"),
+    ("com.tinyspeck.slackmacgap", "Slack"),
+    ("com.cisco.webexmeetingsapp", "Webex"),
+    ("com.webex.meetingmanager", "Webex"),
+    ("com.hnc.Discord", "Discord"),
+    ("com.apple.FaceTime", "FaceTime"),
+    ("com.google.Chrome", "Google Chrome"),
+    ("com.apple.Safari", "Safari"),
+    ("company.thebrowser.Browser", "Arc"),
+    ("com.brave.Browser", "Brave"),
+    ("com.microsoft.edgemac", "Microsoft Edge"),
+    ("com.around.Around", "Around"),
+    ("im.riot.app", "Element"),
+    ("com.readdle.spark", "Spark"),
+];
+
+/// Window-title substrings that indicate a browser tab is in a call. Only
+/// consulted when the frontmost app is a browser, and only when Screen
+/// Recording permission happens to make titles readable — never required.
+pub const MEETING_TITLE_HINTS: &[&str] = &[
+    "meet.google.com",
+    "google meet",
+    "zoom.us/j/",
+    "teams.microsoft.com",
+    "whereby.com",
+    "app.gather.town",
+    "meet.jit.si",
+];
 
 /// Bump this string when the EULA text changes in a way that requires users
 /// to re-accept. Format: `MMDDYYYY` matching the "Last updated" date at the
@@ -1176,8 +1339,10 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: "escape".to_string(),
         },
     );
-    // Continuous dictation arm/disarm. K = "keep listening"; avoids
-    // Cmd+Option+D (Dock) and Cmd+Option+M (minimize).
+    // Open Mic on/off. K = "keep listening"; avoids Cmd+Option+D (Dock) and
+    // Cmd+Option+M (minimize). The stored id stays `toggle_continuous_dictation`
+    // because it is persisted in every existing user's settings file — the
+    // rename is a labelling change, not a data migration.
     #[cfg(target_os = "macos")]
     let default_continuous_shortcut = "cmd+option+k";
     #[cfg(not(target_os = "macos"))]
@@ -1186,12 +1351,40 @@ pub fn get_default_settings() -> AppSettings {
         "toggle_continuous_dictation".to_string(),
         ShortcutBinding {
             id: "toggle_continuous_dictation".to_string(),
-            name: "Toggle Continuous Dictation".to_string(),
+            name: "Toggle Open Mic".to_string(),
             description:
-                "Arms or disarms hands-free continuous dictation. When armed, the microphone stays hot and Ghostly transcribes each utterance automatically on silence."
+                "Opens or closes the mic for hands-free dictation. While the mic is open, Ghostly transcribes each utterance automatically on silence — no key press per sentence."
                     .to_string(),
             default_binding: default_continuous_shortcut.to_string(),
             current_binding: default_continuous_shortcut.to_string(),
+        },
+    );
+
+    // Meeting capture. Unbound by default: Meeting Mode is off out of the box,
+    // and claiming a chord for a feature the user has not enabled is a good way
+    // to collide with something they already use.
+    bindings.insert(
+        "toggle_meeting".to_string(),
+        ShortcutBinding {
+            id: "toggle_meeting".to_string(),
+            name: "Start / Stop Meeting Capture".to_string(),
+            description:
+                "Starts or stops live meeting transcription. Captures your microphone and, where supported, the other participants."
+                    .to_string(),
+            default_binding: String::new(),
+            current_binding: String::new(),
+        },
+    );
+    bindings.insert(
+        "meeting_catch_up".to_string(),
+        ShortcutBinding {
+            id: "meeting_catch_up".to_string(),
+            name: "Where Were We".to_string(),
+            description:
+                "Summarises what you missed in the meeting since the last summary, and shows it in the live transcript panel."
+                    .to_string(),
+            default_binding: String::new(),
+            current_binding: String::new(),
         },
     );
 
@@ -1303,6 +1496,7 @@ pub fn get_default_settings() -> AppSettings {
         error_reporting_prompted: false,
         appearance: Appearance::Dark,
         onboarding_completed: false,
+        meeting: MeetingSettings::default(),
     }
 }
 

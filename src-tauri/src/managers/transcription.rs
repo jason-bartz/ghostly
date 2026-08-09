@@ -73,6 +73,19 @@ pub struct TranscriptionManager {
     watcher_handle: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
     is_loading: Arc<Mutex<bool>>,
     loading_condvar: Arc<Condvar>,
+    /// Serialises inference across callers.
+    ///
+    /// `transcribe` *takes* the engine out of `engine` for the duration of a
+    /// run, so a second concurrent caller finds `None` and fails with a
+    /// misleading "Model is not loaded" error rather than waiting. That was
+    /// harmless while dictation was effectively the only caller, but Meeting
+    /// Mode transcribes continuously in the background — without this permit a
+    /// dictation started mid-meeting and the meeting's own segments knock each
+    /// other out at random, each silently losing audio.
+    ///
+    /// Held across the whole run so callers queue. Kept separate from `engine`
+    /// so the existing take/restore logic is untouched.
+    inference_permit: Arc<Mutex<()>>,
 }
 
 impl TranscriptionManager {
@@ -87,6 +100,7 @@ impl TranscriptionManager {
             watcher_handle: Arc::new(Mutex::new(None)),
             is_loading: Arc::new(Mutex::new(false)),
             loading_condvar: Arc::new(Condvar::new()),
+            inference_permit: Arc::new(Mutex::new(())),
         };
 
         // Start the idle watcher
@@ -437,7 +451,23 @@ impl TranscriptionManager {
         current_model.clone()
     }
 
+    /// Transcribe audio, logging the resulting text at info level.
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
+        self.transcribe_inner(audio, true)
+    }
+
+    /// Transcribe without ever writing the resulting text to the log.
+    ///
+    /// Meeting Mode captures other people's speech continuously. Logging that
+    /// would put third-party conversation into `ghostly.log`, which the
+    /// diagnostics bundle copies verbatim — so a user sending a support bundle
+    /// would ship their colleagues' words with it. Timing and length are still
+    /// logged; only the content is withheld.
+    pub fn transcribe_private(&self, audio: Vec<f32>) -> Result<String> {
+        self.transcribe_inner(audio, false)
+    }
+
+    fn transcribe_inner(&self, audio: Vec<f32>, log_text: bool) -> Result<String> {
         #[cfg(debug_assertions)]
         if std::env::var("HANDY_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
             return Err(anyhow::anyhow!(
@@ -457,6 +487,16 @@ impl TranscriptionManager {
             self.maybe_unload_immediately("empty audio");
             return Ok(String::new());
         }
+
+        // Queue behind any in-flight run. Taken before the loaded-model check
+        // below, because that check reads `engine`, which an in-flight run has
+        // emptied — without the permit the check reports "not loaded" for a
+        // model that is merely busy. Poisoning is tolerated: a panicking run
+        // leaves no state behind that would make the next run unsafe.
+        let _inference_permit = match self.inference_permit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         // Check if model is loaded, if not try to load it
         {
@@ -728,8 +768,13 @@ impl TranscriptionManager {
 
         if final_result.is_empty() {
             info!("Transcription result is empty");
-        } else {
+        } else if log_text {
             info!("Transcription result: {}", final_result);
+        } else {
+            info!(
+                "Transcription result: {} chars (content withheld)",
+                final_result.len()
+            );
         }
 
         self.maybe_unload_immediately("transcription");
