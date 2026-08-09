@@ -15,6 +15,10 @@ src-tauri/gen
 # Generated files
 src/bindings.ts
 
+# Shipped verbatim by the in-app updater, which renders them as plain text.
+# Prettier's Markdown pass inserts blank lines that then show up in the dialog.
+release-notes
+
 # Misc
 .DS_Store
 *.log

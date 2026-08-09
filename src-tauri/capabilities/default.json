@@ -5,6 +5,7 @@
   "windows": ["main", "recording_overlay", "meeting_panel"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "opener:default",
     "deep-link:default",
     "store:default",

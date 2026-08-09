@@ -43,6 +43,20 @@ int32_t ghostly_is_app_running(const char *bundle_id);
 // when no running app matches. Caller owns the string.
 char *ghostly_bundle_id_for_display_name(const char *display_name);
 
+// Newline-separated window titles for every running process with `bundle_id`.
+// Uses the Accessibility API rather than Core Graphics: kCGWindowName needs
+// Screen Recording permission, which Meeting Mode is built to avoid, while
+// Ghostly already holds Accessibility for its global shortcuts.
+//
+// An empty string means either "no titled windows" or "Accessibility is not
+// granted" — callers must not read it as "nothing matched". Check
+// ghostly_accessibility_is_trusted() to tell the two apart. Caller owns the
+// string.
+char *ghostly_window_titles_for_bundle(const char *bundle_id);
+
+// 1 when the process is trusted for Accessibility. Never prompts.
+int32_t ghostly_accessibility_is_trusted(void);
+
 void ghostly_app_identity_free_string(char *value);
 
 #ifdef __cplusplus

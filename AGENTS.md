@@ -176,22 +176,45 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
 
 Ghostly supports command-line parameters for integration with scripts and autostart configurations.
 
-**Implementation:** `cli.rs` (definitions), `main.rs` (parsing), `lib.rs` (applying), `signal_handle.rs` (shared logic)
+**Implementation:** `cli.rs` (definitions), `main.rs` (parsing/dispatch), `lib.rs` (applying), `signal_handle.rs` (shared logic), `cli_client.rs` (flags that need a response), `cli_install.rs` (PATH installer)
 
-| Flag                     | Description                                                |
-| ------------------------ | ---------------------------------------------------------- |
-| `--toggle-transcription` | Toggle recording on/off on a running instance              |
-| `--toggle-post-process`  | Toggle recording with post-processing on/off               |
-| `--cancel`               | Cancel the current operation on a running instance         |
-| `--start-hidden`         | Launch without showing the main window (tray icon visible) |
-| `--no-tray`              | Launch without system tray (closing window quits the app)  |
-| `--debug`                | Enable debug mode with verbose (Trace) logging             |
+Flags fall into three groups, and the group determines the transport:
+
+| Flag                     | Group          | Description                                                |
+| ------------------------ | -------------- | ---------------------------------------------------------- |
+| `--start-hidden`         | Launch         | Launch without showing the main window (tray icon visible) |
+| `--no-tray`              | Launch         | Launch without system tray (closing window quits the app)  |
+| `--debug`                | Launch         | Enable debug mode with verbose (Trace) logging             |
+| `--toggle-transcription` | Remote control | Toggle recording on/off on a running instance              |
+| `--toggle-post-process`  | Remote control | Deprecated alias for `--toggle-transcription`              |
+| `--cancel`               | Remote control | Cancel the current operation on a running instance         |
+| `--dictate`              | API client     | Record, block, print the transcript to stdout              |
+| `--status`               | API client     | Print idle/recording state                                 |
+| `--history`              | API client     | Print recent transcriptions                                |
+| `--install-cli`          | Local          | Symlink the binary onto PATH                               |
 
 **Key design decisions:**
 
 - CLI flags are runtime-only overrides — they do NOT modify persisted settings
+- Launch flags only apply to a new instance; passing them to a running app just shows the window
 - Remote control flags work via `tauri_plugin_single_instance`: second instance sends args, then exits
 - `send_transcription_input()` in `signal_handle.rs` is shared between signal handlers and CLI
+- Single-instance IPC is one-way, so anything needing a **return value** goes over the localhost API instead (`cli_client.rs`). It reads port and token straight from `settings_store.json`, so scripts never handle tokens. These flags require the API to be enabled; the remote-control flags do not.
+
+## Localhost API
+
+`rest_api.rs`. Off by default; enabled in Settings → Developer. Binds `127.0.0.1:<rest_api_port>`.
+
+**Security model — do not weaken either gate:**
+
+- Bearer token (`rest_api_token`, minted on first enable) required on every request, compared in constant time. It lives in settings rather than the keychain because the CLI is a separate process and must read it without a keychain prompt.
+- Any request with an `Origin` / `Sec-Fetch-*` header is rejected with 403, and there is deliberately **no CORS layer**. Without this, any open web page could read the user's history and type into their machine. Native clients never send those headers.
+
+**Wiring:** `EventBus`, `PasteSuppressor`, and `RestApiServer` are managed state registered unconditionally at startup, so publishers never check whether the server is running. Transcripts are published from `HistoryManager::save_entry` — the single choke point every finished transcription passes through — and recording state from the coordinator's `start`/`stop`. `/api/dictate` and `/api/events` both read from that one bus.
+
+**Lifecycle:** `set_rest_api_enabled(false)` actually stops the socket, and a port change rebinds live. `stop()` aborts the serve task rather than only signalling graceful shutdown, because an open SSE stream would otherwise keep an old (possibly revoked) connection alive forever.
+
+Reference docs live in [docs/API.md](docs/API.md) — update them with any endpoint change.
 
 ## Debug Mode
 

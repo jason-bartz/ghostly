@@ -99,7 +99,9 @@ pub fn handle_shortcut_event(
                 };
                 // Surface the panel so the summary has somewhere to land.
                 crate::meetings::panel::show(&app);
-                let from_ms = manager.store().last_summarised_ms(&meeting_id).unwrap_or(0);
+                // Same floor as the panel button — see `MIN_CATCH_UP_WINDOW_MS`.
+                let last = manager.store().last_summarised_ms(&meeting_id).unwrap_or(0);
+                let from_ms = last.min((manager.elapsed_ms() - 3 * 60 * 1000).max(0));
                 match crate::meetings::summarizer::summarize_window(
                     &app,
                     manager.store(),
@@ -111,7 +113,13 @@ pub fn handle_shortcut_event(
                 .await
                 {
                     Ok(body) => {
-                        let _ = app.emit("meeting-catch-up", body);
+                        let _ = app.emit(
+                            "meeting-catch-up",
+                            crate::meetings::types::MeetingSummaryEvent {
+                                meeting_id: meeting_id.clone(),
+                                body,
+                            },
+                        );
                     }
                     Err(e) => warn!("Catch me up failed: {e}"),
                 }

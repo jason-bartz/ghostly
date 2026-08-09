@@ -36,11 +36,54 @@ use super::types::{DetectionSource, MeetingDetectedEvent};
 /// imperceptible.
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 
+/// Poll interval while Meeting Mode is switched off, or auto-connect is.
+///
+/// The three-second cadence exists to catch the start of a call promptly. When
+/// nothing is going to act on a detection, that is a wakeup every three seconds
+/// for no reason — measurable on battery over a working day. The loop still
+/// ticks so a settings change is picked up without a restart.
+const IDLE_POLL_INTERVAL: Duration = Duration::from_secs(30);
+
 /// A conferencing app currently in a call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DetectedMeeting {
     pub bundle_id: String,
     pub display_name: String,
+    /// Window titles the app had when the call was detected. Zoom, Teams, Meet
+    /// and Slack all put the meeting name here, which is what the exclusion
+    /// list matches against. Empty when there are none *or* when Accessibility
+    /// permission is missing — the two are distinguished by
+    /// [`crate::app_identity::accessibility_is_trusted`].
+    pub window_titles: Vec<String>,
+}
+
+impl DetectedMeeting {
+    /// The same call, regardless of how its window title has changed.
+    ///
+    /// Titles are live — Zoom appends a participant count, Teams swaps in the
+    /// active speaker — so structural equality would make every title change
+    /// look like a brand-new call and re-open the prompt.
+    fn is_same_call(&self, other: &DetectedMeeting) -> bool {
+        self.bundle_id.eq_ignore_ascii_case(&other.bundle_id)
+    }
+
+    /// A human name for the meeting, taken from the window title when the app
+    /// gives us one worth using.
+    ///
+    /// Falls back to "Zoom call" and friends. Titles that are just the app's
+    /// own name are no better than the fallback, so they are skipped.
+    pub fn meeting_title(&self) -> String {
+        self.window_titles
+            .iter()
+            .map(|title| title.trim())
+            .find(|title| {
+                !title.is_empty()
+                    && !title.eq_ignore_ascii_case(&self.display_name)
+                    && title.len() > 2
+            })
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{} call", self.display_name))
+    }
 }
 
 /// Applications Ghostly recognises, including any the user added.
@@ -71,9 +114,11 @@ pub fn detect(settings: &MeetingSettings) -> Option<DetectedMeeting> {
 
     for (bundle_id, display_name) in known_apps(settings) {
         if crate::system_audio::is_bundle_capturing(&bundle_id, &capturing) {
+            let window_titles = crate::app_identity::window_titles_for_bundle(&bundle_id);
             return Some(DetectedMeeting {
                 bundle_id,
                 display_name,
+                window_titles,
             });
         }
     }
@@ -103,6 +148,46 @@ pub fn is_excluded(settings: &MeetingSettings, title: Option<&str>) -> bool {
         .iter()
         .filter(|pattern| !pattern.trim().is_empty())
         .any(|pattern| title.contains(&pattern.trim().to_lowercase()))
+}
+
+/// Whether *any* of a detected call's window titles is excluded.
+///
+/// Errs towards not capturing. When a pattern is configured but Accessibility
+/// permission is missing, there is no way to read a title and therefore no way
+/// to honour the exclusion — so auto-connect is suppressed entirely rather than
+/// silently recording the very conversations the user listed. Someone who wants
+/// auto-connect without granting Accessibility can clear the patterns.
+pub fn detection_is_excluded(settings: &MeetingSettings, detected: &DetectedMeeting) -> bool {
+    let has_patterns = settings
+        .excluded_title_patterns
+        .iter()
+        .any(|pattern| !pattern.trim().is_empty());
+    if !has_patterns {
+        return false;
+    }
+
+    if detected
+        .window_titles
+        .iter()
+        .any(|title| is_excluded(settings, Some(title)))
+    {
+        return true;
+    }
+
+    // The app name is still worth checking — someone may well list "Discord".
+    if is_excluded(settings, Some(&detected.display_name)) {
+        return true;
+    }
+
+    if !crate::app_identity::accessibility_is_trusted() {
+        debug!(
+            "Meeting detector: exclusions are configured but Accessibility is not granted, \
+             so window titles cannot be read — suppressing auto-connect"
+        );
+        return true;
+    }
+
+    false
 }
 
 /// Background service that watches for calls and drives auto-connect.
@@ -180,16 +265,40 @@ impl MeetingDetector {
         // Tracks how long no call has been seen, for auto-stop.
         let mut absent_since: Option<Instant> = None;
 
+        // Starts fast so a call already in progress at launch is noticed
+        // promptly, then drops to the idle cadence when there is nothing to
+        // detect *for*. Recomputed each tick, so flipping a setting takes
+        // effect within one idle period without a restart.
+        let mut interval = POLL_INTERVAL;
+
         while self.running.load(Ordering::SeqCst) {
-            std::thread::sleep(POLL_INTERVAL);
+            std::thread::sleep(interval);
 
             let settings = get_settings(&self.app).meeting;
             if !settings.enabled {
+                interval = IDLE_POLL_INTERVAL;
                 continue;
             }
 
             let Some(manager) = self.app.try_state::<Arc<MeetingManager>>() else {
+                interval = IDLE_POLL_INTERVAL;
                 continue;
+            };
+
+            // Fast cadence when a detection could actually lead somewhere: the
+            // global policy is on, some app has its own policy, or a capture is
+            // running and auto-stop needs to watch for the call ending.
+            let any_app_opted_in = settings
+                .app_policies
+                .iter()
+                .any(|policy| policy.policy != MeetingAutoConnect::Off);
+            let worth_watching = settings.auto_connect != MeetingAutoConnect::Off
+                || any_app_opted_in
+                || manager.is_capturing();
+            interval = if worth_watching {
+                POLL_INTERVAL
+            } else {
+                IDLE_POLL_INTERVAL
             };
             let detected = detect(&settings);
 
@@ -239,8 +348,14 @@ impl MeetingDetector {
                 continue;
             };
 
-            // Already prompted for this app and the user has not answered.
-            if self.pending.lock().unwrap().as_ref() == Some(&detected) {
+            // Already prompted for this call and the user has not answered.
+            if self
+                .pending
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|pending| pending.is_same_call(&detected))
+            {
                 continue;
             }
 
@@ -248,7 +363,7 @@ impl MeetingDetector {
             if policy == MeetingAutoConnect::Off {
                 continue;
             }
-            if is_excluded(&settings, Some(&detected.display_name)) {
+            if detection_is_excluded(&settings, &detected) {
                 debug!("Meeting detector: {} is excluded", detected.display_name);
                 continue;
             }
@@ -318,7 +433,7 @@ impl MeetingDetector {
                 DetectionSource::AutoConnect,
                 Some(detected.bundle_id.clone()),
                 Some(detected.display_name.clone()),
-                Some(format!("{} call", detected.display_name)),
+                Some(detected.meeting_title()),
             ) {
                 log::warn!("Meeting auto-connect failed to start: {e}");
             }
@@ -381,6 +496,60 @@ mod tests {
             !is_excluded(&s, Some("Any meeting at all")),
             "an empty pattern must not exclude every meeting"
         );
+    }
+
+    fn detected(display_name: &str, titles: &[&str]) -> DetectedMeeting {
+        DetectedMeeting {
+            bundle_id: "us.zoom.xos".into(),
+            display_name: display_name.into(),
+            window_titles: titles.iter().map(|t| t.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn exclusions_match_the_window_title_not_just_the_app() {
+        let mut s = settings();
+        s.excluded_title_patterns = vec!["therapy".into()];
+        // The app name alone never contains the pattern — matching only on it
+        // is what made this feature silently do nothing.
+        assert!(detection_is_excluded(
+            &s,
+            &detected("Zoom", &["Therapy session with Dr Lee"])
+        ));
+        assert!(!detection_is_excluded(
+            &s,
+            &detected("Zoom", &["Weekly team standup"])
+        ));
+    }
+
+    #[test]
+    fn no_patterns_means_nothing_is_excluded() {
+        let mut s = settings();
+        s.excluded_title_patterns = vec![];
+        // Notably this must hold even without Accessibility permission, which
+        // is unavailable in tests.
+        assert!(!detection_is_excluded(&s, &detected("Zoom", &[])));
+    }
+
+    #[test]
+    fn a_call_stays_the_same_call_when_its_title_changes() {
+        // Zoom rewrites its title as participants join. Treating that as a new
+        // call would re-open the prompt every few seconds.
+        let first = detected("Zoom", &["Standup"]);
+        let later = detected("Zoom", &["Standup (4 participants)"]);
+        assert!(first.is_same_call(&later));
+    }
+
+    #[test]
+    fn meeting_title_prefers_the_window_title() {
+        assert_eq!(
+            detected("Zoom", &["Q3 planning"]).meeting_title(),
+            "Q3 planning"
+        );
+        // A title that is just the app's own name is no better than the
+        // fallback.
+        assert_eq!(detected("Zoom", &["Zoom"]).meeting_title(), "Zoom call");
+        assert_eq!(detected("Zoom", &[]).meeting_title(), "Zoom call");
     }
 
     #[test]

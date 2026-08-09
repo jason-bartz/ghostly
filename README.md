@@ -62,19 +62,41 @@ Ghostly notices which app has focus when you transcribe and can switch prompts a
 
 ## CLI
 
+Install the command from Settings → Developer → Command line, or run the bundle directly once:
+
+```bash
+/Applications/Ghostly.app/Contents/MacOS/ghostly --install-cli
+```
+
 ```bash
 ghostly --toggle-transcription   # toggle recording
 ghostly --cancel                 # cancel current operation
-ghostly --start-hidden           # launch to tray only
-ghostly --no-tray                # quit when window closes
-ghostly --debug                  # verbose logging
+ghostly --dictate                # record, then print the transcript
+ghostly --status                 # idle or recording?
+ghostly --history --limit 5      # recent transcriptions
 ```
 
-Invoke via the bundle if you installed to Applications:
+`--dictate` prints to stdout and keeps progress on stderr, so dictation composes with anything:
 
 ```bash
-/Applications/Ghostly.app/Contents/MacOS/ghostly --toggle-transcription
+git commit -m "$(ghostly --dictate)"
 ```
+
+Useful for foot pedals, Stream Deck, Raycast, Shortcuts, and anywhere the global hotkey gets swallowed — a VM, a remote desktop, a full-screen game.
+
+## Local API
+
+An HTTP server on `127.0.0.1:7543`, off by default, enabled in Settings → Developer. It turns your dictation into something other software can use: sync every transcript to Obsidian, light up a Stream Deck key while recording, or hand your voice to an AI agent.
+
+```bash
+curl -X POST http://127.0.0.1:7543/api/dictate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"stop_after_ms": 8000}'
+```
+
+Endpoints cover status, start/stop/toggle, cancel, dictate, paste, history, and an SSE event stream. Every request needs the per-install token, and requests from web pages are refused outright.
+
+Full reference, including recipes for Raycast, Stream Deck, Obsidian, and Shortcuts: **[docs/API.md](docs/API.md)**.
 
 ## Requirements
 

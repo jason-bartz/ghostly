@@ -656,6 +656,16 @@ pub fn paste_with_options(
     app_handle: AppHandle,
     options: PasteOptions,
 ) -> Result<(), String> {
+    // `/api/dictate` returns the transcript to its caller, so pasting it into
+    // the focused app too would double-insert it — the caller is usually a
+    // terminal running `$(ghostly --dictate)`. The flag is armed only for the
+    // duration of such a request and consumed by the first paste that follows.
+    // Checked before touching the clipboard so we don't clobber it either.
+    if crate::rest_api::take_paste_suppression(&app_handle) {
+        info!("Paste suppressed: consumed by an /api/dictate request");
+        return Ok(());
+    }
+
     let settings = get_settings(&app_handle);
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;

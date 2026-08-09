@@ -1363,6 +1363,73 @@
         "title": "Performance",
         "subtitle": "Acceleration and model memory behaviour."
       }
+    },
+    "restApi": {
+      "title": "Local API",
+      "sectionDescription": "An HTTP server on your machine that lets scripts and other apps drive Ghostly. Nothing is exposed to the network.",
+      "invalidPort": "Port must be between 1024 and 65535",
+      "listening": "Listening on {{port}}",
+      "notListening": "Not listening",
+      "copyCurl": "Copy as curl",
+      "securityNote": "Localhost only. Every request needs the token, and browser requests are refused.",
+      "enabled": {
+        "title": "Enable local API",
+        "description": "Starts an HTTP server on 127.0.0.1 so scripts, Raycast, Shortcuts, Stream Deck and AI agents can control Ghostly. Turning this off stops the server immediately."
+      },
+      "port": {
+        "title": "Port",
+        "description": "The port the API listens on. Default: 7543. Changes take effect immediately."
+      },
+      "token": {
+        "title": "API token",
+        "description": "Every request must send this token. Treat it like a password: it can read your transcription history and type into the app you have focused.",
+        "revealHint": "Click to reveal",
+        "regenerate": "Generate a new token",
+        "regenerateConfirm": "Generate a new token? Any script using the current one will stop working.",
+        "regenerated": "New token generated"
+      },
+      "docs": {
+        "title": "Endpoints",
+        "description": "Hover a row and click the copy icon for a ready-to-run curl command."
+      },
+      "test": {
+        "action": "Test connection",
+        "ok": "API is responding on port {{port}}",
+        "notListening": "The API is not listening. Try toggling it off and on.",
+        "portMismatch": "The API is listening on {{actual}}, not the port shown. Try toggling it off and on."
+      },
+      "endpoint": {
+        "status": "Is Ghostly recording?",
+        "dictate": "Record, wait, return the transcript",
+        "transcribeStart": "Begin recording",
+        "transcribeStop": "End recording and transcribe",
+        "transcribeToggle": "Toggle recording",
+        "cancel": "Cancel the current operation",
+        "paste": "Paste text through Ghostly",
+        "history": "Recent transcriptions",
+        "events": "Live stream of state changes"
+      },
+      "cli": {
+        "sectionTitle": "Command line",
+        "sectionDescription": "Drive Ghostly from a terminal, a script, a foot pedal, or anything else that can run a command.",
+        "install": {
+          "title": "Install the ghostly command",
+          "description": "Adds a ghostly command to your PATH so you can run it from any terminal. You may be asked for your password."
+        },
+        "installAction": "Install command",
+        "reinstall": "Reinstall",
+        "installedAt": "Installed at {{path}}",
+        "installed": "Installed at {{path}}",
+        "installedNeedsPath": "Installed, but the folder needs adding to your PATH",
+        "examples": {
+          "title": "Examples",
+          "description": "Commands that return a value need the local API enabled below.",
+          "toggle": "Start or stop recording",
+          "dictate": "Record, then print the transcript",
+          "compose": "Dictate straight into another command",
+          "history": "Print your last 5 transcriptions"
+        }
+      }
     }
   },
   "footer": {
@@ -1716,7 +1783,14 @@
       "pause": "Pause",
       "resume": "Resume",
       "pausedNotice": "Paused — audio isn't being captured.",
-      "finalSummaryHeading": "Meeting summary"
+      "finalSummaryHeading": "Meeting summary",
+      "startMeeting": "Start meeting",
+      "starting": "Starting…",
+      "ending": "Ending…",
+      "wrappingUp": "Writing the wrap-up…",
+      "titlePlaceholder": "Meeting name…",
+      "renameMeetingHint": "Click to name this meeting",
+      "durationHint": "Time since the meeting started"
     },
     "settings": {
       "loading": "Loading meeting settings…",
@@ -1762,7 +1836,14 @@
       "retentionDays_other": "{{count}} days",
       "startNow": "Start a meeting now",
       "startNowHint": "Begins capturing immediately without waiting for detection.",
-      "save": "Save"
+      "save": "Save",
+      "liveRefinementLabel": "Clean up the live transcript",
+      "liveRefinementDescription": "Fixes punctuation, casing and misheard names as each line arrives. Corrected lines replace themselves in the panel a moment after they appear.",
+      "liveRefinementOff": "Off (verbatim)",
+      "liveRefinementOnDevice": "On this Mac (Apple Intelligence)",
+      "liveRefinementCloud": "Your AI provider",
+      "liveRefinementCloudWarning": "Every transcript line will be sent to your configured AI provider as the meeting runs.",
+      "groupTranscript": "Live transcript"
     },
     "detected": {
       "title": "{{app}} call detected",
@@ -1829,7 +1910,13 @@
       "exportedCount_other": "Exported {{count}} meetings",
       "retention": "Storage & retention",
       "retentionHint": "Meeting transcripts are kept on this Mac only. Change how long they're kept in the Settings tab.",
-      "unknownApp": "Other"
+      "unknownApp": "Other",
+      "addSpeaker": "Add speaker",
+      "mergeInto": "Merge into…",
+      "merged_one": "Moved {{count}} line",
+      "merged_other": "Moved {{count}} lines",
+      "reassignLine": "Change who said this",
+      "editLine": "Click to correct this line"
     }
   }
 }

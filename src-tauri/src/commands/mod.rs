@@ -207,31 +207,139 @@ pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Turn the localhost API on or off. Unlike a plain settings write this
+/// actually binds and unbinds the socket, so "off" means off immediately
+/// rather than at the next app launch.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_rest_api_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = get_settings(&app);
-    let port = settings.rest_api_port;
-    settings.rest_api_enabled = enabled;
-    write_settings(&app, settings);
+    let server = app
+        .try_state::<std::sync::Arc<crate::rest_api::RestApiServer>>()
+        .ok_or("REST API server state not initialized")?
+        .inner()
+        .clone();
 
-    if enabled {
-        let api_app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            crate::rest_api::start_server(api_app, port).await;
-        });
+    if !enabled {
+        server.stop();
+        let mut settings = get_settings(&app);
+        settings.rest_api_enabled = false;
+        write_settings(&app, settings);
+        return Ok(());
     }
 
+    // Mint the token on first enable so it never sits in settings for users
+    // who never turn the API on.
+    let mut settings = get_settings(&app);
+    if settings.rest_api_token.is_empty() {
+        settings.rest_api_token = crate::rest_api::generate_token();
+    }
+    let port = settings.rest_api_port;
+    let token = settings.rest_api_token.clone();
+
+    // Bind before persisting: a failed bind must not leave the setting on.
+    server.start(app.clone(), port, token).await?;
+
+    settings.rest_api_enabled = true;
+    write_settings(&app, settings);
     Ok(())
 }
 
+/// Change the port. Rebinds immediately when the server is running; the old
+/// port is released first so the change needs no app restart.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_rest_api_port(app: AppHandle, port: u16) -> Result<(), String> {
+    if port < 1024 {
+        return Err("Port must be 1024 or higher.".to_string());
+    }
+
+    let server = app
+        .try_state::<std::sync::Arc<crate::rest_api::RestApiServer>>()
+        .ok_or("REST API server state not initialized")?
+        .inner()
+        .clone();
+
+    let settings = get_settings(&app);
+    if settings.rest_api_enabled {
+        // Rebind first so an in-use port surfaces as an error and the old
+        // port keeps serving under the previously saved value.
+        server
+            .start(app.clone(), port, settings.rest_api_token.clone())
+            .await?;
+    }
+
     let mut settings = get_settings(&app);
     settings.rest_api_port = port;
     write_settings(&app, settings);
     Ok(())
+}
+
+/// The current API token, minting one if it does not exist yet.
+#[tauri::command]
+#[specta::specta]
+pub fn get_rest_api_token(app: AppHandle) -> Result<String, String> {
+    let mut settings = get_settings(&app);
+    if settings.rest_api_token.is_empty() {
+        settings.rest_api_token = crate::rest_api::generate_token();
+        let token = settings.rest_api_token.clone();
+        write_settings(&app, settings);
+        return Ok(token);
+    }
+    Ok(settings.rest_api_token)
+}
+
+/// Replace the API token, invalidating every existing script. Restarts the
+/// server so the new token takes effect without an app restart.
+#[tauri::command]
+#[specta::specta]
+pub async fn regenerate_rest_api_token(app: AppHandle) -> Result<String, String> {
+    let token = crate::rest_api::generate_token();
+
+    let mut settings = get_settings(&app);
+    settings.rest_api_token = token.clone();
+    let port = settings.rest_api_port;
+    let enabled = settings.rest_api_enabled;
+    write_settings(&app, settings);
+
+    if enabled {
+        let server = app
+            .try_state::<std::sync::Arc<crate::rest_api::RestApiServer>>()
+            .ok_or("REST API server state not initialized")?
+            .inner()
+            .clone();
+        server.start(app.clone(), port, token.clone()).await?;
+    }
+
+    Ok(token)
+}
+
+/// Whether the socket is actually bound right now — distinct from the stored
+/// setting, which can disagree if a bind failed.
+#[tauri::command]
+#[specta::specta]
+pub fn rest_api_running_port(app: AppHandle) -> Option<u16> {
+    app.try_state::<std::sync::Arc<crate::rest_api::RestApiServer>>()
+        .and_then(|s| s.running_port())
+}
+
+/// Install the `ghostly` command onto the user's PATH.
+///
+/// Tries `/usr/local/bin` first (on PATH for every shell out of the box,
+/// needs an admin prompt), and falls back to `~/.local/bin`, reporting back
+/// whether that directory still needs adding to PATH.
+#[tauri::command]
+#[specta::specta]
+pub fn install_cli() -> Result<CliInstallResult, String> {
+    crate::cli_install::install()
+}
+
+pub use crate::cli_install::CliInstallResult;
+
+/// Where the `ghostly` command is currently installed, if anywhere.
+#[tauri::command]
+#[specta::specta]
+pub fn cli_install_status() -> Option<String> {
+    crate::cli_install::installed_path().map(|p| p.to_string_lossy().to_string())
 }
 
 /// Return the bundled EULA text and the current EULA version string. The

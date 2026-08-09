@@ -147,7 +147,6 @@ pub struct Meeting {
     /// False when the far side was not captured — the transcript is the user's
     /// side only, and the UI must say so.
     pub captured_system_audio: bool,
-    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -258,6 +257,12 @@ pub struct MeetingStatus {
     pub system_audio_error: Option<String>,
     /// Capture is open but ignoring audio.
     pub paused: bool,
+    /// Milliseconds spent paused so far.
+    ///
+    /// Segment timestamps count frames seen, so they stall while paused. The
+    /// panel subtracts this from wall clock to show a duration that agrees with
+    /// the timestamps next to it.
+    pub paused_ms: i64,
 }
 
 impl Default for MeetingStatus {
@@ -271,6 +276,7 @@ impl Default for MeetingStatus {
             app_display_name: None,
             system_audio_error: None,
             paused: false,
+            paused_ms: 0,
         }
     }
 }
@@ -303,6 +309,27 @@ pub struct MeetingMentionEvent {
     pub meeting_id: String,
     pub text: String,
     pub speaker_name: Option<String>,
+}
+
+/// A summary arriving at the panel, tagged with the meeting it belongs to.
+///
+/// The tag matters: the end-of-meeting wrap-up is produced asynchronously and
+/// can land after the user has already started their next call. Untagged, it
+/// would appear as that new meeting's summary.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSummaryEvent {
+    pub meeting_id: String,
+    pub body: String,
+}
+
+/// Emitted when a live transcript line is replaced by a cleaned-up version.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSegmentRefinedEvent {
+    pub meeting_id: String,
+    pub segment_id: i64,
+    pub text: String,
 }
 
 /// Emitted when the capture session starts or stops.

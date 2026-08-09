@@ -17,6 +17,18 @@ enum Command {
         is_pressed: bool,
         push_to_talk: bool,
     },
+    /// Unambiguous "begin recording" — unlike `Input`, never stops an
+    /// in-flight recording. Used by the REST API, where a caller asking to
+    /// start must never be surprised by a stop.
+    StartExplicit {
+        binding_id: String,
+        hotkey_string: String,
+    },
+    /// Unambiguous "end recording and process". No-op when not recording.
+    StopExplicit {
+        binding_id: String,
+        hotkey_string: String,
+    },
     Cancel {
         recording_was_active: bool,
     },
@@ -91,6 +103,30 @@ impl TranscriptionCoordinator {
                                 }
                             }
                         }
+                        Command::StartExplicit {
+                            binding_id,
+                            hotkey_string,
+                        } => match &stage {
+                            Stage::Idle => {
+                                start(&app, &mut stage, &binding_id, &hotkey_string);
+                            }
+                            Stage::Recording(id) if id == &binding_id => {
+                                debug!("Explicit start for '{binding_id}': already recording");
+                            }
+                            _ => {
+                                debug!("Ignoring explicit start for '{binding_id}': pipeline busy")
+                            }
+                        },
+                        Command::StopExplicit {
+                            binding_id,
+                            hotkey_string,
+                        } => {
+                            if matches!(&stage, Stage::Recording(id) if id == &binding_id) {
+                                stop(&app, &mut stage, &binding_id, &hotkey_string);
+                            } else {
+                                debug!("Explicit stop for '{binding_id}': not recording");
+                            }
+                        }
                         Command::Cancel {
                             recording_was_active,
                         } => {
@@ -99,10 +135,12 @@ impl TranscriptionCoordinator {
                                 && (recording_was_active || matches!(stage, Stage::Recording(_)))
                             {
                                 stage = Stage::Idle;
+                                crate::rest_api::publish_status(&app, "idle");
                             }
                         }
                         Command::ProcessingFinished => {
                             stage = Stage::Idle;
+                            crate::rest_api::publish_status(&app, "idle");
                         }
                     }
                 }
@@ -132,6 +170,35 @@ impl TranscriptionCoordinator {
                 hotkey_string: hotkey_string.to_string(),
                 is_pressed,
                 push_to_talk,
+            })
+            .is_err()
+        {
+            warn!("Transcription coordinator channel closed");
+        }
+    }
+
+    /// Begin recording. Never toggles: a caller that asks to start and is
+    /// already recording gets a no-op, not a stop.
+    pub fn send_start(&self, binding_id: &str, hotkey_string: &str) {
+        if self
+            .tx
+            .send(Command::StartExplicit {
+                binding_id: binding_id.to_string(),
+                hotkey_string: hotkey_string.to_string(),
+            })
+            .is_err()
+        {
+            warn!("Transcription coordinator channel closed");
+        }
+    }
+
+    /// End recording and run the pipeline. No-op when not recording.
+    pub fn send_stop(&self, binding_id: &str, hotkey_string: &str) {
+        if self
+            .tx
+            .send(Command::StopExplicit {
+                binding_id: binding_id.to_string(),
+                hotkey_string: hotkey_string.to_string(),
             })
             .is_err()
         {
@@ -169,6 +236,7 @@ fn start(app: &AppHandle, stage: &mut Stage, binding_id: &str, hotkey_string: &s
         .map_or(false, |a| a.is_recording())
     {
         *stage = Stage::Recording(binding_id.to_string());
+        crate::rest_api::publish_status(app, "recording");
     } else {
         debug!("Start for '{binding_id}' did not begin recording; staying idle");
     }
@@ -181,4 +249,5 @@ fn stop(app: &AppHandle, stage: &mut Stage, binding_id: &str, hotkey_string: &st
     };
     action.stop(app, binding_id, hotkey_string);
     *stage = Stage::Processing;
+    crate::rest_api::publish_status(app, "processing");
 }

@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { DateRangePicker, type DateRange } from "../../ui/DateRangePicker";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { PageHeader } from "../../ui/PageHeader";
+import { MeetingTranscriptEditor } from "./MeetingTranscriptEditor";
 import { commands } from "../../../bindings";
 import type {
   MeetingSegment,
@@ -198,17 +199,6 @@ export const MeetingsLibrary: React.FC = () => {
     if (segments.status === "ok" && speakers.status === "ok") {
       setExpanded({ segments: segments.data, speakers: speakers.data });
     }
-  };
-
-  const speakerName = (
-    segment: MeetingSegment,
-    speakers: MeetingSpeaker[],
-  ): string => {
-    const speaker = speakers.find((s) => s.id === segment.speakerId);
-    if (speaker?.displayName) return speaker.displayName;
-    return segment.lane === "mic"
-      ? t("meeting.panel.you")
-      : t("meeting.panel.participant");
   };
 
   const handleCopy = async (meetingId: string) => {
@@ -792,22 +782,12 @@ export const MeetingsLibrary: React.FC = () => {
                               {t("meeting.library.noTranscript")}
                             </p>
                           ) : (
-                            <div className="max-h-72 overflow-y-auto pr-1">
-                              {expanded.segments.map((segment) => (
-                                <p
-                                  key={segment.id}
-                                  className="mb-1 text-[12px] leading-snug"
-                                >
-                                  <span className="font-medium text-text">
-                                    {speakerName(segment, expanded.speakers)}
-                                    :{" "}
-                                  </span>
-                                  <span className="text-text-muted">
-                                    {segment.text}
-                                  </span>
-                                </p>
-                              ))}
-                            </div>
+                            <MeetingTranscriptEditor
+                              meetingId={row.meeting.id}
+                              segments={expanded.segments}
+                              speakers={expanded.speakers}
+                              onChange={setExpanded}
+                            />
                           )}
 
                           <button

@@ -20,7 +20,13 @@ import type { MeetingSegment, MeetingSpeaker, MeetingStatus } from "@/bindings";
  *   single most annoying thing a live transcript can do.
  * - The transcript is deliberately NOT cleared when capture stops. The panel
  *   stays open afterwards so the user can read it, name speakers and run a
- *   wrap-up summary; wiping it on stop would destroy exactly that workflow.
+ *   wrap-up summary; wiping it on stop would destroy exactly that workflow. It
+ *   *is* cleared when the next meeting starts — see `meeting-starting`.
+ * - Every control applies its effect locally before the command resolves.
+ *   Ending a meeting joins a worker thread and pausing rebuilds the tray menu
+ *   on the main thread, so waiting for the round trip made the buttons feel
+ *   broken. `pending` holds the optimistic value until the authoritative status
+ *   event lands.
  * - This window also hosts the auto-connect consent prompt. Ghostly normally
  *   runs with its main window hidden behind the tray icon, so a prompt that
  *   lived only there could mean capture starting with nothing visible to
@@ -49,11 +55,37 @@ function formatClock(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+/** `h:mm:ss` past the hour, `m:ss` below it. */
+function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const paddedSecs = secs.toString().padStart(2, "0");
+  return hours > 0
+    ? `${hours}:${minutes.toString().padStart(2, "0")}:${paddedSecs}`
+    : `${minutes}:${paddedSecs}`;
+}
+
 interface DetectedPayload {
   bundleId: string;
   displayName: string;
   countdownSecs: number | null;
 }
+
+interface SummaryPayload {
+  meetingId: string;
+  body: string;
+}
+
+interface RefinedPayload {
+  meetingId: string;
+  segmentId: number;
+  text: string;
+}
+
+/** An action applied locally while its command is still in flight. */
+type Pending = { paused?: boolean; ending?: boolean; starting?: boolean };
 
 const MeetingPanel: React.FC = () => {
   const { t } = useTranslation();
@@ -68,6 +100,7 @@ const MeetingPanel: React.FC = () => {
   const [mention, setMention] = useState<string | null>(null);
   const [detected, setDetected] = useState<DetectedPayload | null>(null);
   const [summaryHeading, setSummaryHeading] = useState("catchUpHeading");
+  const [pending, setPending] = useState<Pending>({});
 
   // Keyed by *segment*, not speaker: keying by speaker renders an autoFocus
   // input on every line that speaker owns, and the browser hands focus to the
@@ -75,8 +108,30 @@ const MeetingPanel: React.FC = () => {
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState("");
 
+  // Held separately from `status.title`, which reverts to the default snapshot
+  // the moment capture stops — the panel would otherwise forget the meeting's
+  // name while still showing its transcript.
+  const [meetingTitle, setMeetingTitle] = useState<string | null>(null);
+  // `null` means "not editing"; the empty string is a legitimate draft.
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  // The meeting the panel is showing. Not `status.meetingId`: that goes null
+  // the moment capture stops, while the panel deliberately keeps the finished
+  // transcript on screen — and renaming it or catching up on it both still need
+  // an id. Cleared only when the next meeting begins.
+  const [meetingId, setMeetingId] = useState<string | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  // Mirrors `meetingId` for the event handlers, which capture their closure
+  // once on mount and would otherwise read a stale value.
+  const meetingIdRef = useRef<string | null>(null);
+
+  const adoptMeeting = useCallback((id: string | null) => {
+    meetingIdRef.current = id;
+    setMeetingId(id);
+  }, []);
 
   const speakerById = useMemo(() => {
     const map = new Map<string, MeetingSpeaker>();
@@ -84,11 +139,28 @@ const MeetingPanel: React.FC = () => {
     return map;
   }, [speakers]);
 
+  const clearTranscript = useCallback(() => {
+    setSegments([]);
+    setSpeakers([]);
+    setSummary(null);
+    setSummarizing(false);
+    setMention(null);
+    setError(null);
+    setEditingSegmentId(null);
+    setTitleDraft(null);
+    setMeetingTitle(null);
+    setElapsed(0);
+    stickToBottom.current = true;
+  }, []);
+
   const refreshTranscript = useCallback(async (meetingId: string) => {
     const [segmentsResult, speakersResult] = await Promise.all([
       commands.getMeetingSegments(meetingId),
       commands.getMeetingSpeakers(meetingId),
     ]);
+    // A meeting that ended while the queries were in flight must not have the
+    // next one's transcript written over it.
+    if (meetingIdRef.current !== meetingId) return;
     if (segmentsResult.status === "ok") setSegments(segmentsResult.data);
     if (speakersResult.status === "ok") setSpeakers(speakersResult.data);
   }, []);
@@ -99,8 +171,31 @@ const MeetingPanel: React.FC = () => {
     void commands.getMeetingStatus().then((current) => {
       if (!active) return;
       setStatus(current);
-      if (current.meetingId) void refreshTranscript(current.meetingId);
+      adoptMeeting(current.meetingId);
+      if (current.meetingId) {
+        setMeetingTitle(current.title);
+        void refreshTranscript(current.meetingId);
+      }
     });
+
+    // Fired the moment start is pressed, before the system-audio tap comes up.
+    // The previous meeting's transcript and wrap-up summary both stay on screen
+    // after it ends, so without this the new meeting would open on top of them.
+    const unlistenStarting = listen("meeting-starting", () => {
+      if (!active) return;
+      adoptMeeting(null);
+      clearTranscript();
+      setPending({ starting: true });
+    });
+
+    const unlistenStartFailed = listen<string>(
+      "meeting-start-failed",
+      (event) => {
+        if (!active) return;
+        setPending({});
+        setError(event.payload);
+      },
+    );
 
     const unlistenStatus = listen<{ status: MeetingStatus }>(
       "meeting-status",
@@ -108,8 +203,16 @@ const MeetingPanel: React.FC = () => {
         if (!active) return;
         const next = event.payload.status;
         setStatus(next);
-        // A new meeting replaces the transcript; the *end* of one keeps it.
-        if (next.meetingId) void refreshTranscript(next.meetingId);
+        // The authoritative answer has arrived; drop the optimistic overrides.
+        setPending({});
+        // A new meeting replaces the transcript; the *end* of one keeps it, so
+        // a status with no meeting id leaves the panel showing what it has.
+        if (next.meetingId && next.meetingId !== meetingIdRef.current) {
+          adoptMeeting(next.meetingId);
+          clearTranscript();
+          void refreshTranscript(next.meetingId);
+        }
+        if (next.meetingId) setMeetingTitle(next.title);
       },
     );
 
@@ -119,6 +222,10 @@ const MeetingPanel: React.FC = () => {
     }>("meeting-segment", (event) => {
       if (!active) return;
       const incoming = event.payload.segment;
+      // A segment can beat the status event that announces its meeting; when it
+      // does, it is the authority on which meeting the panel is showing.
+      if (meetingIdRef.current === null) adoptMeeting(incoming.meetingId);
+      else if (incoming.meetingId !== meetingIdRef.current) return;
       setSegments((previous) =>
         // A refresh racing an event can deliver the same row twice, which would
         // duplicate the line and the React key.
@@ -136,6 +243,20 @@ const MeetingPanel: React.FC = () => {
       }
     });
 
+    // A line the AI cleaned up. Replaces the verbatim text in place rather than
+    // appending, so the transcript never shows the same sentence twice.
+    const unlistenRefined = listen<RefinedPayload>(
+      "meeting-segment-refined",
+      (event) => {
+        if (!active) return;
+        const { meetingId, segmentId, text } = event.payload;
+        if (meetingId !== meetingIdRef.current) return;
+        setSegments((previous) =>
+          previous.map((s) => (s.id === segmentId ? { ...s, text } : s)),
+        );
+      },
+    );
+
     // Someone said your name. The highest-value alert in a meeting, and the one
     // most likely to be missed, so it gets a banner rather than another line.
     const unlistenMention = listen<{ text: string }>(
@@ -145,22 +266,37 @@ const MeetingPanel: React.FC = () => {
       },
     );
 
-    const unlistenCatchUp = listen<string>("meeting-catch-up", (event) => {
-      if (!active) return;
-      setSummaryHeading("catchUpHeading");
-      setSummary(event.payload);
-    });
+    const unlistenCatchUp = listen<SummaryPayload>(
+      "meeting-catch-up",
+      (event) => {
+        if (!active) return;
+        setSummaryHeading("catchUpHeading");
+        setSummary(event.payload.body);
+      },
+    );
 
     // Ending a meeting kicks off a wrap-up automatically.
     const unlistenSummarizing = listen("meeting-summarizing", () => {
       if (active) setSummarizing(true);
     });
-    const unlistenFinal = listen<string>("meeting-final-summary", (event) => {
-      if (!active) return;
-      setSummarizing(false);
-      setSummaryHeading("finalSummaryHeading");
-      setSummary(event.payload);
-    });
+    const unlistenFinal = listen<SummaryPayload>(
+      "meeting-final-summary",
+      (event) => {
+        if (!active) return;
+        setSummarizing(false);
+        // The wrap-up is produced asynchronously and can land after the user
+        // has already started their next call; showing it there would present
+        // the last meeting's summary as this one's.
+        if (
+          meetingIdRef.current !== null &&
+          event.payload.meetingId !== meetingIdRef.current
+        ) {
+          return;
+        }
+        setSummaryHeading("finalSummaryHeading");
+        setSummary(event.payload.body);
+      },
+    );
     const unlistenFinalFailed = listen("meeting-final-summary-failed", () => {
       if (active) setSummarizing(false);
     });
@@ -179,8 +315,11 @@ const MeetingPanel: React.FC = () => {
 
     return () => {
       active = false;
+      void unlistenStarting.then((fn) => fn());
+      void unlistenStartFailed.then((fn) => fn());
       void unlistenStatus.then((fn) => fn());
       void unlistenSegment.then((fn) => fn());
+      void unlistenRefined.then((fn) => fn());
       void unlistenMention.then((fn) => fn());
       void unlistenCatchUp.then((fn) => fn());
       void unlistenSummarizing.then((fn) => fn());
@@ -189,7 +328,7 @@ const MeetingPanel: React.FC = () => {
       void unlistenDetected.then((fn) => fn());
       void unlistenCleared.then((fn) => fn());
     };
-  }, [refreshTranscript]);
+  }, [adoptMeeting, clearTranscript, refreshTranscript]);
 
   // Capture starting resolves the prompt either way.
   useEffect(() => {
@@ -202,38 +341,77 @@ const MeetingPanel: React.FC = () => {
     if (node) node.scrollTop = node.scrollHeight;
   }, [segments]);
 
-  const onScroll = () => {
-    const node = scrollRef.current;
-    if (!node) return;
-    const distanceFromBottom =
-      node.scrollHeight - node.scrollTop - node.clientHeight;
-    stickToBottom.current = distanceFromBottom < 48;
-  };
+  const active = (status?.active ?? false) && !pending.ending;
+  const paused = pending.paused ?? status?.paused ?? false;
+  const startedAt = status?.startedAt ?? null;
+
+  // Elapsed *captured* time. Recomputed from the start timestamp on every tick
+  // rather than incremented, so it stays correct across a sleep or a missed
+  // frame, and with paused time subtracted so it agrees with the timestamps
+  // beside each line — those count audio frames, which stop while paused.
+  //
+  // The ticker stops while paused, which also freezes the display at the right
+  // value: `pausedMs` only reaches this window on a status event, so ticking
+  // would count the pause twice over. Left frozen once capture ends too, where
+  // it reads as the meeting's final length, and reset by the next meeting.
+  const pausedMs = status?.pausedMs ?? 0;
+  useEffect(() => {
+    if (startedAt === null) return;
+    const tick = () =>
+      setElapsed(Math.max(0, Date.now() / 1000 - startedAt - pausedMs / 1000));
+    tick();
+    if (!active || paused) return;
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt, active, paused, pausedMs]);
 
   const handleCatchUp = async () => {
     setSummarizing(true);
     setError(null);
-    const result = await commands.catchMeUp(status?.meetingId ?? null);
+    const result = await commands.catchMeUp(meetingId);
     setSummarizing(false);
     if (result.status === "ok") setSummary(result.data);
     else setError(result.error);
   };
 
+  const handleStartMeeting = async () => {
+    setError(null);
+    setPending({ starting: true });
+    const result = await commands.startMeeting(null);
+    if (result.status === "error") {
+      setPending({});
+      setError(result.error);
+    }
+    // On success the status event clears `pending` and brings the transcript.
+  };
+
   const handleEndMeeting = async () => {
+    // Optimistic: `stop_meeting` flushes both lanes and joins the transcription
+    // worker, which can take a couple of seconds on a busy model.
+    setPending((previous) => ({ ...previous, ending: true }));
     const result = await commands.stopMeeting();
-    if (result.status === "error") setError(result.error);
+    if (result.status === "error") {
+      setPending({});
+      setError(result.error);
+    }
     // The panel stays open on purpose: the wrap-up summary lands here, and the
     // user still wants to read back and name speakers.
   };
 
   const handleTogglePause = async () => {
-    const result = await commands.setMeetingPaused(!(status?.paused ?? false));
-    if (result.status === "error") setError(result.error);
+    const next = !paused;
+    setPending((previous) => ({ ...previous, paused: next }));
+    const result = await commands.setMeetingPaused(next);
+    if (result.status === "error") {
+      setPending((previous) => ({ ...previous, paused: undefined }));
+      setError(result.error);
+    }
   };
 
   // NSPanel: `getCurrentWindow().hide()` from the webview does not reliably
   // hide a panel, so closing goes through the same main-thread path that
-  // created it.
+  // created it. Nothing to apply optimistically — the window itself is the
+  // feedback — but it must not wait on anything either.
   const handleClose = () => {
     void commands.hideMeetingPanel();
   };
@@ -242,16 +420,24 @@ const MeetingPanel: React.FC = () => {
     const name = draftName.trim();
     setEditingSegmentId(null);
     if (!name) return;
+    // Applied first: renaming touches SQLite, and a label that lags a keystroke
+    // behind reads as a dropped edit.
+    setSpeakers((previous) =>
+      previous.map((s) =>
+        s.id === speakerId ? { ...s, displayName: name, kind: "named" } : s,
+      ),
+    );
     const result = await commands.renameMeetingSpeaker(speakerId, name);
-    if (result.status === "ok") {
-      setSpeakers((previous) =>
-        previous.map((s) =>
-          s.id === speakerId ? { ...s, displayName: name, kind: "named" } : s,
-        ),
-      );
-    } else {
-      setError(result.error);
-    }
+    if (result.status === "error") setError(result.error);
+  };
+
+  const commitTitle = async () => {
+    const next = (titleDraft ?? "").trim();
+    setTitleDraft(null);
+    if (!meetingId || next === (meetingTitle ?? "")) return;
+    setMeetingTitle(next || null);
+    const result = await commands.setMeetingTitle(meetingId, next);
+    if (result.status === "error") setError(result.error);
   };
 
   const displayNameFor = (segment: MeetingSegment): string => {
@@ -264,33 +450,70 @@ const MeetingPanel: React.FC = () => {
       : t("meeting.panel.participant");
   };
 
-  const active = status?.active ?? false;
+  const title = meetingTitle ?? t("meeting.panel.title");
+  const showDuration = startedAt !== null || elapsed > 0;
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-hairline bg-surface-1/95 text-text backdrop-blur-xl">
+      {/* The whole header is the drag handle — the panel is undecorated, so
+          this is the only way to move it. Interactive children opt out with
+          their own handlers; the attribute only applies where the pointer
+          lands on the header itself. */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-2 border-b border-hairline px-3 py-2"
+        className="flex cursor-grab items-center gap-2 border-b border-hairline px-3 py-2 active:cursor-grabbing"
       >
         <span
+          data-tauri-drag-region
           className={`h-2 w-2 shrink-0 rounded-full ${
-            active && !status?.paused
+            active && !paused
               ? "animate-pulse bg-danger"
               : active
                 ? "bg-warning"
                 : "bg-text-faint"
           }`}
         />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium">
-            {status?.title ?? t("meeting.panel.title")}
+        <div data-tauri-drag-region className="min-w-0 flex-1">
+          <div data-tauri-drag-region className="flex items-baseline gap-2">
+            {titleDraft !== null ? (
+              <input
+                autoFocus
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => void commitTitle()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void commitTitle();
+                  if (e.key === "Escape") setTitleDraft(null);
+                }}
+                placeholder={t("meeting.panel.titlePlaceholder")}
+                className="min-w-0 flex-1 rounded border border-hairline-strong bg-surface-2 px-1 py-[1px] text-[13px] font-medium outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={!meetingId}
+                onClick={() => setTitleDraft(meetingTitle ?? "")}
+                title={t("meeting.panel.renameMeetingHint")}
+                className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:underline disabled:cursor-default disabled:no-underline"
+              >
+                {title}
+              </button>
+            )}
+            {showDuration && (
+              <span
+                className="shrink-0 text-[11px] tabular-nums text-text-subtle"
+                title={t("meeting.panel.durationHint")}
+              >
+                {formatDuration(elapsed)}
+              </span>
+            )}
           </div>
-          {active && status?.paused && (
+          {active && paused && (
             <div className="truncate text-[11px] text-warning">
               {t("meeting.panel.pausedNotice")}
             </div>
           )}
-          {active && !status?.paused && !status?.systemAudioActive && (
+          {active && !paused && !status?.systemAudioActive && (
             <div className="truncate text-[11px] text-warning">
               {t("meeting.panel.micOnly")}
             </div>
@@ -377,14 +600,22 @@ const MeetingPanel: React.FC = () => {
 
       <div
         ref={scrollRef}
-        onScroll={onScroll}
+        onScroll={() => {
+          const node = scrollRef.current;
+          if (!node) return;
+          const distanceFromBottom =
+            node.scrollHeight - node.scrollTop - node.clientHeight;
+          stickToBottom.current = distanceFromBottom < 48;
+        }}
         className="flex-1 overflow-y-auto px-3 py-2"
       >
         {segments.length === 0 ? (
           <p className="mt-6 text-center text-[12px] text-text-subtle">
-            {active
-              ? t("meeting.panel.listening")
-              : t("meeting.panel.notCapturing")}
+            {pending.starting
+              ? t("meeting.panel.starting")
+              : active
+                ? t("meeting.panel.listening")
+                : t("meeting.panel.notCapturing")}
           </p>
         ) : (
           segments.map((segment) => {
@@ -458,6 +689,12 @@ const MeetingPanel: React.FC = () => {
           </div>
         )}
 
+        {summarizing && !summary && (
+          <p className="mt-2 text-center text-[11px] text-text-subtle">
+            {t("meeting.panel.wrappingUp")}
+          </p>
+        )}
+
         {error && (
           <p className="mt-2 rounded bg-danger/10 px-2 py-1 text-[11px] text-danger">
             {error}
@@ -476,16 +713,22 @@ const MeetingPanel: React.FC = () => {
             ? t("meeting.panel.catchingUp")
             : t("meeting.panel.catchMeUp")}
         </button>
-        {active ? (
+        {pending.ending ? (
+          <button
+            type="button"
+            disabled
+            className="rounded-md border border-hairline-strong px-3 py-1.5 text-[12px] text-text-muted opacity-40"
+          >
+            {t("meeting.panel.ending")}
+          </button>
+        ) : active ? (
           <>
             <button
               type="button"
               onClick={() => void handleTogglePause()}
               className="rounded-md border border-hairline-strong px-3 py-1.5 text-[12px] text-text-muted hover:text-text"
             >
-              {status?.paused
-                ? t("meeting.panel.resume")
-                : t("meeting.panel.pause")}
+              {paused ? t("meeting.panel.resume") : t("meeting.panel.pause")}
             </button>
             <button
               type="button"
@@ -498,10 +741,13 @@ const MeetingPanel: React.FC = () => {
         ) : (
           <button
             type="button"
-            onClick={handleClose}
-            className="rounded-md border border-hairline-strong px-3 py-1.5 text-[12px] text-text-muted hover:text-text"
+            onClick={() => void handleStartMeeting()}
+            disabled={pending.starting}
+            className="rounded-md border border-hairline-strong px-3 py-1.5 text-[12px] text-text-muted hover:text-text disabled:opacity-40"
           >
-            {t("meeting.panel.close")}
+            {pending.starting
+              ? t("meeting.panel.starting")
+              : t("meeting.panel.startMeeting")}
           </button>
         )}
         <span className="ml-auto text-[11px] tabular-nums text-text-faint">

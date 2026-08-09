@@ -3,7 +3,7 @@
 //! Ghostly does not join the call. It captures the microphone (the user) and,
 //! via a CoreAudio process tap, the system audio mix (everyone else), then
 //! transcribes both onto a shared timeline. Nothing leaves the device unless
-//! the user explicitly opts into cloud summarisation.
+//! the user explicitly opts into cloud summarisation or cloud refinement.
 //!
 //! | Module | Responsibility |
 //! | --- | --- |
@@ -13,6 +13,7 @@
 //! | [`dedup`] | Cross-lane echo suppression |
 //! | [`speakers`] | Speaker attribution and clustering |
 //! | [`session`] | The capture engine |
+//! | [`refine`] | AI cleanup of live transcript lines |
 //! | [`summarizer`] | "Catch me up" |
 //! | [`detector`] | Auto-connect |
 //! | [`mentions`] | Direct-address alerts |
@@ -22,6 +23,7 @@ pub mod detector;
 pub mod lane;
 pub mod mentions;
 pub mod panel;
+pub mod refine;
 pub mod session;
 pub mod speakers;
 pub mod store;
