@@ -1019,6 +1019,12 @@ pub fn change_post_process_api_key_setting(
 ) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     validate_provider_exists(&settings, &provider_id)?;
+    // The only place a key is deliberately cleared. `write_settings` skips
+    // empty values precisely so an incidental write cannot delete a key it
+    // merely failed to read, which leaves the deletion to this path.
+    if api_key.is_empty() {
+        crate::keychain::delete_api_key(&provider_id);
+    }
     settings.post_process_api_keys.insert(provider_id, api_key);
     settings::write_settings(&app, settings);
     Ok(())

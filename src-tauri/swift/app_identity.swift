@@ -88,6 +88,75 @@ public func ghostlyBundleIDForDisplayName(_ displayName: UnsafePointer<CChar>?)
   return duplicateCString(bundleID)
 }
 
+// MARK: - Window titles via the Accessibility API
+//
+// Deliberately not Core Graphics. `CGWindowListCopyWindowInfo`'s `kCGWindowName`
+// has required Screen Recording permission since Catalina, and Meeting Mode's
+// whole premise is that it needs no such permission — no capture indicator, no
+// scary prompt. The Accessibility API returns the same title and Ghostly
+// already holds that permission for its global shortcuts.
+//
+// This is what makes the "never auto-connect for 1:1 / therapy / interview"
+// exclusion list work: Zoom, Teams, Meet and Slack all put the meeting name in
+// the window title.
+
+/// Titles of every window belonging to `app`, best effort.
+///
+/// Returns an empty array when Accessibility permission has not been granted,
+/// which the caller must treat as "unknown", never as "no match".
+private func windowTitles(for app: NSRunningApplication) -> [String] {
+  let element = AXUIElementCreateApplication(app.processIdentifier)
+
+  var windowsValue: CFTypeRef?
+  guard
+    AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windowsValue)
+      == .success,
+    let windows = windowsValue as? [AXUIElement]
+  else {
+    return []
+  }
+
+  return windows.compactMap { window in
+    var titleValue: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleValue) == .success,
+      let title = titleValue as? String,
+      !title.isEmpty
+    else {
+      return nil
+    }
+    return title
+  }
+}
+
+@_cdecl("ghostly_window_titles_for_bundle")
+public func ghostlyWindowTitlesForBundle(_ bundleID: UnsafePointer<CChar>?)
+  -> UnsafeMutablePointer<CChar>?
+{
+  guard let bundleID else { return nil }
+  let target = String(cString: bundleID)
+  guard !target.isEmpty else { return nil }
+
+  // Not filtered to `.regular`: the same reasoning as ghostly_is_app_running —
+  // a call window can be owned by a process presenting as an accessory.
+  let apps = NSWorkspace.shared.runningApplications.filter {
+    $0.bundleIdentifier?.caseInsensitiveCompare(target) == .orderedSame
+  }
+
+  var titles: [String] = []
+  for app in apps {
+    titles.append(contentsOf: windowTitles(for: app))
+  }
+  // Newline-separated; titles cannot contain newlines.
+  return duplicateCString(titles.joined(separator: "\n"))
+}
+
+@_cdecl("ghostly_accessibility_is_trusted")
+public func ghostlyAccessibilityIsTrusted() -> Int32 {
+  // No prompt: this is a read of current state, called from a polling loop.
+  return AXIsProcessTrusted() ? 1 : 0
+}
+
 @_cdecl("ghostly_app_identity_free_string")
 public func ghostlyAppIdentityFreeString(_ value: UnsafeMutablePointer<CChar>?) {
   guard let value else { return }

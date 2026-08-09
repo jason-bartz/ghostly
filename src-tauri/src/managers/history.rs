@@ -192,6 +192,44 @@ static MIGRATIONS: &[M] = &[
         CREATE INDEX IF NOT EXISTS idx_meeting_tags_name
             ON meeting_tags(LOWER(name));",
     ),
+    // Full-text search over transcripts.
+    //
+    // Meeting search started as a `LIKE '%needle%'` scan joined across every
+    // segment, which no index can serve. That is fine at a handful of meetings
+    // and quietly quadratic once retention is set to Forever — an hour-long
+    // daily call is on the order of a thousand rows a week. FTS5 with external
+    // content keeps the text itself in `meeting_segments` and stores only the
+    // index, and the triggers keep the two in step (including the `update`
+    // case, which live AI refinement rewrites constantly).
+    M::up(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS meeting_segments_fts USING fts5(
+            text,
+            content='meeting_segments',
+            content_rowid='id',
+            tokenize='unicode61'
+        );
+
+        INSERT INTO meeting_segments_fts(rowid, text)
+            SELECT id, text FROM meeting_segments;
+
+        CREATE TRIGGER IF NOT EXISTS meeting_segments_fts_insert
+        AFTER INSERT ON meeting_segments BEGIN
+            INSERT INTO meeting_segments_fts(rowid, text) VALUES (new.id, new.text);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS meeting_segments_fts_delete
+        AFTER DELETE ON meeting_segments BEGIN
+            INSERT INTO meeting_segments_fts(meeting_segments_fts, rowid, text)
+                VALUES ('delete', old.id, old.text);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS meeting_segments_fts_update
+        AFTER UPDATE OF text ON meeting_segments BEGIN
+            INSERT INTO meeting_segments_fts(meeting_segments_fts, rowid, text)
+                VALUES ('delete', old.id, old.text);
+            INSERT INTO meeting_segments_fts(rowid, text) VALUES (new.id, new.text);
+        END;",
+    ),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -586,6 +624,11 @@ impl HistoryManager {
         {
             error!("Failed to emit history-updated event: {}", e);
         }
+
+        // Every finished transcription funnels through here, so this is the
+        // single place the REST API needs to hook to serve /api/dictate and
+        // the /api/events stream. No-op when the bus isn't registered.
+        crate::rest_api::publish_transcript(&self.app_handle, &entry);
 
         // Auto-generate title and tags when AI is configured. Runs off the save
         // path so we never block transcription; no-ops when no provider/model
@@ -1921,6 +1964,103 @@ mod tests {
                 .unwrap_or_else(|e| panic!("table {table} is missing or invalid: {e}"));
             assert_eq!(count, 0);
         }
+    }
+
+    /// The FTS index must track `meeting_segments` through all three mutations.
+    ///
+    /// External-content FTS5 keeps no copy of the text, so a missing trigger
+    /// does not fail loudly — search just silently stops finding things, or
+    /// starts returning rows whose text no longer matches. The update case in
+    /// particular is exercised constantly by live AI refinement, which rewrites
+    /// almost every line moments after it is inserted.
+    #[test]
+    fn meeting_search_index_tracks_segment_changes() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        Migrations::new(MIGRATIONS.to_vec())
+            .to_latest(&mut conn)
+            .expect("migrations apply");
+
+        conn.execute(
+            "INSERT INTO meetings (id, started_at, detection_source) VALUES ('m1', 0, 'manual')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_segments \
+             (id, meeting_id, lane, start_ms, end_ms, text, label_source) \
+             VALUES (1, 'm1', 'mic', 0, 100, 'the migration ships friday', 'lane')",
+            [],
+        )
+        .unwrap();
+
+        let matches = |conn: &Connection, needle: &str| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM meeting_segments_fts WHERE text MATCH ?1",
+                [needle],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        assert_eq!(matches(&conn, "migration"), 1, "insert was not indexed");
+
+        conn.execute(
+            "UPDATE meeting_segments SET text = 'the rollout ships friday' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        assert_eq!(matches(&conn, "rollout"), 1, "update was not indexed");
+        assert_eq!(
+            matches(&conn, "migration"),
+            0,
+            "the pre-update text is still searchable"
+        );
+
+        conn.execute("DELETE FROM meeting_segments WHERE id = 1", [])
+            .unwrap();
+        assert_eq!(matches(&conn, "rollout"), 0, "delete was not indexed");
+    }
+
+    /// The index has to be backfilled, not just kept up to date from here on.
+    ///
+    /// Every existing install already has a full transcript history, and an
+    /// index that only covers rows written after the upgrade would make
+    /// everything the user has ever recorded unsearchable.
+    #[test]
+    fn meeting_search_index_backfills_existing_rows() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        // Apply everything except the FTS migration, so the segment row exists
+        // before the index does — exactly the upgrade path.
+        let before_fts: Vec<M> = MIGRATIONS[..MIGRATIONS.len() - 1].to_vec();
+        Migrations::new(before_fts)
+            .to_latest(&mut conn)
+            .expect("pre-FTS migrations apply");
+
+        conn.execute(
+            "INSERT INTO meetings (id, started_at, detection_source) VALUES ('m1', 0, 'manual')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_segments \
+             (meeting_id, lane, start_ms, end_ms, text, label_source) \
+             VALUES ('m1', 'mic', 0, 100, 'quarterly planning notes', 'lane')",
+            [],
+        )
+        .unwrap();
+
+        Migrations::new(MIGRATIONS.to_vec())
+            .to_latest(&mut conn)
+            .expect("FTS migration applies to a populated database");
+
+        let hits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM meeting_segments_fts WHERE text MATCH 'quarterly'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(hits, 1, "pre-existing transcripts were not backfilled");
     }
 
     /// Deleting a meeting must take its segments, speakers and summaries with

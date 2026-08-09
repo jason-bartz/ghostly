@@ -103,7 +103,12 @@ fn manager(app: &AppHandle) -> Result<Arc<MeetingManager>, String> {
         .ok_or_else(|| "Meeting Mode is unavailable.".to_string())
 }
 
-/// Starts capturing.
+/// Starts capturing, always as a fresh session.
+///
+/// If a capture is somehow still running — an end that failed, a session the
+/// user forgot about — it is ended first rather than refused. "Start" that
+/// errors with "a meeting is already being captured" and leaves the previous
+/// transcript on screen is indistinguishable from a stuck app.
 ///
 /// Runs on a blocking thread because bringing up the system-audio tap can stall
 /// for several seconds the first time in a process.
@@ -115,6 +120,9 @@ pub async fn start_meeting(app: AppHandle, title: Option<String>) -> Result<Stri
     let manager = manager(&app)?;
 
     tauri::async_runtime::spawn_blocking(move || {
+        if manager.is_capturing() {
+            manager.stop();
+        }
         manager.start(DetectionSource::Manual, bundle_id, display_name, title)
     })
     .await
@@ -136,11 +144,12 @@ pub async fn accept_detected_meeting(app: AppHandle) -> Result<String, String> {
 
     let manager = manager(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let title = detected.meeting_title();
         manager.start(
             DetectionSource::Prompted,
             Some(detected.bundle_id.clone()),
             Some(detected.display_name.clone()),
-            Some(format!("{} call", detected.display_name)),
+            Some(title),
         )
     })
     .await
@@ -258,9 +267,40 @@ pub fn delete_meeting(app: AppHandle, meeting_id: String) -> Result<(), String> 
 #[tauri::command]
 #[specta::specta]
 pub fn set_meeting_title(app: AppHandle, meeting_id: String, title: String) -> Result<(), String> {
-    manager(&app)?
+    let manager = manager(&app)?;
+    manager
         .store()
         .set_meeting_title(&meeting_id, &title)
+        .map_err(|e| e.to_string())?;
+    // Keeps the live panel's header in step when the meeting being renamed is
+    // the one currently being captured.
+    let trimmed = title.trim();
+    manager.rename_active(
+        &meeting_id,
+        (!trimmed.is_empty()).then(|| trimmed.to_string()),
+    );
+    Ok(())
+}
+
+/// Corrects one transcript line by hand.
+///
+/// ASR gets names and jargon wrong, and live AI cleanup only narrows that — it
+/// never closes it. A transcript people export and send on needs a way to fix
+/// the last few errors.
+#[tauri::command]
+#[specta::specta]
+pub fn set_meeting_segment_text(
+    app: AppHandle,
+    segment_id: i64,
+    text: String,
+) -> Result<(), String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err("A transcript line cannot be empty.".to_string());
+    }
+    manager(&app)?
+        .store()
+        .update_segment_text(segment_id, trimmed)
         .map_err(|e| e.to_string())
 }
 
@@ -368,6 +408,12 @@ pub fn add_meeting_speaker(
 
 // ---- Summaries -----------------------------------------------------------
 
+/// Shortest window "catch me up" will ever summarise.
+///
+/// Three minutes is roughly what someone misses by looking away, and it is long
+/// enough that the answer is a paragraph rather than a sentence fragment.
+const MIN_CATCH_UP_WINDOW_MS: i64 = 3 * 60 * 1000;
+
 /// "Catch me up" — summarises everything since the last summary.
 #[tauri::command]
 #[specta::specta]
@@ -379,7 +425,14 @@ pub async fn catch_me_up(app: AppHandle, meeting_id: Option<String>) -> Result<S
 
     // "Since I last caught up" is the useful default; a fixed five-minute
     // window either repeats what you already read or misses the gap.
-    let from_ms = manager.store().last_summarised_ms(&meeting_id).unwrap_or(0);
+    //
+    // But rolling summaries run in the background and keep pushing that mark
+    // forward, so pressing the button shortly after one lands would summarise
+    // the twenty seconds since — technically correct and useless. The floor
+    // guarantees there is always something worth reading.
+    let last_summarised = manager.store().last_summarised_ms(&meeting_id).unwrap_or(0);
+    let floor = (manager.elapsed_ms() - MIN_CATCH_UP_WINDOW_MS).max(0);
+    let from_ms = last_summarised.min(floor);
     let to_ms = i64::MAX;
 
     summarizer::summarize_window(

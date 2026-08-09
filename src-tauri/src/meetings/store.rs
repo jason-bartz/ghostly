@@ -17,6 +17,61 @@ use super::types::{
     NewSegment, SpeakerKind, SummaryKind,
 };
 
+/// Turns a user's search box into an FTS5 query.
+///
+/// Everything the user typed is quoted, so `"` `*` `:` `AND` `NEAR(` and the
+/// rest of the FTS grammar are data rather than syntax — an unquoted apostrophe
+/// or a stray colon would otherwise make the whole query a syntax error and
+/// search would appear broken for that keystroke. Each token gets a `*` so
+/// results appear while the user is still typing, and tokens are ANDed so
+/// adding a word narrows.
+fn fts_prefix_query(needle: &str) -> String {
+    needle
+        .split_whitespace()
+        // Inside an FTS5 string literal, `"` is escaped by doubling it.
+        .map(|token| format!("\"{}\"*", token.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fts_prefix_query;
+
+    #[test]
+    fn every_token_is_quoted_and_prefixed() {
+        assert_eq!(
+            fts_prefix_query("quarterly plan"),
+            "\"quarterly\"* AND \"plan\"*"
+        );
+    }
+
+    /// FTS5 syntax in the search box is data, not grammar.
+    ///
+    /// Unquoted, each of these is either an operator or a syntax error, and a
+    /// syntax error means search returns nothing for that keystroke — which
+    /// reads as "search is broken" rather than "no results".
+    #[test]
+    fn fts_operators_are_treated_as_literal_text() {
+        assert_eq!(fts_prefix_query("AND"), "\"AND\"*");
+        assert_eq!(fts_prefix_query("NEAR("), "\"NEAR(\"*");
+        assert_eq!(fts_prefix_query("foo:bar"), "\"foo:bar\"*");
+        assert_eq!(fts_prefix_query("it's"), "\"it's\"*");
+        // A double quote is escaped by doubling it inside the literal.
+        assert_eq!(
+            fts_prefix_query("say \"hi\""),
+            "\"say\"* AND \"\"\"hi\"\"\"*"
+        );
+    }
+
+    #[test]
+    fn blank_input_produces_an_empty_query() {
+        // Callers short-circuit before this, but an empty MATCH is a syntax
+        // error, so it must never be reachable by accident.
+        assert_eq!(fts_prefix_query("   "), "");
+    }
+}
+
 #[derive(Clone)]
 pub struct MeetingStore {
     db_path: PathBuf,
@@ -97,7 +152,7 @@ impl MeetingStore {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, title, started_at, ended_at, app_bundle_id, app_display_name,
-                    detection_source, captured_system_audio, notes
+                    detection_source, captured_system_audio
              FROM meetings WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::map_meeting)?;
@@ -108,7 +163,7 @@ impl MeetingStore {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, title, started_at, ended_at, app_bundle_id, app_display_name,
-                    detection_source, captured_system_audio, notes
+                    detection_source, captured_system_audio
              FROM meetings ORDER BY started_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit], Self::map_meeting)?;
@@ -154,7 +209,6 @@ impl MeetingStore {
             app_display_name: row.get("app_display_name")?,
             detection_source: DetectionSource::from_str(&row.get::<_, String>("detection_source")?),
             captured_system_audio: row.get("captured_system_audio")?,
-            notes: row.get("notes")?,
         })
     }
 
@@ -320,6 +374,16 @@ impl MeetingStore {
         Ok(conn.last_insert_rowid())
     }
 
+    /// Replaces a segment's text, used by live refinement.
+    pub fn update_segment_text(&self, segment_id: i64, text: &str) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE meeting_segments SET text = ?2 WHERE id = ?1",
+            params![segment_id, text],
+        )?;
+        Ok(())
+    }
+
     pub fn list_segments(&self, meeting_id: &str) -> Result<Vec<MeetingSegment>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
@@ -351,39 +415,6 @@ impl MeetingStore {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Every segment with a stored embedding, for the end-of-meeting
-    /// re-clustering pass. Pinned segments are excluded — a manual label wins.
-    pub fn segments_with_embeddings(&self, meeting_id: &str) -> Result<Vec<(i64, Lane, Vec<f32>)>> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, lane, embedding FROM meeting_segments
-             WHERE meeting_id = ?1 AND embedding IS NOT NULL
-               AND is_crosstalk = 0 AND label_source != 'manual'
-             ORDER BY start_ms",
-        )?;
-        let rows = stmt.query_map(params![meeting_id], |row| {
-            let id: i64 = row.get(0)?;
-            let lane = Lane::from_str(&row.get::<_, String>(1)?);
-            let bytes: Vec<u8> = row.get(2)?;
-            let values = bytes
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect();
-            Ok((id, lane, values))
-        })?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    pub fn set_segment_speaker_clustered(&self, segment_id: i64, speaker_id: &str) -> Result<()> {
-        self.conn()?.execute(
-            "UPDATE meeting_segments
-             SET speaker_id = ?2, label_source = 'cluster'
-             WHERE id = ?1 AND label_source != 'manual'",
-            params![segment_id, speaker_id],
-        )?;
-        Ok(())
-    }
-
     fn map_segment(row: &rusqlite::Row<'_>) -> rusqlite::Result<MeetingSegment> {
         Ok(MeetingSegment {
             id: row.get("id")?,
@@ -398,33 +429,41 @@ impl MeetingStore {
         })
     }
 
-    /// Full-text-ish search across meeting titles, app names and transcript
-    /// content. Deliberately a LIKE scan rather than FTS: meeting volume is
-    /// low (a few per day) and an FTS table would need its own migration and
-    /// trigger maintenance for no perceptible gain at this scale.
+    /// Search across meeting titles, app names, tags and transcript content.
+    ///
+    /// Transcript matching goes through the `meeting_segments_fts` index rather
+    /// than a `LIKE '%needle%'` scan, which no index can serve and which grows
+    /// linearly with every minute ever recorded. Titles, app names and tags
+    /// stay on LIKE: those tables are one row per meeting, and substring
+    /// matching inside a word ("zoo" finding "Zoom") is what people expect from
+    /// a title filter but not from transcript search.
     pub fn search_meetings(&self, query: &str, limit: i64) -> Result<Vec<Meeting>> {
         let needle = query.trim();
         if needle.is_empty() {
             return self.list_meetings(limit);
         }
         let pattern = format!("%{}%", needle.replace('%', "\\%").replace('_', "\\_"));
+        let fts = fts_prefix_query(needle);
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT DISTINCT m.id, m.title, m.started_at, m.ended_at, m.app_bundle_id,
-                    m.app_display_name, m.detection_source, m.captured_system_audio, m.notes
+            "SELECT m.id, m.title, m.started_at, m.ended_at, m.app_bundle_id,
+                    m.app_display_name, m.detection_source, m.captured_system_audio
              FROM meetings m
-             LEFT JOIN meeting_segments s ON s.meeting_id = m.id
              WHERE m.title LIKE ?1 ESCAPE '\\'
                 OR m.app_display_name LIKE ?1 ESCAPE '\\'
-                OR s.text LIKE ?1 ESCAPE '\\'
                 OR EXISTS (
                      SELECT 1 FROM meeting_tags mt
                      WHERE mt.meeting_id = m.id AND mt.name LIKE ?1 ESCAPE '\\'
                    )
+                OR EXISTS (
+                     SELECT 1 FROM meeting_segments_fts f
+                     JOIN meeting_segments s ON s.id = f.rowid
+                     WHERE f.text MATCH ?2 AND s.meeting_id = m.id
+                   )
              ORDER BY m.started_at DESC
-             LIMIT ?2",
+             LIMIT ?3",
         )?;
-        let rows = stmt.query_map(params![pattern, limit], Self::map_meeting)?;
+        let rows = stmt.query_map(params![pattern, fts, limit], Self::map_meeting)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
@@ -433,7 +472,7 @@ impl MeetingStore {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, title, started_at, ended_at, app_bundle_id, app_display_name,
-                    detection_source, captured_system_audio, notes
+                    detection_source, captured_system_audio
              FROM meetings
              WHERE started_at >= ?1 AND started_at <= ?2
              ORDER BY started_at DESC LIMIT ?3",

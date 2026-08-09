@@ -1169,6 +1169,11 @@ async isLaptop() : Promise<Result<boolean, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Turn the localhost API on or off. Unlike a plain settings write this
+ * actually binds and unbinds the socket, so "off" means off immediately
+ * rather than at the next app launch.
+ */
 async setRestApiEnabled(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_rest_api_enabled", { enabled }) };
@@ -1177,6 +1182,10 @@ async setRestApiEnabled(enabled: boolean) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Change the port. Rebinds immediately when the server is running; the old
+ * port is released first so the change needs no app restart.
+ */
 async setRestApiPort(port: number) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_rest_api_port", { port }) };
@@ -1184,6 +1193,57 @@ async setRestApiPort(port: number) : Promise<Result<null, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * The current API token, minting one if it does not exist yet.
+ */
+async getRestApiToken() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_rest_api_token") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Replace the API token, invalidating every existing script. Restarts the
+ * server so the new token takes effect without an app restart.
+ */
+async regenerateRestApiToken() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("regenerate_rest_api_token") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether the socket is actually bound right now — distinct from the stored
+ * setting, which can disagree if a bind failed.
+ */
+async restApiRunningPort() : Promise<number | null> {
+    return await TAURI_INVOKE("rest_api_running_port");
+},
+/**
+ * Install the `ghostly` command onto the user's PATH.
+ * 
+ * Tries `/usr/local/bin` first (on PATH for every shell out of the box,
+ * needs an admin prompt), and falls back to `~/.local/bin`, reporting back
+ * whether that directory still needs adding to PATH.
+ */
+async installCli() : Promise<Result<CliInstallResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_cli") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Where the `ghostly` command is currently installed, if anywhere.
+ */
+async cliInstallStatus() : Promise<string | null> {
+    return await TAURI_INVOKE("cli_install_status");
 },
 /**
  * Tauri command for the settings UI "Detect current app" button.
@@ -1241,7 +1301,12 @@ async updateMeetingSettings(settings: MeetingSettings) : Promise<Result<null, st
 }
 },
 /**
- * Starts capturing.
+ * Starts capturing, always as a fresh session.
+ * 
+ * If a capture is somehow still running — an end that failed, a session the
+ * user forgot about — it is ended first rather than refused. "Start" that
+ * errors with "a meeting is already being captured" and leaves the previous
+ * transcript on screen is indistinguishable from a stuck app.
  * 
  * Runs on a blocking thread because bringing up the system-audio tap can stall
  * for several seconds the first time in a process.
@@ -1336,6 +1401,21 @@ async deleteMeeting(meetingId: string) : Promise<Result<null, string>> {
 async setMeetingTitle(meetingId: string, title: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_meeting_title", { meetingId, title }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Corrects one transcript line by hand.
+ * 
+ * ASR gets names and jargon wrong, and live AI cleanup only narrows that — it
+ * never closes it. A transcript people export and send on needs a way to fix
+ * the last few errors.
+ */
+async setMeetingSegmentText(segmentId: number, text: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_meeting_segment_text", { segmentId, text }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1929,6 +2009,13 @@ start_hidden_default_flipped?: boolean;
  */
 confirm_paste_default_set?: boolean; 
 /**
+ * Marker for the Meeting Mode default flip. When false,
+ * `migrate_meeting_enabled_default` switches `meeting.enabled` on once so
+ * existing installs pick up the new default, then sets this true so a
+ * user who turns it back off is left alone.
+ */
+meeting_default_enabled_migrated?: boolean; 
+/**
  * Marker for the shortcut-defaults migration that moved transcribe to
  * `fn` and the edit/screenshot/continuous bindings to the Cmd+Option
  * family. When false, `migrate_binding_defaults_v2` syncs stored
@@ -2036,6 +2123,13 @@ custom_word_categories?: Partial<{ [key in string]: CategoryId[] }>; voice_editi
  */
 voice_edit_prefix_detection?: boolean; rest_api_enabled?: boolean; rest_api_port?: number; 
 /**
+ * Bearer token required on every REST API request. Generated on first
+ * enable; empty means "not generated yet". Stored in the settings file
+ * rather than the keychain on purpose: the `ghostly` CLI runs as a
+ * separate process and reading it must not raise a keychain prompt.
+ */
+rest_api_token?: string; 
+/**
  * When true, speaking a correction phrase deletes the last transcription.
  * No AI required — pure regex word-boundary replacement.
  */
@@ -2132,6 +2226,19 @@ custom_vocab?: string[];
  * the style body. `None` otherwise.
  */
 custom_style_prompt?: string | null; custom_style_name?: string | null }
+export type CliInstallResult = { 
+/**
+ * Absolute path of the installed symlink.
+ */
+path: string; 
+/**
+ * Whether the containing directory is already on PATH.
+ */
+on_path: boolean; 
+/**
+ * Line to add to a shell profile when `on_path` is false.
+ */
+path_hint: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
 /**
@@ -2313,7 +2420,7 @@ startedAt: number; endedAt: number | null; appBundleId: string | null; appDispla
  * False when the far side was not captured — the transcript is the user's
  * side only, and the UI must say so.
  */
-capturedSystemAudio: boolean; notes: string | null }
+capturedSystemAudio: boolean }
 /**
  * Per-application override for [`MeetingAutoConnect`].
  */
@@ -2352,6 +2459,29 @@ countdownSecs: number | null }
  * Emitted when a remote speaker appears to address the user by name.
  */
 export type MeetingMentionEvent = { meetingId: string; text: string; speakerName: string | null }
+/**
+ * Where live transcript lines are cleaned up as a meeting runs.
+ * 
+ * Deliberately not [`MeetingSummaryBackend`]: there is no extractive analogue
+ * for tidying a sentence, and the privacy trade-off is different — refinement
+ * sends *every* line to the backend, where summarisation sends a digest on
+ * demand.
+ */
+export type MeetingRefinementBackend = 
+/**
+ * Verbatim ASR. Nothing is post-processed.
+ */
+"off" | 
+/**
+ * Apple Intelligence. Never leaves the device; falls back to verbatim when
+ * unavailable.
+ */
+"on_device" | 
+/**
+ * The configured post-processing provider. Every transcript line is sent
+ * to it, so this needs a deliberate choice.
+ */
+"cloud"
 export type MeetingSegment = { id: number; meetingId: string; speakerId: string | null; lane: Lane; 
 /**
  * Milliseconds from the start of the meeting.
@@ -2367,6 +2497,14 @@ isCrosstalk: boolean }
  * re-querying.
  */
 export type MeetingSegmentEvent = { segment: MeetingSegment; speaker: MeetingSpeaker | null }
+/**
+ * Note the container-level `#[serde(default)]`: a missing field falls back to
+ * its value in [`MeetingSettings::default`] rather than failing the parse.
+ * Without it, adding a knob here makes every stored `AppSettings` written by
+ * an older build unreadable — and `get_settings` responds to an unreadable
+ * blob by overwriting it with defaults, so one new field would silently reset
+ * every setting in the app.
+ */
 export type MeetingSettings = { 
 /**
  * Master switch. Everything below is inert while this is false.
@@ -2393,15 +2531,11 @@ autoConnectCountdownSecs: number;
 appPolicies: MeetingAppPolicy[]; 
 /**
  * Case-insensitive substrings that suppress auto-connect when they appear
- * in a meeting or calendar title.
+ * in the conferencing app's window title — which is where Zoom, Teams,
+ * Meet and Slack all put the meeting name. See
+ * [`crate::app_identity::window_title_for_bundle`].
  */
 excludedTitlePatterns: string[]; 
-/**
- * Seconds of microphone audio retained ahead of detection so the
- * transcript catches the start of the call. Requires an always-on
- * microphone; ignored otherwise.
- */
-preRollSecs: number; 
 /**
  * Sustained seconds with no conferencing app before capture auto-stops.
  * Generous because apps briefly release audio on mute/unmute.
@@ -2426,22 +2560,25 @@ userDisplayName: string;
  */
 mentionAlerts: boolean; 
 /**
- * Reserved for embedding-based speaker separation on the far-side lane.
- * 
- * Not yet surfaced in the UI: separating individual remote participants
- * needs a speaker-embedding model that is not bundled, so exposing a
- * toggle would promise something the app cannot do. Lane attribution
- * (You vs the call) and manual speaker naming both work today.
- */
-diarizationEnabled: boolean; 
-/**
  * Show the floating live transcript panel while capturing.
  */
 showLivePanel: boolean; 
 /**
+ * Where live transcript lines are cleaned up as they arrive. Raw ASR
+ * output on short conversational utterances is noticeably rough — missing
+ * punctuation, wrong casing, mangled names — and a small model fixes that
+ * for a few tokens per line.
+ */
+liveRefinement: MeetingRefinementBackend; 
+/**
  * Days to keep meeting transcripts. 0 keeps them until deleted by hand.
  */
-retentionDays: number }
+retentionDays: number; 
+/**
+ * Last geometry the user left the live panel at, in logical points.
+ * `None` means the default size in the top-right corner.
+ */
+panelX: number | null; panelY: number | null; panelWidth: number | null; panelHeight: number | null }
 export type MeetingSpeaker = { id: string; meetingId: string; displayName: string | null; kind: SpeakerKind; lane: Lane; 
 /**
  * Index of the embedding cluster this speaker corresponds to, when
@@ -2474,7 +2611,15 @@ systemAudioError: string | null;
 /**
  * Capture is open but ignoring audio.
  */
-paused: boolean }
+paused: boolean; 
+/**
+ * Milliseconds spent paused so far.
+ * 
+ * Segment timestamps count frames seen, so they stall while paused. The
+ * panel subtracts this from wall clock to show a duration that agrees with
+ * the timestamps next to it.
+ */
+pausedMs: number }
 /**
  * Emitted when the capture session starts or stops.
  */

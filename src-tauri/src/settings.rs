@@ -392,6 +392,12 @@ pub struct AppSettings {
     /// time, then sets this true so it won't override a user's explicit clear.
     #[serde(default)]
     pub confirm_paste_default_set: bool,
+    /// Marker for the Meeting Mode default flip. When false,
+    /// `migrate_meeting_enabled_default` switches `meeting.enabled` on once so
+    /// existing installs pick up the new default, then sets this true so a
+    /// user who turns it back off is left alone.
+    #[serde(default)]
+    pub meeting_default_enabled_migrated: bool,
     /// Marker for the shortcut-defaults migration that moved transcribe to
     /// `fn` and the edit/screenshot/continuous bindings to the Cmd+Option
     /// family. When false, `migrate_binding_defaults_v2` syncs stored
@@ -591,6 +597,12 @@ pub struct AppSettings {
     pub rest_api_enabled: bool,
     #[serde(default = "default_rest_api_port")]
     pub rest_api_port: u16,
+    /// Bearer token required on every REST API request. Generated on first
+    /// enable; empty means "not generated yet". Stored in the settings file
+    /// rather than the keychain on purpose: the `ghostly` CLI runs as a
+    /// separate process and reading it must not raise a keychain prompt.
+    #[serde(default)]
+    pub rest_api_token: String,
 
     // --- Correction phrases (Feature D) ---
     /// When true, speaking a correction phrase deletes the last transcription.
@@ -688,8 +700,34 @@ pub enum MeetingSummaryBackend {
     Extractive,
 }
 
+/// Where live transcript lines are cleaned up as a meeting runs.
+///
+/// Deliberately not [`MeetingSummaryBackend`]: there is no extractive analogue
+/// for tidying a sentence, and the privacy trade-off is different — refinement
+/// sends *every* line to the backend, where summarisation sends a digest on
+/// demand.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingRefinementBackend {
+    /// Verbatim ASR. Nothing is post-processed.
+    Off,
+    /// Apple Intelligence. Never leaves the device; falls back to verbatim when
+    /// unavailable.
+    #[default]
+    OnDevice,
+    /// The configured post-processing provider. Every transcript line is sent
+    /// to it, so this needs a deliberate choice.
+    Cloud,
+}
+
+/// Note the container-level `#[serde(default)]`: a missing field falls back to
+/// its value in [`MeetingSettings::default`] rather than failing the parse.
+/// Without it, adding a knob here makes every stored `AppSettings` written by
+/// an older build unreadable — and `get_settings` responds to an unreadable
+/// blob by overwriting it with defaults, so one new field would silently reset
+/// every setting in the app.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Type)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct MeetingSettings {
     /// Master switch. Everything below is inert while this is false.
     pub enabled: bool,
@@ -705,12 +743,10 @@ pub struct MeetingSettings {
     /// Per-app overrides, keyed by real bundle id.
     pub app_policies: Vec<MeetingAppPolicy>,
     /// Case-insensitive substrings that suppress auto-connect when they appear
-    /// in a meeting or calendar title.
+    /// in the conferencing app's window title — which is where Zoom, Teams,
+    /// Meet and Slack all put the meeting name. See
+    /// [`crate::app_identity::window_title_for_bundle`].
     pub excluded_title_patterns: Vec<String>,
-    /// Seconds of microphone audio retained ahead of detection so the
-    /// transcript catches the start of the call. Requires an always-on
-    /// microphone; ignored otherwise.
-    pub pre_roll_secs: u32,
     /// Sustained seconds with no conferencing app before capture auto-stops.
     /// Generous because apps briefly release audio on mute/unmute.
     pub auto_stop_grace_secs: u32,
@@ -724,27 +760,36 @@ pub struct MeetingSettings {
     pub user_display_name: String,
     /// Notify when a remote speaker says the user's name.
     pub mention_alerts: bool,
-    /// Reserved for embedding-based speaker separation on the far-side lane.
-    ///
-    /// Not yet surfaced in the UI: separating individual remote participants
-    /// needs a speaker-embedding model that is not bundled, so exposing a
-    /// toggle would promise something the app cannot do. Lane attribution
-    /// (You vs the call) and manual speaker naming both work today.
-    pub diarization_enabled: bool,
     /// Show the floating live transcript panel while capturing.
     pub show_live_panel: bool,
+    /// Where live transcript lines are cleaned up as they arrive. Raw ASR
+    /// output on short conversational utterances is noticeably rough — missing
+    /// punctuation, wrong casing, mangled names — and a small model fixes that
+    /// for a few tokens per line.
+    pub live_refinement: MeetingRefinementBackend,
     /// Days to keep meeting transcripts. 0 keeps them until deleted by hand.
     pub retention_days: u32,
+    /// Last geometry the user left the live panel at, in logical points.
+    /// `None` means the default size in the top-right corner.
+    pub panel_x: Option<f64>,
+    pub panel_y: Option<f64>,
+    pub panel_width: Option<f64>,
+    pub panel_height: Option<f64>,
 }
 
 impl Default for MeetingSettings {
     fn default() -> Self {
         Self {
-            // Off by default: capturing a conversation is a decision the user
-            // makes deliberately, not something an update turns on for them.
-            enabled: false,
+            // Available by default. Nothing is captured until the user presses
+            // start — the feature being *reachable* is not the same as it being
+            // armed, and `auto_connect` below is what governs that.
+            enabled: true,
             capture_system_audio: true,
-            auto_connect: MeetingAutoConnect::Ask,
+            // Off by default. Auto-connect is the one part of Meeting Mode that
+            // can begin capturing a conversation without the user asking for
+            // it, so it stays an explicit opt-in even though the feature itself
+            // ships on.
+            auto_connect: MeetingAutoConnect::Off,
             auto_connect_countdown_secs: 5,
             app_policies: Vec::new(),
             excluded_title_patterns: vec![
@@ -752,15 +797,21 @@ impl Default for MeetingSettings {
                 "therapy".to_string(),
                 "interview".to_string(),
             ],
-            pre_roll_secs: 45,
             auto_stop_grace_secs: 25,
             summary_backend: MeetingSummaryBackend::OnDevice,
             rolling_summary_minutes: 5,
             user_display_name: String::new(),
             mention_alerts: true,
-            diarization_enabled: true,
             show_live_panel: true,
+            // On by default, but on-device, so nothing leaves the Mac unless
+            // the user deliberately picks their cloud provider. Falls back to
+            // verbatim ASR when Apple Intelligence is unavailable.
+            live_refinement: MeetingRefinementBackend::OnDevice,
             retention_days: 30,
+            panel_x: None,
+            panel_y: None,
+            panel_width: None,
+            panel_height: None,
         }
     }
 }
@@ -787,19 +838,6 @@ pub const MEETING_APP_BUNDLE_IDS: &[(&str, &str)] = &[
     ("com.around.Around", "Around"),
     ("im.riot.app", "Element"),
     ("com.readdle.spark", "Spark"),
-];
-
-/// Window-title substrings that indicate a browser tab is in a call. Only
-/// consulted when the frontmost app is a browser, and only when Screen
-/// Recording permission happens to make titles readable — never required.
-pub const MEETING_TITLE_HINTS: &[&str] = &[
-    "meet.google.com",
-    "google meet",
-    "zoom.us/j/",
-    "teams.microsoft.com",
-    "whereby.com",
-    "app.gather.town",
-    "meet.jit.si",
 ];
 
 /// Bump this string when the EULA text changes in a way that requires users
@@ -1419,6 +1457,7 @@ pub fn get_default_settings() -> AppSettings {
         // migration done — only pre-0.1.7 stored settings need it.
         start_hidden_default_flipped: true,
         confirm_paste_default_set: true,
+        meeting_default_enabled_migrated: true,
         binding_defaults_v2_migrated: true,
         autostart_enabled: default_autostart_enabled(),
         selected_model: "".to_string(),
@@ -1487,6 +1526,7 @@ pub fn get_default_settings() -> AppSettings {
         voice_edit_prefix_detection: false,
         rest_api_enabled: false,
         rest_api_port: default_rest_api_port(),
+        rest_api_token: String::new(),
         correction_phrases_enabled: true,
         correction_phrases: default_correction_phrases(),
         eula_accepted_version: None,
@@ -1638,6 +1678,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     changed |= ensure_category_style_defaults(&mut settings);
     changed |= migrate_start_hidden_default(&mut settings);
     changed |= migrate_confirm_paste_default(&mut settings);
+    changed |= migrate_meeting_enabled_default(&mut settings);
     changed |= migrate_binding_defaults_v2(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
@@ -1657,6 +1698,23 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 /// fix at lib.rs. After this runs once we mark
 /// `start_hidden_default_flipped` so we don't trample any deliberate
 /// re-enable.
+/// Meeting Mode now ships available rather than switched off.
+///
+/// Existing installs all carry a stored `enabled: false` — it was written at
+/// first launch, not chosen — so the new default alone would never reach them.
+/// This flips it once. Auto-connect is untouched and stays off, so the effect
+/// is that the feature appears in the tray and settings, not that anything
+/// starts recording. The flag makes it a one-time event: a user who turns it
+/// back off keeps it off.
+fn migrate_meeting_enabled_default(settings: &mut AppSettings) -> bool {
+    if settings.meeting_default_enabled_migrated {
+        return false;
+    }
+    settings.meeting.enabled = true;
+    settings.meeting_default_enabled_migrated = true;
+    true
+}
+
 fn migrate_start_hidden_default(settings: &mut AppSettings) -> bool {
     if settings.start_hidden_default_flipped {
         return false;
@@ -1827,6 +1885,7 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     changed |= ensure_category_style_defaults(&mut settings);
     changed |= migrate_start_hidden_default(&mut settings);
     changed |= migrate_confirm_paste_default(&mut settings);
+    changed |= migrate_meeting_enabled_default(&mut settings);
     changed |= migrate_binding_defaults_v2(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
@@ -1845,13 +1904,17 @@ pub fn write_settings(app: &AppHandle, settings: AppSettings) {
         .expect("Failed to initialize store");
 
     // Persist API keys to the OS keychain; they never hit disk in plaintext.
+    //
+    // Empty values are skipped rather than treated as "the user cleared it".
+    // Almost every caller here is writing some unrelated setting on top of a
+    // blob from `get_settings`, and if the keychain read failed — locked
+    // keychain, a denied prompt, a transient error — every key in that blob is
+    // empty. Deleting on empty turned one bad read into the permanent loss of
+    // the user's API keys. Clearing a key is an explicit act with its own path
+    // (`change_post_process_api_key_setting`), which deletes the entry itself.
     for (provider_id, key) in settings.post_process_api_keys.iter() {
         if !key.is_empty() {
             crate::keychain::set_api_key(provider_id, key);
-        } else {
-            // Empty key means the user cleared it — drop the keychain entry so
-            // it stops being returned on the next hydrate.
-            crate::keychain::delete_api_key(provider_id);
         }
     }
 
@@ -1915,5 +1978,30 @@ mod tests {
         let out = format!("{:?}", map);
         assert!(!out.contains("secret"));
         assert!(out.contains("[REDACTED]"));
+    }
+
+    /// Settings written by an older build must still parse.
+    ///
+    /// `get_settings` reacts to a failed parse by replacing the stored blob
+    /// with defaults, so a `MeetingSettings` field added without a fallback
+    /// would wipe every unrelated setting the user has.
+    #[test]
+    fn meeting_settings_tolerate_missing_fields() {
+        let stored = serde_json::json!({ "enabled": true, "userDisplayName": "Jason" });
+        let parsed: MeetingSettings =
+            serde_json::from_value(stored).expect("older meeting settings must still parse");
+
+        assert!(parsed.enabled);
+        assert_eq!(parsed.user_display_name, "Jason");
+        // Everything absent falls back to the default rather than failing.
+        assert_eq!(
+            parsed.retention_days,
+            MeetingSettings::default().retention_days
+        );
+        assert_eq!(
+            parsed.live_refinement,
+            MeetingSettings::default().live_refinement
+        );
+        assert_eq!(parsed.panel_x, None);
     }
 }

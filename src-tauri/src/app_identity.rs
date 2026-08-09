@@ -26,6 +26,8 @@ mod ffi {
         pub fn ghostly_running_app_bundle_ids() -> *mut c_char;
         pub fn ghostly_is_app_running(bundle_id: *const c_char) -> i32;
         pub fn ghostly_bundle_id_for_display_name(display_name: *const c_char) -> *mut c_char;
+        pub fn ghostly_window_titles_for_bundle(bundle_id: *const c_char) -> *mut c_char;
+        pub fn ghostly_accessibility_is_trusted() -> i32;
         pub fn ghostly_app_identity_free_string(value: *mut c_char);
     }
 }
@@ -157,6 +159,56 @@ pub fn bundle_id_for_display_name(display_name: &str) -> Option<String> {
     {
         let _ = display_name;
         None
+    }
+}
+
+/// Window titles for every running process with this bundle identifier.
+///
+/// Zoom, Teams, Meet and Slack all put the meeting name in the window title, so
+/// this is the only title source Meeting Mode has — and the one its exclusion
+/// list depends on.
+///
+/// Reads through the Accessibility API, not Core Graphics: `kCGWindowName`
+/// requires Screen Recording permission, which Meeting Mode exists to avoid,
+/// while Ghostly already holds Accessibility for its global shortcuts.
+///
+/// Returns an empty vector both when the app has no titled windows and when
+/// Accessibility has not been granted. Callers deciding whether to *suppress*
+/// something must not read that as "no match" — use
+/// [`accessibility_is_trusted`] to distinguish the two.
+pub fn window_titles_for_bundle(bundle_id: &str) -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(c_string) = std::ffi::CString::new(bundle_id) else {
+            return Vec::new();
+        };
+        let Some(blob) =
+            consume_string(unsafe { ffi::ghostly_window_titles_for_bundle(c_string.as_ptr()) })
+        else {
+            return Vec::new();
+        };
+        blob.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bundle_id;
+        Vec::new()
+    }
+}
+
+/// Whether Ghostly is trusted for Accessibility. Never prompts.
+pub fn accessibility_is_trusted() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe { ffi::ghostly_accessibility_is_trusted() == 1 }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
     }
 }
 

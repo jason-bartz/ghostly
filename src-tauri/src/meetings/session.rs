@@ -90,6 +90,14 @@ pub struct MeetingManager {
     /// and microphone open so resuming is instantaneous — rebuilding the tap
     /// costs seconds on first use.
     paused: Arc<AtomicBool>,
+    /// Wall-clock milliseconds spent paused, and when the current pause began.
+    ///
+    /// Segment timestamps are counted in *frames seen*, which stop advancing
+    /// while paused, so the transcript's clock runs slower than the wall clock
+    /// by exactly the paused duration. Tracking it here is what lets the panel
+    /// show a duration that agrees with the timestamps beside it.
+    paused_total_ms: Arc<std::sync::atomic::AtomicI64>,
+    paused_since: Mutex<Option<std::time::Instant>>,
     /// Serialises start/stop so two shortcut presses cannot interleave.
     transition: Mutex<()>,
     /// Incremented on every start. Background tasks capture the value current
@@ -107,6 +115,8 @@ impl MeetingManager {
             active: Mutex::new(None),
             capturing: Arc::new(AtomicBool::new(false)),
             paused: Arc::new(AtomicBool::new(false)),
+            paused_total_ms: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            paused_since: Mutex::new(None),
             transition: Mutex::new(()),
             generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }))
@@ -133,8 +143,22 @@ impl MeetingManager {
                 app_display_name: session.app_display_name.clone(),
                 system_audio_error: session.system_audio_error.clone(),
                 paused: self.paused.load(Ordering::SeqCst),
+                paused_ms: self.paused_ms(),
             },
         }
+    }
+
+    /// Wall-clock milliseconds this session has spent paused, including the
+    /// pause currently in progress.
+    fn paused_ms(&self) -> i64 {
+        let banked = self.paused_total_ms.load(Ordering::SeqCst);
+        let current = self
+            .paused_since
+            .lock()
+            .unwrap()
+            .map(|since| since.elapsed().as_millis() as i64)
+            .unwrap_or(0);
+        banked + current
     }
 
     fn emit_status(&self) {
@@ -157,7 +181,25 @@ impl MeetingManager {
     ///
     /// **Blocking** — starting the system-audio tap can stall for seconds on
     /// first use. Call from a worker thread.
+    ///
+    /// Every failure is announced on `meeting-start-failed`. The panel is shown
+    /// and cleared before the fallible work begins, so a silent error would
+    /// leave the user staring at an empty panel that never fills.
     pub fn start(
+        self: &Arc<Self>,
+        detection_source: DetectionSource,
+        app_bundle_id: Option<String>,
+        app_display_name: Option<String>,
+        title: Option<String>,
+    ) -> Result<String, String> {
+        let result = self.start_inner(detection_source, app_bundle_id, app_display_name, title);
+        if let Err(reason) = &result {
+            let _ = self.app.emit("meeting-start-failed", reason.clone());
+        }
+        result
+    }
+
+    fn start_inner(
         self: &Arc<Self>,
         detection_source: DetectionSource,
         app_bundle_id: Option<String>,
@@ -174,6 +216,20 @@ impl MeetingManager {
         if !settings.meeting.enabled {
             return Err("Meeting Mode is turned off.".to_string());
         }
+
+        // Surface the panel before any of the slow work below. Bringing up the
+        // system-audio tap blocks for seconds the first time in a process, and
+        // showing the panel only once that finished made pressing start feel
+        // like nothing had happened.
+        if settings.meeting.show_live_panel {
+            super::panel::show(&self.app);
+        }
+
+        // Tell the panel to clear now rather than when the first segment of the
+        // new meeting lands. The previous meeting's transcript and its wrap-up
+        // summary both stay on screen deliberately after it ends, and without
+        // this they would still be there when the next one begins.
+        let _ = self.app.emit("meeting-starting", ());
 
         // Both features snapshot and restore the *global* microphone mode, so
         // running them together makes whichever stops last restore a stale mode
@@ -353,6 +409,10 @@ impl MeetingManager {
 
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.paused.store(false, Ordering::SeqCst);
+        // A previous meeting's paused time must not carry into this one's
+        // duration.
+        self.paused_total_ms.store(0, Ordering::SeqCst);
+        *self.paused_since.lock().unwrap() = None;
         self.capturing.store(true, Ordering::SeqCst);
         *self.active.lock().unwrap() = Some(ActiveSession {
             meeting_id: meeting_id.clone(),
@@ -425,14 +485,6 @@ impl MeetingManager {
             });
         }
 
-        if meeting_config.show_live_panel {
-            // NSPanel work is main-thread-only, and `start` runs on a worker.
-            let app = self.app.clone();
-            let _ = self.app.run_on_main_thread(move || {
-                super::panel::show(&app);
-            });
-        }
-
         self.emit_status();
         Ok(meeting_id)
     }
@@ -443,6 +495,12 @@ impl MeetingManager {
 
         if !self.capturing.swap(false, Ordering::SeqCst) {
             return None;
+        }
+        // Bank a pause that was still open, so `elapsed_ms` stays correct for
+        // the wrap-up summary's time window.
+        if let Some(started) = self.paused_since.lock().unwrap().take() {
+            self.paused_total_ms
+                .fetch_add(started.elapsed().as_millis() as i64, Ordering::SeqCst);
         }
         self.paused.store(false, Ordering::SeqCst);
 
@@ -525,7 +583,13 @@ impl MeetingManager {
             .await
             {
                 Ok(body) => {
-                    let _ = app.emit("meeting-final-summary", body);
+                    let _ = app.emit(
+                        "meeting-final-summary",
+                        super::types::MeetingSummaryEvent {
+                            meeting_id: summary_id.clone(),
+                            body,
+                        },
+                    );
                 }
                 Err(e) => {
                     debug!("Meeting: final summary skipped: {e}");
@@ -537,13 +601,21 @@ impl MeetingManager {
         Some(session.meeting_id)
     }
 
-    /// Milliseconds elapsed since capture began, for time-windowed queries.
+    /// Milliseconds of *captured* audio since the meeting began.
+    ///
+    /// Paused time is subtracted so this lands on the same timeline as segment
+    /// `start_ms`, which counts frames seen and therefore stalls while paused.
+    /// Time-windowed queries compare against those timestamps, so using raw
+    /// wall clock here would silently shift every window.
     pub fn elapsed_ms(&self) -> i64 {
-        let guard = self.active.lock().unwrap();
-        guard
-            .as_ref()
-            .map(|s| (Utc::now().timestamp() - s.started_at) * 1000)
-            .unwrap_or(0)
+        let started_at = {
+            let guard = self.active.lock().unwrap();
+            match guard.as_ref() {
+                Some(session) => session.started_at,
+                None => return 0,
+            }
+        };
+        ((Utc::now().timestamp() - started_at) * 1000 - self.paused_ms()).max(0)
     }
 
     /// Stops taking audio without ending the meeting.
@@ -551,7 +623,22 @@ impl MeetingManager {
         if !self.is_capturing() {
             return;
         }
-        self.paused.store(paused, Ordering::SeqCst);
+        if self.paused.swap(paused, Ordering::SeqCst) == paused {
+            return;
+        }
+
+        // Bank the pause so the displayed duration keeps agreeing with the
+        // segment timestamps, which do not advance while paused.
+        {
+            let mut since = self.paused_since.lock().unwrap();
+            if paused {
+                *since = Some(std::time::Instant::now());
+            } else if let Some(started) = since.take() {
+                self.paused_total_ms
+                    .fetch_add(started.elapsed().as_millis() as i64, Ordering::SeqCst);
+            }
+        }
+
         info!(
             "Meeting capture {}",
             if paused { "paused" } else { "resumed" }
@@ -561,6 +648,23 @@ impl MeetingManager {
 
     pub fn is_paused(&self) -> bool {
         self.paused.load(Ordering::SeqCst)
+    }
+
+    /// Renames the live session, so a rename made from the panel survives the
+    /// next status push instead of snapping back to the old title.
+    ///
+    /// Returns false when `meeting_id` is not the meeting being captured, which
+    /// is the normal case for renames done from the library.
+    pub fn rename_active(&self, meeting_id: &str, title: Option<String>) -> bool {
+        {
+            let mut guard = self.active.lock().unwrap();
+            match guard.as_mut() {
+                Some(session) if session.meeting_id == meeting_id => session.title = title,
+                _ => return false,
+            }
+        }
+        self.emit_status();
+        true
     }
 
     pub fn active_meeting_id(&self) -> Option<String> {
@@ -631,6 +735,15 @@ fn transcribe_worker(
     let mut deduper = CrossLaneDeduper::new();
     let mut speakers = SpeakerRegistry::new(&store, &meeting_id);
 
+    // Live AI cleanup, when a backend is configured and reachable. Lines are
+    // handed over *after* being emitted, so refinement never delays the panel.
+    let refiner = super::refine::spawn(
+        app.clone(),
+        store.clone(),
+        meeting_id.clone(),
+        config.live_refinement,
+    );
+
     while let Ok(job) = rx.recv() {
         let (lane, segment) = match job {
             Job::Segment { lane, segment } => (lane, segment),
@@ -696,6 +809,19 @@ fn transcribe_worker(
             }
         };
 
+        // Meter what was actually kept.
+        //
+        // `start` checks the weekly cap but nothing ever accrued against it, so
+        // an hour of meeting transcription counted as zero words and the
+        // heaviest workload in the product went unmetered. Counted per
+        // committed segment rather than in one lump at the end, so a meeting
+        // that is never cleanly stopped still counts — and only after echo
+        // suppression, so a line the user never sees is never charged for.
+        if let Some(usage) = app.try_state::<Arc<crate::managers::usage::UsageManager>>() {
+            let duration_secs = ((segment.end_ms - segment.start_ms).max(0) / 1000) as u64;
+            usage.record(duration_secs, text.split_whitespace().count() as u64);
+        }
+
         let stored = super::types::MeetingSegment {
             id: segment_id,
             meeting_id: meeting_id.clone(),
@@ -715,6 +841,19 @@ fn transcribe_worker(
                 speaker: Some(speaker.clone()),
             },
         );
+
+        // Queued only after the verbatim line is on screen. A correction, if
+        // one comes, arrives as a separate event and replaces it in place.
+        if let Some(refiner) = &refiner {
+            refiner.submit(super::refine::RefineJob {
+                segment_id,
+                speaker: speaker.display_name.clone().unwrap_or_else(|| match lane {
+                    Lane::Mic => "You".to_string(),
+                    Lane::System => "Participant".to_string(),
+                }),
+                text: text.clone(),
+            });
+        }
 
         // Direct-address detection. Far side only — the user saying their own
         // name is not someone calling on them.
@@ -737,6 +876,10 @@ fn transcribe_worker(
         // Segments arriving after Stop are discarded deliberately: the lanes
         // are already detached, so these are partial flushes with no listener
         // left to display them.
+    }
+
+    if let Some(refiner) = refiner {
+        refiner.finish();
     }
 
     debug!("Meeting transcribe worker exiting");

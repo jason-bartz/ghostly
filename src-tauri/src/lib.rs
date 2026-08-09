@@ -6,6 +6,8 @@ mod apple_intelligence;
 mod audio_feedback;
 pub mod audio_toolkit;
 pub mod cli;
+mod cli_client;
+mod cli_install;
 mod clipboard;
 #[cfg(target_os = "macos")]
 mod clipboard_image;
@@ -70,6 +72,12 @@ use crate::settings::get_settings;
 // Global atomic to store the file log level filter
 // We use u8 to store the log::LevelFilter as a number
 pub static FILE_LOG_LEVEL: AtomicU8 = AtomicU8::new(log::LevelFilter::Debug as u8);
+
+/// Handle CLI flags that print a result and exit. Returns the process exit
+/// code when the args were handled, `None` to continue into a normal launch.
+pub fn run_cli(args: &CliArgs) -> Option<i32> {
+    cli_client::run(args)
+}
 
 fn level_filter_from_u8(value: u8) -> log::LevelFilter {
     match value {
@@ -231,6 +239,13 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(Arc::new(stream_cancel::StreamCancellation::new()));
     app_handle.manage(Arc::new(staged_capture::StagedCaptureState::new()));
 
+    // REST API plumbing is registered unconditionally so publishers never have
+    // to check whether the server happens to be running. The socket itself is
+    // only bound below, and only when the user has enabled it.
+    app_handle.manage(Arc::new(rest_api::EventBus::new()));
+    app_handle.manage(Arc::new(rest_api::PasteSuppressor::default()));
+    app_handle.manage(Arc::new(rest_api::RestApiServer::new()));
+
     // Continuous dictation manager (dev-mode gated). Construction is fallible
     // because it loads the Silero VAD; a failure here only disables continuous
     // dictation — regular shortcuts keep working.
@@ -298,8 +313,29 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         if api_settings.rest_api_enabled {
             let api_app = app_handle.clone();
             let port = api_settings.rest_api_port;
+            // A pre-token settings file (API enabled before tokens existed)
+            // mints one on the way through, so the server is never reachable
+            // without auth.
+            let token = if api_settings.rest_api_token.is_empty() {
+                let token = rest_api::generate_token();
+                let mut updated = api_settings.clone();
+                updated.rest_api_token = token.clone();
+                settings::write_settings(app_handle, updated);
+                token
+            } else {
+                api_settings.rest_api_token.clone()
+            };
             tauri::async_runtime::spawn(async move {
-                rest_api::start_server(api_app, port).await;
+                let Some(server) = api_app
+                    .try_state::<Arc<rest_api::RestApiServer>>()
+                    .map(|s| s.inner().clone())
+                else {
+                    log::warn!("REST API state missing; not starting server");
+                    return;
+                };
+                if let Err(e) = server.start(api_app.clone(), port, token).await {
+                    log::warn!("REST API failed to start: {}", e);
+                }
             });
         }
     }
@@ -366,10 +402,10 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                     return;
                 };
                 let manager = Arc::clone(&manager);
-                let app_handle = app.clone();
                 // Off the menu thread: starting capture builds the system-audio
                 // tap, which blocks for seconds on first use and would freeze
-                // the menu until it finished.
+                // the menu until it finished. `start` announces its own
+                // failures on `meeting-start-failed`.
                 std::thread::spawn(move || {
                     if manager.is_capturing() {
                         manager.stop();
@@ -380,7 +416,6 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                         None,
                     ) {
                         log::warn!("Could not start meeting from tray: {e}");
-                        let _ = app_handle.emit("meeting-start-failed", e);
                     }
                 });
             }
@@ -485,6 +520,14 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
+
+    // Create the meeting panel now, hidden, so starting a meeting shows a
+    // populated window immediately rather than waiting on a webview to boot.
+    // Only for users who have the feature switched on — `panel::show` still
+    // creates it on demand for anyone who enables it mid-session.
+    if settings.meeting.enabled {
+        meetings::panel::create(app_handle);
+    }
 }
 
 #[tauri::command]
@@ -647,6 +690,11 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             helpers::clamshell::is_laptop,
             commands::set_rest_api_enabled,
             commands::set_rest_api_port,
+            commands::get_rest_api_token,
+            commands::regenerate_rest_api_token,
+            commands::rest_api_running_port,
+            commands::install_cli,
+            commands::cli_install_status,
             frontmost::detect_frontmost_app,
             frontmost::detect_builtin_profile_id,
             commands::meetings::get_system_audio_capability,
@@ -666,6 +714,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::meetings::get_meeting_speakers,
             commands::meetings::delete_meeting,
             commands::meetings::set_meeting_title,
+            commands::meetings::set_meeting_segment_text,
             commands::meetings::export_meeting_transcript,
             commands::meetings::rename_meeting_speaker,
             commands::meetings::merge_meeting_speakers,
@@ -971,6 +1020,24 @@ pub fn run(cli_args: CliArgs) {
                     }
                 }
             }
+            // Remember where the user drags and how they size the meeting
+            // panel. Recorded in memory here because these fire per pixel; the
+            // values reach the settings store when the panel hides or the app
+            // exits.
+            tauri::WindowEvent::Moved(position) => {
+                if window.label() == crate::meetings::panel::PANEL_LABEL {
+                    let scale = window.scale_factor().unwrap_or(1.0);
+                    let logical = position.to_logical::<f64>(scale);
+                    crate::meetings::panel::remember_position(logical.x, logical.y);
+                }
+            }
+            tauri::WindowEvent::Resized(size) => {
+                if window.label() == crate::meetings::panel::PANEL_LABEL {
+                    let scale = window.scale_factor().unwrap_or(1.0);
+                    let logical = size.to_logical::<f64>(scale);
+                    crate::meetings::panel::remember_size(logical.width, logical.height);
+                }
+            }
             tauri::WindowEvent::ThemeChanged(theme) => {
                 log::info!("Theme changed to: {:?}", theme);
                 // Update tray icon to match new theme, maintaining idle state
@@ -985,6 +1052,23 @@ pub fn run(cli_args: CliArgs) {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = &event {
                 show_main_window(app);
+            }
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = &event {
+                // Flush the meeting panel's dragged geometry. Quitting with the
+                // panel still open is the common case, so hiding alone would
+                // rarely save it.
+                crate::meetings::panel::persist_geometry(app);
+
+                // Finalise a meeting still in progress. `stop` is what flushes
+                // the open utterance in each lane and stamps `ended_at`;
+                // without this, quitting mid-call loses the last thing said and
+                // leaves a transcript that never ended.
+                if let Some(manager) = app.try_state::<Arc<meetings::MeetingManager>>() {
+                    if manager.is_capturing() {
+                        log::info!("Finalising the active meeting before exit");
+                        manager.stop();
+                    }
+                }
             }
             let _ = (app, event); // suppress unused warnings on non-macOS
         });

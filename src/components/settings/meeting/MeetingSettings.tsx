@@ -40,10 +40,29 @@ export const MeetingSettings: React.FC = () => {
   // Save is both correct and predictable.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
+  // The authoritative current value, mirrored out of React state.
+  //
+  // `patch` used to read the latest settings by assigning to a variable inside
+  // a `setSettings(current => …)` updater. React only runs that updater
+  // synchronously when the component has no update already pending — under
+  // StrictMode, or simply when two settings are changed in quick succession,
+  // it runs later, the variable is still null, and the save was skipped
+  // entirely. That is what made a freshly flipped toggle revert on reload, and
+  // it silently dropped every kind of edit in this pane, not just toggles.
+  //
+  // A ref updates synchronously, so back-to-back patches still compose and the
+  // value sent to the backend is never stale.
+  const settingsRef = useRef<MeetingSettingsType | null>(null);
+
+  const applySettings = useCallback((value: MeetingSettingsType) => {
+    settingsRef.current = value;
+    setSettings(value);
+  }, []);
+
   useEffect(() => {
     let active = true;
     void commands.getMeetingSettings().then((value) => {
-      if (active) setSettings(value);
+      if (active) applySettings(value);
     });
     void commands.getSystemAudioCapability().then((value) => {
       if (active) setCapability(value);
@@ -51,44 +70,38 @@ export const MeetingSettings: React.FC = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [applySettings]);
 
-  // Builds the next value from the *latest* state rather than from a snapshot
-  // captured when the callback was created. The pane loads once and the backend
-  // also writes to these settings ("Never auto-connect for this app" from the
-  // detection prompt), so sending a stale whole-object copy would silently
-  // revert those changes.
   // Writes are serialised. Each save sends the whole settings object, so two
   // in-flight requests can complete out of order and an older value can land
   // last — which is what made a dragged slider or a fast-typed field snap back.
   const saveChain = useRef<Promise<void>>(Promise.resolve());
 
-  const patch = useCallback(async (changes: Partial<MeetingSettingsType>) => {
-    let next: MeetingSettingsType | null = null;
-    setSettings((current) => {
-      if (!current) return current;
-      next = { ...current, ...changes };
-      return next;
-    });
-    const pending = next;
-    if (!pending) return;
+  const patch = useCallback(
+    async (changes: Partial<MeetingSettingsType>) => {
+      const current = settingsRef.current;
+      if (!current) return;
+      const next = { ...current, ...changes };
+      applySettings(next);
 
-    setSaving(true);
-    saveChain.current = saveChain.current
-      .catch(() => undefined)
-      .then(async () => {
-        const result = await commands.updateMeetingSettings(pending);
-        if (result.status === "error") {
-          console.error("Failed to save meeting settings:", result.error);
-          // Re-read rather than restoring a snapshot, which would also undo an
-          // edit that succeeded while this one was in flight.
-          setSettings(await commands.getMeetingSettings());
-        }
-      })
-      .finally(() => setSaving(false));
+      setSaving(true);
+      saveChain.current = saveChain.current
+        .catch(() => undefined)
+        .then(async () => {
+          const result = await commands.updateMeetingSettings(next);
+          if (result.status === "error") {
+            console.error("Failed to save meeting settings:", result.error);
+            // Re-read rather than restoring a snapshot, which would also undo
+            // an edit that succeeded while this one was in flight.
+            applySettings(await commands.getMeetingSettings());
+          }
+        })
+        .finally(() => setSaving(false));
 
-    await saveChain.current;
-  }, []);
+      await saveChain.current;
+    },
+    [applySettings],
+  );
 
   if (!settings) {
     return (
@@ -233,6 +246,45 @@ export const MeetingSettings: React.FC = () => {
                 placeholder={t("meeting.settings.exclusionsPlaceholder")}
               />
             </SettingContainer>
+          </SettingsGroup>
+
+          <SettingsGroup title={t("meeting.settings.groupTranscript")}>
+            <SettingContainer
+              title={t("meeting.settings.liveRefinementLabel")}
+              description={t("meeting.settings.liveRefinementDescription")}
+              descriptionMode="tooltip"
+              grouped
+            >
+              <Dropdown
+                options={[
+                  {
+                    value: "on_device",
+                    label: t("meeting.settings.liveRefinementOnDevice"),
+                  },
+                  {
+                    value: "cloud",
+                    label: t("meeting.settings.liveRefinementCloud"),
+                  },
+                  {
+                    value: "off",
+                    label: t("meeting.settings.liveRefinementOff"),
+                  },
+                ]}
+                selectedValue={settings.liveRefinement}
+                onSelect={(value) =>
+                  void patch({
+                    liveRefinement:
+                      value as MeetingSettingsType["liveRefinement"],
+                  })
+                }
+              />
+            </SettingContainer>
+
+            {settings.liveRefinement === "cloud" && (
+              <Alert variant="warning" contained>
+                {t("meeting.settings.liveRefinementCloudWarning")}
+              </Alert>
+            )}
           </SettingsGroup>
 
           <SettingsGroup title={t("meeting.settings.groupSummaries")}>
