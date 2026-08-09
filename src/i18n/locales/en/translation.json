@@ -7,20 +7,22 @@
     "microphone": "Microphone",
     "defaultMicrophone": "Default",
     "quit": "Quit",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "startMeeting": "Start Meeting",
+    "endMeeting": "End Meeting"
   },
   "sidebar": {
-    "general": "Recording",
+    "general": "Dictation",
     "models": "Models",
-    "advanced": "Output",
-    "postProcessing": "AI Refinement",
+    "advanced": "Text Output",
+    "postProcessing": "Refinement",
     "profiles": "App Profiles",
     "style": "Style",
     "history": "My Notes",
     "usage": "Usage",
     "license": "License",
     "dictionary": "Dictionary",
-    "developer": "Vibe Coding",
+    "developer": "Developer",
     "debug": "Debug",
     "about": "About",
     "settings": "Settings",
@@ -31,7 +33,10 @@
       "account": "Account",
       "about": "About",
       "advanced": "Advanced",
-      "developer": "Developer"
+      "developer": "Advanced",
+      "dictation": "Dictation",
+      "app": "App",
+      "help": "Help"
     },
     "metrics": {
       "thisWeek": "This Week",
@@ -42,28 +47,16 @@
       "showWeek": "Show this week",
       "showLifetime": "Show all time"
     },
-    "health": "Health"
+    "health": "Health",
+    "transcription": "Transcription",
+    "app": "General",
+    "account": "Account",
+    "performance": "Performance",
+    "meeting": "Meetings"
   },
   "onboarding": {
-    "title": "Ghostly",
-    "tagline": "Your AI ghostwriter. Just speak.",
-    "features": {
-      "onDevice": "Runs entirely on this Mac — your voice is never uploaded",
-      "fast": "Text lands where your cursor is, in about a second",
-      "everywhere": "Works anywhere — paste into any app, any text field",
-      "agents": "Built for talking to AI — prompts reach Claude, Cursor, and ChatGPT exactly as you said them"
-    },
-    "modelSection": "Setting up your model",
-    "recommendedReason": "Recommended for most users. Fast and accurate for English and European languages.",
-    "changeLaterHint": "You can switch to a different model anytime in Settings → Models.",
-    "showMoreModels": "Show more models",
-    "hideMoreModels": "Show fewer models",
-    "subtitle": "To get started, choose a transcription model",
     "recommended": "Recommended",
-    "download": "Download",
-    "downloading": "Downloading...",
     "customModelDescription": "Not officially supported",
-    "downloadFailed": "Download failed. Please try again.",
     "modelCard": {
       "accuracy": "accuracy",
       "speed": "speed"
@@ -133,69 +126,200 @@
         "name": "Cohere",
         "description": "A large, slower, but very accurate multilingual model."
       }
+    }
+  },
+  "tour": {
+    "ariaLabel": "Ghostly guided tour",
+    "progress": "{{current}} of {{total}}",
+    "continue": "Continue",
+    "back": "Back",
+    "skip": "Skip tour",
+    "skipForNow": "Skip for now",
+    "close": "Close",
+    "welcome": {
+      "eyebrow": "Welcome",
+      "title": "Your voice, already typing",
+      "body": "Ghostly turns speech into finished text wherever your cursor is — email, Slack, your editor, an AI prompt. Two minutes here and you'll know everything it can do.",
+      "proof": {
+        "private": {
+          "title": "Stays on your Mac",
+          "body": "Transcription runs locally. Your voice is never uploaded."
+        },
+        "fast": {
+          "title": "About a second",
+          "body": "Text lands roughly as fast as you can let go of the key."
+        },
+        "anywhere": {
+          "title": "Every app",
+          "body": "If you can type into it, you can talk into it."
+        }
+      }
     },
-    "errors": {
-      "loadModels": "Failed to load available models",
-      "downloadModel": "Failed to download model: {{error}}"
+    "permissions": {
+      "eyebrow": "Setup",
+      "title": "Two permissions and you're done",
+      "body": "macOS asks you, not us — Ghostly can't grant these itself. Both take one click.",
+      "hint": "Grant both to continue. Ghostly detects them automatically.",
+      "grant": "Grant",
+      "waiting": "Waiting…",
+      "granted": "Granted",
+      "allSet": "Permissions granted",
+      "allSetBody": "Ghostly can hear you and type for you.",
+      "footnote": "Ghostly only listens while you're holding your shortcut, and only types where your cursor already is.",
+      "microphone": {
+        "title": "Microphone",
+        "body": "So Ghostly can hear what you say.",
+        "reassurance": "Audio is processed on this Mac and never leaves it."
+      },
+      "accessibility": {
+        "title": "Accessibility",
+        "body": "So your shortcut works everywhere and text can be typed for you.",
+        "reassurance": "Used only for your shortcut and pasting — nothing is monitored."
+      }
+    },
+    "shortcut": {
+      "eyebrow": "The gesture",
+      "titleHold": "Hold. Speak. Let go.",
+      "titleToggle": "Press. Speak. Press again.",
+      "body": "That's the entire product. Your words appear wherever the cursor is — no window to open, no button to click.",
+      "sample": "Shipping the new onboarding flow today.",
+      "beats": {
+        "press": "Hold your shortcut",
+        "pressToggle": "Press your shortcut",
+        "speak": "Speak normally",
+        "release": "Let go — text lands at your cursor",
+        "releaseToggle": "Press again — text lands at your cursor"
+      },
+      "mode": {
+        "title": "How recording starts",
+        "hold": "Hold",
+        "toggle": "Toggle",
+        "holdBody": "Recording lasts as long as you hold the key. Best for short bursts.",
+        "toggleBody": "One press starts, another stops. Best for long dictation."
+      },
+      "rebindHint": "Prefer a different key? Change it in Settings → Shortcuts."
+    },
+    "practice": {
+      "eyebrow": "Try it",
+      "title": "Say something",
+      "body": "This is a real text field and a real transcription. Whatever you say lands right here.",
+      "placeholder": "Your words will appear here…",
+      "press": "Press",
+      "andSpeak": "and speak",
+      "listening": "Listening",
+      "transcribing": "Transcribing…",
+      "success": "{{words}} words, no typing",
+      "hint": "Nothing to type — just hold your shortcut and talk.",
+      "doneHint": "That's it. That's the whole thing.",
+      "beforeBody": "Everything you're about to say is transcribed on this Mac. No audio is uploaded, and nothing is stored unless you keep it.",
+      "afterBody": "That transcription ran entirely on your Mac — and it works exactly the same in every other app you use.",
+      "trySaying": "Try saying",
+      "prompts": {
+        "0": "Hey, can you send me that report before Friday? Thanks.",
+        "1": "Let's move the sync to Thursday afternoon and loop in the design team.",
+        "2": "Quick note — the client approved the new pricing, so we can ship next week."
+      }
     },
     "refinement": {
-      "title": "AI Refinement",
-      "tagline": "Optionally clean up, format, and polish your transcriptions. You can change this later in Settings.",
-      "continue": "Continue",
-      "applying": "Saving…",
-      "changeLaterHint": "Change anytime in Settings → AI Refinement.",
+      "eyebrow": "Polish",
+      "title": "Want it cleaned up?",
+      "body": "Speech comes with filler words, false starts, and no punctuation. Refinement fixes all of that before the text lands — and it's optional.",
+      "changeLater": "Change this anytime in Settings → AI Refinement.",
+      "saveFailed": "Couldn't save that choice. Try again.",
+      "sample": {
+        "beforeLabel": "You say",
+        "before": "um so can you like send me the report by friday i think",
+        "afterLabel": "Ghostly writes",
+        "after": "Can you send me the report by Friday?"
+      },
       "options": {
-        "apple": {
+        "apple_intelligence": {
           "title": "Apple Intelligence",
-          "description": "Runs fully on-device. No API key, no extra setup, no data leaves your Mac.",
+          "body": "Runs on-device. No API key, no setup, nothing leaves your Mac.",
           "badge": "Recommended"
         },
         "byok": {
           "title": "Bring your own API key",
-          "description": "Use OpenAI, Anthropic, Groq, Cerebras, OpenRouter, Z.AI, or a custom endpoint. You'll add your key in Settings."
+          "body": "OpenAI, Anthropic, Groq, Cerebras, OpenRouter, Z.AI, or a custom endpoint. Add your key in Settings."
         },
         "none": {
           "title": "No refinement",
-          "description": "Use only the local transcription model. Fastest, fully offline — no cleanup or formatting."
+          "body": "Raw transcription only. Fastest, fully offline, every word exactly as spoken."
         }
-      },
-      "errors": {
-        "saveFailed": "Failed to save your choice. Please try again."
       }
     },
-    "permissions": {
-      "title": "Permissions Required",
-      "description": "Ghostly needs a couple of permissions to work properly.",
-      "microphone": {
-        "title": "Microphone Access",
-        "description": "Required to hear your voice for transcription."
-      },
-      "accessibility": {
-        "title": "Accessibility Access",
-        "description": "Required to type transcribed text into your applications."
-      },
-      "grant": "Grant Permission",
-      "granted": "Granted",
-      "waiting": "Waiting...",
-      "allGranted": "All set!",
-      "skipForNow": "Continue anyway",
-      "errors": {
-        "checkFailed": "Failed to check permissions. Please try again.",
-        "requestFailed": "Failed to request permission. Please try again."
+    "highlights": {
+      "eyebrow": "Beyond dictation",
+      "title": "Three things Ghostly also does",
+      "body": "Not dictation, and not obvious from the main window. These are why people keep Ghostly open.",
+      "hint": "Nothing to set up now — this is just so you know it's there.",
+      "items": {
+        "notes": {
+          "title": "Notes",
+          "body": "Every transcription is saved as a searchable note — what you said, when you said it, and which app you were in. Tag them, star them, come back to them.",
+          "where": "Notes, in the sidebar."
+        },
+        "meetings": {
+          "title": "Meeting Mode",
+          "body": "Live transcription of your calls in a floating panel, both sides, on this Mac. Ghostly never joins — no bot in your participant list. Ask “Where were we?” to catch up.",
+          "where": "Meetings, in the sidebar — off until you switch it on."
+        },
+        "openMic": {
+          "title": "Open Mic",
+          "body": "Leave the mic open and stop touching keys. Every pause becomes a transcription — finish with your submit phrase to send it.",
+          "where": "Dictation, in the sidebar — off until you switch it on."
+        }
       }
     },
-    "ready": {
-      "badge": "Ready now",
-      "headline": "You can start dictating right away.",
-      "headlineWithShortcut": "Hold {{shortcut}} anywhere and talk.",
-      "body": "Ghostly ships with a transcription model built in, so there is nothing to wait for. Put your cursor in any text field and try it.",
-      "cta": "Start dictating"
+    "features": {
+      "eyebrow": "Worth knowing",
+      "title": "Five things people miss",
+      "body": "Shortcut-level power, already installed. Every binding below can be changed later.",
+      "hint": "Use ← → to browse. Everything here lives in Settings too.",
+      "items": {
+        "verbatim": {
+          "title": "Verbatim dictation",
+          "body": "Transcribes exactly what you say with no rewriting at all. The escape hatch for quotes, code, names, and anything an AI shouldn't touch.",
+          "example": "“Write a function that takes a user ID and returns…” — every word, untouched."
+        },
+        "editLast": {
+          "title": "Edit what you just said",
+          "body": "Revise the last thing you dictated by talking to it, or use the quick chips: shorten, lengthen, fix grammar, rephrase.",
+          "example": "“Make that shorter and less formal.”"
+        },
+        "screenshot": {
+          "title": "Screenshot + dictate",
+          "body": "Captures your screen alongside your question and stages both, ready to drop into any AI chat that accepts images.",
+          "example": "“Why is this build failing?” — with the error already attached."
+        },
+        "styles": {
+          "title": "Per-app writing styles",
+          "body": "Ghostly knows the difference between Slack and a client email, and adjusts tone and cleanup to match the app you're in.",
+          "example": "Casual in Slack. Formal in Mail. Verbatim in your editor."
+        },
+        "dictionary": {
+          "title": "Your dictionary",
+          "body": "Teach Ghostly the names, products, and jargon it keeps getting wrong — including how they sound versus how they're spelled.",
+          "example": "“Siobhan” instead of “Shavaun”, every time."
+        }
+      }
     },
-    "upgrade": {
-      "title": "Downloading a more accurate model",
-      "body": "This runs in the background and switches over on its own. Keep using Ghostly in the meantime — nothing is interrupted."
-    },
-    "errorReports": "Send anonymous error reports. Helps fix recurring problems. Never includes what you say, your audio, or your keys — only the kind of failure and your app version."
+    "finish": {
+      "title": "You're set up",
+      "body": "Ghostly lives in your menu bar from here. It stays out of the way until you hold your shortcut.",
+      "cta": "Start dictating",
+      "reminder": "Anywhere you can type, press",
+      "where": {
+        "tray": "Ghostly runs from the menu bar — click the ghost to open settings anytime.",
+        "notes": "Everything you dictate is saved under Notes, searchable and easy to reuse.",
+        "replay": "Want this tour again? Settings → App → Guided tour."
+      },
+      "upgrade": {
+        "title": "Installing a better model",
+        "body": "Dictation already works. This downloads in the background and switches itself on when it's ready."
+      },
+      "errorReports": "Send anonymous crash reports to help fix bugs. No audio, no transcriptions, ever."
+    }
   },
   "modelSelector": {
     "custom": "Custom",
@@ -364,7 +488,7 @@
         "history": "Data & Privacy",
         "experimental": "Performance",
         "developer": "Developer",
-        "continuousDictation": "Continuous Dictation (experimental)"
+        "continuousDictation": "Open Mic"
       },
       "experimentalToggle": {
         "label": "Developer Mode",
@@ -375,13 +499,13 @@
         "description": "Keeps the microphone open for 30 seconds after stopping, cutting startup delay for back-to-back dictation. May temporarily affect Bluetooth audio quality."
       },
       "continuousDictation": {
-        "label": "Continuous Dictation (experimental)",
-        "description": "Hands-free dictation: while armed, Ghostly listens continuously and transcribes each utterance on silence. No key press per sentence.",
-        "warning": "While armed, the microphone stays hot the entire time. This can degrade Bluetooth audio quality in all other apps. Only what's spoken gets transcribed — but any nearby voice or loud playback can trigger a segment. Use the arm shortcut or button to turn it off when you step away.",
-        "arm": "Arm",
-        "disarm": "Disarm",
-        "statusArmed": "Armed — dictating",
-        "statusDisarmed": "Disarmed",
+        "label": "Open Mic",
+        "description": "Hands-free dictation: leave the mic open and Ghostly transcribes each utterance on silence. No key press per sentence.",
+        "warning": "While the mic is open it stays open the entire time. This can degrade Bluetooth audio quality in all other apps. Only what's spoken gets transcribed — but any nearby voice or loud playback can trigger a segment. Close the mic with the shortcut or button when you step away.",
+        "arm": "Open mic",
+        "disarm": "Close mic",
+        "statusArmed": "Open — listening",
+        "statusDisarmed": "Closed",
         "silenceLabel": "Silence to end segment",
         "silenceDescription": "How long a pause must last (ms) before the current utterance is closed and transcribed. Shorter = snappier; longer = fewer fragmentations.",
         "minLabel": "Minimum segment length",
@@ -1146,6 +1270,12 @@
           "Pass": "Bound to {{detail}}.",
           "Warn": "{{detail}}",
           "Fail": "No shortcut is bound, so there is no way to start dictating."
+        },
+        "meetingCapture": {
+          "label": "Meeting capture",
+          "Pass": "Ghostly can capture the other participants in a call.",
+          "Warn": "Transcripts will contain your side of the call only.",
+          "Fail": "Meeting capture is unavailable."
         }
       },
       "supportTitle": "Support",
@@ -1167,6 +1297,72 @@
       "dark": "Dark",
       "light": "Light",
       "system": "System"
+    },
+    "app": {
+      "groups": {
+        "startup": "Startup",
+        "menusAndDock": "Menu Bar & Dock",
+        "help": "Help"
+      }
+    },
+    "performance": {
+      "groups": {
+        "speed": "Speed",
+        "experimental": "Experimental Features"
+      }
+    },
+    "transcription": {
+      "switcher": "Transcription settings",
+      "views": {
+        "model": "Model",
+        "words": "Words"
+      }
+    },
+    "refinement": {
+      "switcher": "Refinement settings",
+      "views": {
+        "ai": "AI",
+        "style": "Styles"
+      }
+    },
+    "tour": {
+      "title": "Guided tour",
+      "description": "Replay the walkthrough of shortcuts, refinement, and the features that aren't on the surface.",
+      "action": "Take the tour"
+    },
+    "pages": {
+      "general": {
+        "title": "General",
+        "subtitle": "Appearance, startup, and where Ghostly lives on your Mac."
+      },
+      "app": {
+        "title": "App",
+        "subtitle": "How Ghostly behaves as an application."
+      },
+      "account": {
+        "title": "Account",
+        "subtitle": "Your licence and subscription."
+      },
+      "transcription": {
+        "title": "Transcription",
+        "subtitle": "The speech model, language, and vocabulary Ghostly uses."
+      },
+      "refinement": {
+        "title": "Refinement",
+        "subtitle": "How dictated text is cleaned up before it lands."
+      },
+      "advanced": {
+        "title": "Dictation",
+        "subtitle": "Shortcuts, open mic, and how text is inserted."
+      },
+      "about": {
+        "title": "About",
+        "subtitle": "Version, credits, and links."
+      },
+      "performance": {
+        "title": "Performance",
+        "subtitle": "Acceleration and model memory behaviour."
+      }
     }
   },
   "footer": {
@@ -1496,6 +1692,144 @@
         "title": "Exclaimer",
         "description": "Complete fifty transcriptions that contain an exclamation."
       }
+    }
+  },
+  "meeting": {
+    "panel": {
+      "title": "Meeting",
+      "you": "You",
+      "participant": "Participant",
+      "close": "Close",
+      "catchMeUp": "Where were we?",
+      "catchingUp": "Looking back…",
+      "catchUpHeading": "Where were we?",
+      "dismiss": "Dismiss",
+      "listening": "Listening… transcript will appear here.",
+      "notCapturing": "No meeting is being captured.",
+      "micOnly": "Your side only — the other participants aren't being captured.",
+      "renameHint": "Click to name this speaker",
+      "namePlaceholder": "Name…",
+      "lineCount_one": "{{count}} line",
+      "lineCount_other": "{{count}} lines",
+      "mentionHeading": "You were just addressed",
+      "endMeeting": "End meeting",
+      "pause": "Pause",
+      "resume": "Resume",
+      "pausedNotice": "Paused — audio isn't being captured.",
+      "finalSummaryHeading": "Meeting summary"
+    },
+    "settings": {
+      "loading": "Loading meeting settings…",
+      "groupCapture": "Capture",
+      "groupAutoConnect": "Auto-connect",
+      "groupSummaries": "Summaries",
+      "groupAlerts": "Alerts",
+      "groupPrivacy": "Privacy & retention",
+      "enableLabel": "Meeting Mode",
+      "enableDescription": "Transcribe calls live, with a floating panel you can read during the meeting. Ghostly never joins the call.",
+      "consentNotice": "Recording a conversation may require everyone's consent where you live. Ghostly always shows a visible indicator while capturing, and transcripts stay on this Mac.",
+      "systemAudioLabel": "Capture the other participants",
+      "systemAudioDescription": "Records the call's audio so the transcript includes everyone, not just you. Uses a CoreAudio process tap — no screen recording permission needed.",
+      "livePanelLabel": "Show the live transcript panel",
+      "livePanelDescription": "A floating window that stays above your call and shows the transcript as it happens.",
+      "autoConnectLabel": "When a call is detected",
+      "autoConnectDescription": "Ghostly notices a call by checking whether a conferencing app is actually using your microphone — not merely running.",
+      "autoConnectOff": "Do nothing",
+      "autoConnectAsk": "Ask me",
+      "autoConnectAuto": "Start after a countdown",
+      "countdownLabel": "Countdown before starting",
+      "countdownDescription": "How long you get to cancel before capture begins.",
+      "autoStopLabel": "Stop after the call ends",
+      "autoStopDescription": "How long to wait once no call is detected. Generous by default, because apps briefly release audio when you mute.",
+      "exclusionsLabel": "Never auto-connect for",
+      "exclusionsDescription": "Comma-separated words. If a meeting's name contains one, Ghostly won't offer to capture it.",
+      "exclusionsPlaceholder": "1:1, therapy, interview",
+      "summaryBackendLabel": "Summarise with",
+      "summaryBackendDescription": "Where meeting summaries are generated. On-device keeps everything on this Mac.",
+      "summaryOnDevice": "On this Mac (Apple Intelligence)",
+      "summaryCloud": "Your AI provider",
+      "summaryExtractive": "Keywords only (no AI)",
+      "cloudWarning": "Meeting transcripts will be sent to your configured AI provider. This is separate from dictation refinement.",
+      "yourNameLabel": "Your name",
+      "yourNameDescription": "Used to notice when someone addresses you directly during a call.",
+      "yourNamePlaceholder": "e.g. Jason",
+      "mentionAlertsLabel": "Tell me when I'm addressed",
+      "mentionAlertsDescription": "Notifies you when a participant says your name in a question or asks something of you.",
+      "retentionLabel": "Keep transcripts for",
+      "retentionDescription": "Meetings older than this are deleted automatically at launch.",
+      "retentionForever": "Forever",
+      "retentionDays_one": "{{count}} day",
+      "retentionDays_other": "{{count}} days",
+      "startNow": "Start a meeting now",
+      "startNowHint": "Begins capturing immediately without waiting for detection.",
+      "save": "Save"
+    },
+    "detected": {
+      "title": "{{app}} call detected",
+      "startingIn": "Starting transcript in {{seconds}}…",
+      "prompt": "Start a live transcript?",
+      "start": "Start",
+      "cancel": "Cancel",
+      "never": "Never for {{app}}"
+    },
+    "tabs": {
+      "ariaLabel": "Meetings view",
+      "library": "Meetings",
+      "settings": "Settings"
+    },
+    "library": {
+      "title": "Meetings",
+      "subtitle": "Transcripts and summaries from your calls. Everything here stays on this Mac.",
+      "searchPlaceholder": "Search meetings and transcripts…",
+      "anyDate": "Any date",
+      "loading": "Loading…",
+      "empty": "No meetings yet. Start one from the Settings tab or let Ghostly detect your next call.",
+      "noMatches": "No meetings match that search.",
+      "untitled": "Untitled meeting",
+      "micOnly": "your side only",
+      "lineCount_one": "{{count}} line",
+      "lineCount_other": "{{count}} lines",
+      "expand": "Expand meeting",
+      "summary": "Summary",
+      "transcript": "Transcript",
+      "noTranscript": "Nothing was transcribed in this meeting.",
+      "copy": "Copy transcript",
+      "copied": "Copied to clipboard",
+      "export": "Export",
+      "exportThis": "Export this meeting",
+      "exported": "Meeting exported",
+      "reveal": "Show in Finder",
+      "delete": "Delete meeting",
+      "rename": "Rename meeting",
+      "titlePlaceholder": "Meeting name",
+      "saveTitle": "Save name",
+      "cancelRename": "Cancel",
+      "addTag": "Add tag",
+      "removeTag": "Remove tag",
+      "tagPlaceholder": "Tag…",
+      "view": {
+        "label": "Meeting view",
+        "timeline": "Timeline",
+        "byApp": "By app",
+        "list": "List"
+      },
+      "sort": {
+        "label": "Sort",
+        "newest": "Newest",
+        "oldest": "Oldest",
+        "longest": "Longest"
+      },
+      "filterByTag": "Filter by tag",
+      "allTags": "All meetings",
+      "noTags": "No tags yet",
+      "filterByDate": "Filter by date range",
+      "exportAllJson": "Export all as JSON",
+      "exportAllMarkdown": "Export all as Markdown",
+      "exportedCount_one": "Exported {{count}} meeting",
+      "exportedCount_other": "Exported {{count}} meetings",
+      "retention": "Storage & retention",
+      "retentionHint": "Meeting transcripts are kept on this Mac only. Change how long they're kept in the Settings tab.",
+      "unknownApp": "Other"
     }
   }
 }

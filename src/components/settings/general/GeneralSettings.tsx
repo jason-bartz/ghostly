@@ -15,7 +15,8 @@ import { ShowOverlay } from "../ShowOverlay";
 import { SoundPicker } from "../SoundPicker";
 import { ClamshellMicrophoneSelector } from "../ClamshellMicrophoneSelector";
 import { AlwaysOnMicrophone } from "../AlwaysOnMicrophone";
-import { AppearanceSelector } from "../AppearanceSelector";
+import { ContinuousDictation } from "../ContinuousDictation";
+import { PageHeader } from "../../ui/PageHeader";
 
 export const GeneralSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -25,6 +26,10 @@ export const GeneralSettings: React.FC = () => {
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
+      <PageHeader
+        title={t("settings.pages.general.title")}
+        description={t("settings.pages.general.subtitle")}
+      />
       {/* ── Shortcuts ── */}
       <SettingsGroup title={t("settings.general.shortcut.title")}>
         <ShortcutInput shortcutId="transcribe" grouped={true} />
@@ -33,6 +38,15 @@ export const GeneralSettings: React.FC = () => {
         {!isLinux && !pushToTalk && (
           <ShortcutInput shortcutId="cancel" grouped={true} />
         )}
+      </SettingsGroup>
+
+      {/* ── Open Mic ──
+          Sits with the other ways of starting a recording rather than under
+          Performance, where it was reachable only by expanding the Advanced
+          disclosure and flipping an experimental switch first. It is still
+          off by default — an open microphone is a real trade, not a default. */}
+      <SettingsGroup title={t("settings.advanced.groups.continuousDictation")}>
+        <ContinuousDictation descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 
       {/* ── Active model quick-switch ── */}
@@ -67,11 +81,6 @@ export const GeneralSettings: React.FC = () => {
           disabled={!audioFeedbackEnabled}
         />
         <VolumeSlider disabled={!audioFeedbackEnabled} />
-      </SettingsGroup>
-
-      {/* ── Appearance ── */}
-      <SettingsGroup title={t("settings.appearance.group")}>
-        <AppearanceSelector />
       </SettingsGroup>
     </div>
   );

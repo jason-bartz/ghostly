@@ -1,5 +1,6 @@
 mod actions;
 mod ai_metadata;
+mod app_identity;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
 mod audio_feedback;
@@ -19,6 +20,7 @@ mod license;
 mod llm_client;
 mod local_cleanup;
 mod managers;
+mod meetings;
 mod overlay;
 pub mod portable;
 mod profiles;
@@ -30,6 +32,7 @@ mod shortcut;
 mod signal_handle;
 mod staged_capture;
 mod stream_cancel;
+mod system_audio;
 mod telemetry;
 mod transcription_coordinator;
 mod tray;
@@ -240,6 +243,42 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         }
     }
 
+    // Meeting Mode. Constructed after the transcription and history managers
+    // because the capture worker resolves both out of Tauri state. Fallible
+    // like continuous dictation: a failure here disables Meeting Mode only.
+    match meetings::MeetingManager::new(app_handle.clone()) {
+        Ok(mm) => {
+            app_handle.manage(mm);
+
+            // The detector polls for calls; it no-ops until Meeting Mode is
+            // enabled in settings, so starting it unconditionally is safe and
+            // saves a settings-change listener.
+            let detector = meetings::detector::MeetingDetector::new(app_handle.clone());
+            detector.spawn();
+            app_handle.manage(detector);
+
+            // Retention sweep. Runs once at startup rather than on a timer —
+            // meetings accumulate slowly and a launch is the natural moment.
+            let cleanup_handle = app_handle.clone();
+            std::thread::spawn(move || {
+                let days = get_settings(&cleanup_handle).meeting.retention_days;
+                if let Some(mm) = cleanup_handle.try_state::<Arc<meetings::MeetingManager>>() {
+                    match mm
+                        .store()
+                        .prune_older_than(days, chrono::Utc::now().timestamp())
+                    {
+                        Ok(0) => {}
+                        Ok(n) => log::info!("Meeting retention: removed {n} old meeting(s)"),
+                        Err(e) => log::warn!("Meeting retention sweep failed: {e}"),
+                    }
+                }
+            });
+        }
+        Err(e) => {
+            log::warn!("Meeting Mode disabled: {}", e);
+        }
+    }
+
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
     // after permissions are confirmed (on macOS) or after onboarding completes.
@@ -320,6 +359,30 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                     Ok(()) => log::info!("Model unloaded via tray."),
                     Err(e) => log::error!("Failed to unload model via tray: {}", e),
                 }
+            }
+            "toggle_meeting" => {
+                let Some(manager) = app.try_state::<Arc<meetings::MeetingManager>>() else {
+                    log::warn!("Meeting Mode is unavailable");
+                    return;
+                };
+                let manager = Arc::clone(&manager);
+                let app_handle = app.clone();
+                // Off the menu thread: starting capture builds the system-audio
+                // tap, which blocks for seconds on first use and would freeze
+                // the menu until it finished.
+                std::thread::spawn(move || {
+                    if manager.is_capturing() {
+                        manager.stop();
+                    } else if let Err(e) = manager.start(
+                        meetings::types::DetectionSource::Manual,
+                        app_identity::frontmost_bundle_id(),
+                        app_identity::frontmost_display_name(),
+                        None,
+                    ) {
+                        log::warn!("Could not start meeting from tray: {e}");
+                        let _ = app_handle.emit("meeting-start-failed", e);
+                    }
+                });
             }
             "cancel" => {
                 use crate::utils::cancel_current_operation;
@@ -586,6 +649,44 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::set_rest_api_port,
             frontmost::detect_frontmost_app,
             frontmost::detect_builtin_profile_id,
+            commands::meetings::get_system_audio_capability,
+            commands::meetings::list_running_apps,
+            commands::meetings::detect_frontmost_bundle_id,
+            commands::meetings::get_meeting_settings,
+            commands::meetings::update_meeting_settings,
+            commands::meetings::start_meeting,
+            commands::meetings::stop_meeting,
+            commands::meetings::get_meeting_status,
+            commands::meetings::accept_detected_meeting,
+            commands::meetings::dismiss_detected_meeting,
+            commands::meetings::never_auto_connect_app,
+            commands::meetings::list_meetings,
+            commands::meetings::get_meeting,
+            commands::meetings::get_meeting_segments,
+            commands::meetings::get_meeting_speakers,
+            commands::meetings::delete_meeting,
+            commands::meetings::set_meeting_title,
+            commands::meetings::export_meeting_transcript,
+            commands::meetings::rename_meeting_speaker,
+            commands::meetings::merge_meeting_speakers,
+            commands::meetings::assign_meeting_segment_speaker,
+            commands::meetings::reassign_meeting_speaker_segments,
+            commands::meetings::add_meeting_speaker,
+            commands::meetings::catch_me_up,
+            commands::meetings::summarize_meeting_window,
+            commands::meetings::get_meeting_summaries,
+            commands::meetings::summarize_meeting,
+            commands::meetings::set_meeting_paused,
+            commands::meetings::hide_meeting_panel,
+            commands::meetings::show_meeting_panel,
+            commands::meetings::browse_meetings,
+            commands::meetings::export_meeting_text,
+            commands::meetings::export_meeting_to_file,
+            commands::meetings::reveal_meeting_export,
+            commands::meetings::add_meeting_tag,
+            commands::meetings::remove_meeting_tag,
+            commands::meetings::list_all_meeting_tags,
+            commands::meetings::export_all_meetings,
             commands::profiles::set_profiles_enabled,
             commands::profiles::get_profiles,
             commands::profiles::add_profile,
@@ -625,7 +726,13 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::license::open_payment_link,
             commands::edit_chip::apply_edit_chip,
         ])
-        .events(collect_events![managers::history::HistoryUpdatePayload,])
+        .events(collect_events![
+            managers::history::HistoryUpdatePayload,
+            meetings::types::MeetingSegmentEvent,
+            meetings::types::MeetingStatusEvent,
+            meetings::types::MeetingDetectedEvent,
+            meetings::types::MeetingMentionEvent,
+        ])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -834,6 +941,16 @@ pub fn run(cli_args: CliArgs) {
         })
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
+                // Auxiliary windows (the meeting panel) just hide. Only the
+                // main window's close should suppress quit and flip the
+                // activation policy — doing that for a panel would hide the
+                // dock icon whenever the user dismissed a transcript.
+                if window.label() == crate::meetings::panel::PANEL_LABEL {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    return;
+                }
+
                 api.prevent_close();
                 let _res = window.hide();
 

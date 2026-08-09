@@ -103,7 +103,12 @@ pub fn category_apps(category: CategoryId) -> &'static [&'static str] {
         ],
         CategoryId::Email => &[
             "com.apple.mail",
-            "com.google.Chrome",
+            // Browsers are deliberately absent. A browser is not an email
+            // client — webmail is matched by `category_title_hints`
+            // ("gmail", "outlook", "superhuman") instead. Listing
+            // `com.google.Chrome` here was harmless only while bundle-id
+            // matching was broken; once identifiers resolve correctly it would
+            // classify *every* Chrome dictation as email.
             "com.microsoft.Outlook",
             "com.readdle.smartemail-Mac",
             "com.superhuman.electron",
@@ -192,8 +197,42 @@ pub fn default_category_styles() -> Vec<CategoryStyle> {
 
 /// Pick a Category for the given frontmost-app context. Falls back to `Other`
 /// so the user always has a style applied.
+/// Every identifier an [`AppContext`] may legitimately be matched against,
+/// lowercased.
+///
+/// `AppContext::bundle_id` does **not** hold a bundle identifier: on macOS
+/// `active-win-pos-rs` fills it from `kCGWindowOwnerName`, a display name, so
+/// it reads `"Slack"` / `"zoom.us"` / `"Messages"`. Comparing that against a
+/// literal like `com.tinyspeck.slackmacgap` can never succeed, which silently
+/// disabled category matching for most of the apps listed in
+/// [`category_apps`].
+///
+/// This resolves the genuine identifier through NSWorkspace and returns it
+/// alongside the legacy display name, so tables of real bundle ids finally
+/// match while any entry that was written against a display name keeps working.
+pub fn context_identifiers(ctx: &AppContext) -> Vec<String> {
+    let mut ids = Vec::with_capacity(2);
+
+    if let Some(real) = crate::app_identity::resolve_bundle_id(ctx) {
+        ids.push(real.to_ascii_lowercase());
+    }
+    if let Some(name) = ctx.bundle_id.as_deref() {
+        let lower = name.to_ascii_lowercase();
+        if !lower.is_empty() && !ids.contains(&lower) {
+            ids.push(lower);
+        }
+    }
+    ids
+}
+
+/// True when any of the context's identifiers equals `candidate`.
+fn identifiers_match(ids: &[String], candidate: &str) -> bool {
+    let candidate = candidate.to_ascii_lowercase();
+    ids.iter().any(|id| *id == candidate)
+}
+
 pub fn match_category(ctx: &AppContext) -> CategoryId {
-    let bundle = ctx.bundle_id.as_deref().unwrap_or("").to_ascii_lowercase();
+    let identifiers = context_identifiers(ctx);
     let title = ctx
         .window_title
         .as_deref()
@@ -205,7 +244,7 @@ pub fn match_category(ctx: &AppContext) -> CategoryId {
             continue;
         }
         for b in category_apps(cat) {
-            if bundle == b.to_ascii_lowercase() {
+            if identifiers_match(&identifiers, b) {
                 return cat;
             }
         }
@@ -298,25 +337,33 @@ fn ctx_is_browser(bundle: &str) -> bool {
 /// Claude Code is handled separately: it's a CLI inside a terminal, so it needs
 /// the composite terminal-plus-title check in `match_builtin_profile`.
 pub fn is_ai_chat_destination(ctx: &AppContext) -> bool {
-    let bundle = ctx.bundle_id.as_deref().unwrap_or("").to_ascii_lowercase();
+    let identifiers = context_identifiers(ctx);
+    let bundle = identifiers.first().cloned().unwrap_or_default();
     let title = ctx
         .window_title
         .as_deref()
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    if AI_CHAT_BUNDLE_IDS.iter().any(|b| bundle == *b) {
+    if AI_CHAT_BUNDLE_IDS
+        .iter()
+        .any(|b| identifiers_match(&identifiers, b))
+    {
         return true;
     }
 
-    if ctx_is_browser(&bundle) && AI_CHAT_TITLE_HINTS.iter().any(|h| title.contains(h)) {
+    if BROWSER_BUNDLE_IDS
+        .iter()
+        .any(|b| identifiers_match(&identifiers, b))
+        && AI_CHAT_TITLE_HINTS.iter().any(|h| title.contains(h))
+    {
         return true;
     }
 
     // Claude Code and other agent CLIs running inside a terminal emulator.
     let is_terminal = category_apps(CategoryId::Coding)
         .iter()
-        .any(|b| bundle == b.to_ascii_lowercase())
+        .any(|b| identifiers_match(&identifiers, b))
         && (bundle.contains("terminal")
             || bundle.contains("iterm")
             || bundle.contains("kitty")
@@ -418,7 +465,10 @@ pub enum MatchRule {
 impl MatchRule {
     pub fn matches(&self, ctx: &AppContext) -> bool {
         match self {
-            MatchRule::BundleId(s) => ctx.bundle_id.as_deref() == Some(s.as_str()),
+            // Matches either the genuine bundle identifier or the Core Graphics
+            // owner name, so rules authored against either spelling work. See
+            // `context_identifiers` for why both are necessary.
+            MatchRule::BundleId(s) => identifiers_match(&context_identifiers(ctx), s),
             MatchRule::ProcessName(s) => ctx
                 .process_name
                 .as_deref()
@@ -672,7 +722,9 @@ pub fn get_builtin_profiles() -> Vec<Profile> {
 /// Mirrors the old `ide_presets::detect` heuristics exactly so the Phase 4
 /// consumer switchover is behavior-preserving.
 pub fn match_builtin_profile(ctx: &AppContext) -> Option<Profile> {
-    let bundle = ctx.bundle_id.as_deref().unwrap_or("").to_lowercase();
+    // Join both spellings so the substring checks below hit whether the entry
+    // was written as a bundle id or a display name.
+    let bundle = context_identifiers(ctx).join(" ");
     let proc = ctx.process_name.as_deref().unwrap_or("").to_lowercase();
     let title = ctx.window_title.as_deref().unwrap_or("").to_lowercase();
     let exe = ctx.exe_path.as_deref().unwrap_or("").to_lowercase();

@@ -52,6 +52,7 @@ import { RecordingRetentionPeriodSelector } from "../RecordingRetentionPeriod";
 import { useSettings } from "@/hooks/useSettings";
 import { getAppInfoByName, categoryColors } from "@/lib/appIcons";
 import { SegmentedControl } from "../../ui/SegmentedControl";
+import { PageHeader } from "../../ui/PageHeader";
 import { NotesTimeline, type TimelineGroup } from "./NotesTimeline";
 
 const IconButton: React.FC<{
@@ -881,41 +882,37 @@ export const HistorySettings: React.FC = () => {
   }
 
   return (
-    <div className="w-full flex flex-col gap-3 pt-1">
+    <div className="max-w-3xl w-full mx-auto flex flex-col gap-3 pt-1">
       {/* Header: identity + the primary way of looking at the data. Sits above
           the utility toolbar so the view choice reads as a mode, not a filter. */}
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight leading-none">
-            {t("settings.history.title")}
-          </h1>
-          <p className="text-[12.5px] text-text-muted mt-1.5 leading-snug">
-            {t("settings.history.subtitle")}
-          </p>
-        </div>
-        <SegmentedControl<ViewMode>
-          value={viewMode}
-          onChange={setViewMode}
-          ariaLabel={t("settings.history.view.label")}
-          options={[
-            {
-              value: "timeline",
-              label: t("settings.history.view.timeline"),
-              Icon: GalleryVerticalEnd,
-            },
-            {
-              value: "app",
-              label: t("settings.history.view.byApp"),
-              Icon: AppWindow,
-            },
-            {
-              value: "list",
-              label: t("settings.history.view.list"),
-              Icon: ListIcon,
-            },
-          ]}
-        />
-      </div>
+      <PageHeader
+        title={t("settings.history.title")}
+        description={t("settings.history.subtitle")}
+        actions={
+          <SegmentedControl<ViewMode>
+            value={viewMode}
+            onChange={setViewMode}
+            ariaLabel={t("settings.history.view.label")}
+            options={[
+              {
+                value: "timeline",
+                label: t("settings.history.view.timeline"),
+                Icon: GalleryVerticalEnd,
+              },
+              {
+                value: "app",
+                label: t("settings.history.view.byApp"),
+                Icon: AppWindow,
+              },
+              {
+                value: "list",
+                label: t("settings.history.view.list"),
+                Icon: ListIcon,
+              },
+            ]}
+          />
+        }
+      />
 
       {/* Toolbar: search + sort + actions — all 32px tall for a clean grid */}
       <div className="flex items-center gap-2">

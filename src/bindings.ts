@@ -1210,6 +1210,353 @@ async detectBuiltinProfileId() : Promise<Result<string | null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async getSystemAudioCapability() : Promise<SystemAudioCapability> {
+    return await TAURI_INVOKE("get_system_audio_capability");
+},
+/**
+ * Running applications with real bundle identifiers.
+ * 
+ * Note this is *not* the same as [`crate::frontmost::detect_frontmost_app`],
+ * whose `bundleId` field actually carries a Core Graphics owner name. See
+ * [`crate::app_identity`] for the details.
+ */
+async listRunningApps() : Promise<RunningAppInfo[]> {
+    return await TAURI_INVOKE("list_running_apps");
+},
+/**
+ * Genuine bundle identifier of the frontmost application.
+ */
+async detectFrontmostBundleId() : Promise<string | null> {
+    return await TAURI_INVOKE("detect_frontmost_bundle_id");
+},
+async getMeetingSettings() : Promise<MeetingSettings> {
+    return await TAURI_INVOKE("get_meeting_settings");
+},
+async updateMeetingSettings(settings: MeetingSettings) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_meeting_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Starts capturing.
+ * 
+ * Runs on a blocking thread because bringing up the system-audio tap can stall
+ * for several seconds the first time in a process.
+ */
+async startMeeting(title: string | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_meeting", { title }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async stopMeeting() : Promise<Result<string | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("stop_meeting") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMeetingStatus() : Promise<MeetingStatus> {
+    return await TAURI_INVOKE("get_meeting_status");
+},
+/**
+ * Accepts a detected meeting, starting capture immediately.
+ */
+async acceptDetectedMeeting() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("accept_detected_meeting") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Dismisses a prompt or cancels a running countdown.
+ */
+async dismissDetectedMeeting() : Promise<void> {
+    await TAURI_INVOKE("dismiss_detected_meeting");
+},
+/**
+ * Never auto-connect for this app again.
+ */
+async neverAutoConnectApp(bundleId: string, displayName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("never_auto_connect_app", { bundleId, displayName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listMeetings(limit: number | null) : Promise<Result<Meeting[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_meetings", { limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMeeting(meetingId: string) : Promise<Result<Meeting | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_meeting", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMeetingSegments(meetingId: string) : Promise<Result<MeetingSegment[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_meeting_segments", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMeetingSpeakers(meetingId: string) : Promise<Result<MeetingSpeaker[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_meeting_speakers", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteMeeting(meetingId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_meeting", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setMeetingTitle(meetingId: string, title: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_meeting_title", { meetingId, title }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Transcript as speaker-attributed plain text, for copy/export.
+ */
+async exportMeetingTranscript(meetingId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_meeting_transcript", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async renameMeetingSpeaker(speakerId: string, displayName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("rename_meeting_speaker", { speakerId, displayName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Folds one speaker into another, reassigning all their segments.
+ */
+async mergeMeetingSpeakers(targetId: string, sourceId: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("merge_meeting_speakers", { targetId, sourceId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Reassigns a single segment to a different speaker.
+ */
+async assignMeetingSegmentSpeaker(segmentId: number, speakerId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("assign_meeting_segment_speaker", { segmentId, speakerId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Moves every segment currently attributed to one speaker onto another — the
+ * "and all their other lines" affordance after a correction.
+ */
+async reassignMeetingSpeakerSegments(meetingId: string, fromSpeakerId: string, toSpeakerId: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reassign_meeting_speaker_segments", { meetingId, fromSpeakerId, toSpeakerId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Adds a speaker the user names by hand, for assigning segments to.
+ */
+async addMeetingSpeaker(meetingId: string, displayName: string) : Promise<Result<MeetingSpeaker, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_meeting_speaker", { meetingId, displayName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * "Catch me up" — summarises everything since the last summary.
+ */
+async catchMeUp(meetingId: string | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("catch_me_up", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Summarises an explicit window, in minutes back from now.
+ */
+async summarizeMeetingWindow(meetingId: string, minutes: number) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("summarize_meeting_window", { meetingId, minutes }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMeetingSummaries(meetingId: string) : Promise<Result<MeetingSummary[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_meeting_summaries", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * End-of-meeting wrap-up over the whole transcript.
+ */
+async summarizeMeeting(meetingId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("summarize_meeting", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Pauses or resumes capture without ending the meeting.
+ * 
+ * Keeps the tap and microphone open so resuming is instant — tearing the tap
+ * down and rebuilding it costs seconds on first use.
+ */
+async setMeetingPaused(paused: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_meeting_paused", { paused }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Hides the floating panel.
+ * 
+ * The panel is an NSPanel, so `getCurrentWindow().hide()` from the webview is
+ * not reliable — hiding has to go through the same main-thread path that
+ * created it.
+ */
+async hideMeetingPanel() : Promise<void> {
+    await TAURI_INVOKE("hide_meeting_panel");
+},
+async showMeetingPanel() : Promise<void> {
+    await TAURI_INVOKE("show_meeting_panel");
+},
+/**
+ * Meetings for the library list, optionally filtered by text and date.
+ */
+async browseMeetings(query: string | null, from: number | null, to: number | null, limit: number | null) : Promise<Result<MeetingSummaryRow[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browse_meetings", { query, from, to, limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Transcript and summary as text, for the clipboard.
+ */
+async exportMeetingText(meetingId: string, markdown: boolean) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_meeting_text", { meetingId, markdown }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Writes one meeting to disk. `format` is `md`, `txt` or `json`.
+ */
+async exportMeetingToFile(meetingId: string, path: string, format: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_meeting_to_file", { meetingId, path, format }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Reveals an exported file in Finder.
+ */
+async revealMeetingExport(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reveal_meeting_export", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addMeetingTag(meetingId: string, name: string) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_meeting_tag", { meetingId, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeMeetingTag(meetingId: string, name: string) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_meeting_tag", { meetingId, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Every tag in use, most-used first — the suggestion list when tagging.
+ */
+async listAllMeetingTags() : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_all_meeting_tags") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Exports every meeting matching the current filters into one file.
+ * 
+ * Mirrors Notes' bulk export. `format` is `md` or `json`.
+ */
+async exportAllMeetings(path: string, format: string, query: string | null, from: number | null, to: number | null) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_all_meetings", { path, format, query, from, to }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setProfilesEnabled(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_profiles_enabled", { enabled }) };
@@ -1546,9 +1893,17 @@ async applyEditChip(chipId: string) : Promise<Result<null, string>> {
 
 
 export const events = __makeEvents__<{
-historyUpdatePayload: HistoryUpdatePayload
+historyUpdatePayload: HistoryUpdatePayload,
+meetingDetectedEvent: MeetingDetectedEvent,
+meetingMentionEvent: MeetingMentionEvent,
+meetingSegmentEvent: MeetingSegmentEvent,
+meetingStatusEvent: MeetingStatusEvent
 }>({
-historyUpdatePayload: "history-update-payload"
+historyUpdatePayload: "history-update-payload",
+meetingDetectedEvent: "meeting-detected-event",
+meetingMentionEvent: "meeting-mention-event",
+meetingSegmentEvent: "meeting-segment-event",
+meetingStatusEvent: "meeting-status-event"
 })
 
 /** user-defined constants **/
@@ -1615,9 +1970,14 @@ refinement_enabled?: boolean;
  */
 deterministic_cleanup_in_ai_apps?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
 /**
- * Enables the hands-free continuous dictation mode. Dev-mode gated in UI.
- * When true, an additional shortcut arms/disarms a VAD-driven loop that
- * transcribes each utterance on silence without any key press.
+ * Enables Open Mic, the hands-free dictation mode. When true, an
+ * additional shortcut opens/closes a VAD-driven loop that transcribes each
+ * utterance on silence without any key press.
+ * 
+ * Defaults off: leaving the microphone open has real costs (Bluetooth
+ * audio quality degrades system-wide, and any nearby voice can trigger a
+ * segment), so it stays an explicit opt-in even though it is no longer
+ * hidden behind the experimental flag.
  */
 continuous_dictation_enabled?: boolean; 
 /**
@@ -1725,7 +2085,13 @@ appearance?: Appearance;
  * inside the app bundle — every install now has a model from the first
  * launch, so the old check would skip onboarding for genuinely new users.
  */
-onboarding_completed?: boolean }
+onboarding_completed?: boolean; 
+/**
+ * Meeting Mode. Nested so adding a knob touches one field here rather
+ * than three places in this file plus the exhaustive literal in
+ * [`get_default_settings`].
+ */
+meeting?: MeetingSettings }
 /**
  * Appearance preference.
  * 
@@ -1768,6 +2134,23 @@ custom_vocab?: string[];
 custom_style_prompt?: string | null; custom_style_name?: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
+/**
+ * How a meeting capture was initiated. Recorded per meeting so the consent
+ * story is auditable after the fact.
+ */
+export type DetectionSource = 
+/**
+ * The user pressed start.
+ */
+"manual" | 
+/**
+ * Detected and confirmed through the prompt.
+ */
+"prompted" | 
+/**
+ * Detected and started by the countdown.
+ */
+"auto_connect"
 /**
  * A badge the user has earned, together with the unix timestamp (seconds)
  * at which it was first recorded. The unlock time is persisted in the
@@ -1857,6 +2240,44 @@ export type LLMPrompt = { id: string; name: string; prompt: string;
  * so cleanup prompts — including every user-authored one — stay protected.
  */
 transformative?: boolean }
+/**
+ * How a segment came to be attributed to its speaker. Drives whether the UI
+ * presents a label as fact or as a guess, and protects manual labels from
+ * being overwritten by the end-of-meeting re-clustering pass.
+ */
+export type LabelSource = 
+/**
+ * Implied by the capture lane. Certain.
+ */
+"lane_default" | 
+/**
+ * Grouped by voice-embedding similarity. Provisional.
+ */
+"cluster" | 
+/**
+ * Matched against a stored voiceprint. Provisional but stronger.
+ */
+"voiceprint" | 
+/**
+ * The user said so. Authoritative — never overwritten.
+ */
+"manual"
+/**
+ * Which capture lane a segment came from.
+ * 
+ * This is the cheapest speaker signal available: the microphone is definitionally
+ * the user, the system tap is definitionally everyone else. Correct two-way
+ * attribution with no model involved.
+ */
+export type Lane = 
+/**
+ * Local microphone — the user, plus anyone in the room with them.
+ */
+"mic" | 
+/**
+ * System audio tap — remote participants.
+ */
+"system"
 export type LicenseError = { code: "invalid_key" } | { code: "revoked" } | { code: "device_limit_reached"; limit: number; active_devices: ActiveDevice[] } | { code: "not_activated" } | { code: "network_error"; message: string } | { code: "invalid_token" } | { code: "not_ready" }
 export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
@@ -1883,6 +2304,209 @@ export type MatchRule =
  * Useful for browser-tab-aware profiles ("Gmail", "GitHub").
  */
 { kind: "window_title_contains"; value: string }
+export type Meeting = { id: string; title: string | null; 
+/**
+ * Unix seconds.
+ */
+startedAt: number; endedAt: number | null; appBundleId: string | null; appDisplayName: string | null; detectionSource: DetectionSource; 
+/**
+ * False when the far side was not captured — the transcript is the user's
+ * side only, and the UI must say so.
+ */
+capturedSystemAudio: boolean; notes: string | null }
+/**
+ * Per-application override for [`MeetingAutoConnect`].
+ */
+export type MeetingAppPolicy = { 
+/**
+ * Genuine bundle identifier, e.g. `us.zoom.xos`.
+ */
+bundleId: string; displayName: string; policy: MeetingAutoConnect }
+/**
+ * What Ghostly should do when it notices a call has started.
+ */
+export type MeetingAutoConnect = 
+/**
+ * Never react to a detected meeting.
+ */
+"off" | 
+/**
+ * Show a prompt and wait for an explicit choice.
+ */
+"ask" | 
+/**
+ * Show a countdown that starts capture unless cancelled.
+ */
+"auto"
+/**
+ * Emitted when a call is detected and the user must choose, or a countdown is
+ * running.
+ */
+export type MeetingDetectedEvent = { bundleId: string; displayName: string; 
+/**
+ * Seconds remaining before capture starts automatically. `None` means the
+ * user must confirm explicitly.
+ */
+countdownSecs: number | null }
+/**
+ * Emitted when a remote speaker appears to address the user by name.
+ */
+export type MeetingMentionEvent = { meetingId: string; text: string; speakerName: string | null }
+export type MeetingSegment = { id: number; meetingId: string; speakerId: string | null; lane: Lane; 
+/**
+ * Milliseconds from the start of the meeting.
+ */
+startMs: number; endMs: number; text: string; labelSource: LabelSource; 
+/**
+ * Overlapping speech. Never used to create or move a cluster centroid,
+ * because a mixed embedding is meaningless.
+ */
+isCrosstalk: boolean }
+/**
+ * Emitted whenever a segment is committed, so the panel can append without
+ * re-querying.
+ */
+export type MeetingSegmentEvent = { segment: MeetingSegment; speaker: MeetingSpeaker | null }
+export type MeetingSettings = { 
+/**
+ * Master switch. Everything below is inert while this is false.
+ */
+enabled: boolean; 
+/**
+ * Capture the far side of the call via a CoreAudio process tap. When
+ * false only the microphone lane runs, and the transcript is your side
+ * only.
+ */
+captureSystemAudio: boolean; 
+/**
+ * Default behaviour when a meeting is detected.
+ */
+autoConnect: MeetingAutoConnect; 
+/**
+ * Seconds the countdown runs before capture starts under
+ * [`MeetingAutoConnect::Auto`].
+ */
+autoConnectCountdownSecs: number; 
+/**
+ * Per-app overrides, keyed by real bundle id.
+ */
+appPolicies: MeetingAppPolicy[]; 
+/**
+ * Case-insensitive substrings that suppress auto-connect when they appear
+ * in a meeting or calendar title.
+ */
+excludedTitlePatterns: string[]; 
+/**
+ * Seconds of microphone audio retained ahead of detection so the
+ * transcript catches the start of the call. Requires an always-on
+ * microphone; ignored otherwise.
+ */
+preRollSecs: number; 
+/**
+ * Sustained seconds with no conferencing app before capture auto-stops.
+ * Generous because apps briefly release audio on mute/unmute.
+ */
+autoStopGraceSecs: number; 
+/**
+ * Where summaries run.
+ */
+summaryBackend: MeetingSummaryBackend; 
+/**
+ * Minutes between background rolling summaries. Keeps "catch me up"
+ * instant on a long call instead of re-summarising the whole transcript.
+ */
+rollingSummaryMinutes: number; 
+/**
+ * Name used to detect when someone addresses the user directly. Empty
+ * disables mention alerts.
+ */
+userDisplayName: string; 
+/**
+ * Notify when a remote speaker says the user's name.
+ */
+mentionAlerts: boolean; 
+/**
+ * Reserved for embedding-based speaker separation on the far-side lane.
+ * 
+ * Not yet surfaced in the UI: separating individual remote participants
+ * needs a speaker-embedding model that is not bundled, so exposing a
+ * toggle would promise something the app cannot do. Lane attribution
+ * (You vs the call) and manual speaker naming both work today.
+ */
+diarizationEnabled: boolean; 
+/**
+ * Show the floating live transcript panel while capturing.
+ */
+showLivePanel: boolean; 
+/**
+ * Days to keep meeting transcripts. 0 keeps them until deleted by hand.
+ */
+retentionDays: number }
+export type MeetingSpeaker = { id: string; meetingId: string; displayName: string | null; kind: SpeakerKind; lane: Lane; 
+/**
+ * Index of the embedding cluster this speaker corresponds to, when
+ * diarization produced it.
+ */
+clusterIndex: number | null; voiceprintId: string | null; 
+/**
+ * Set when the user named or reassigned this speaker.
+ */
+pinned: boolean; 
+/**
+ * Stable index into the UI's speaker palette.
+ */
+colorIndex: number }
+/**
+ * Snapshot of the live capture session, polled by the panel on mount and
+ * pushed on every change.
+ */
+export type MeetingStatus = { active: boolean; meetingId: string | null; title: string | null; startedAt: number | null; 
+/**
+ * True when the far-side lane is actually running. False means mic-only,
+ * which the panel surfaces explicitly rather than silently degrading.
+ */
+systemAudioActive: boolean; appDisplayName: string | null; 
+/**
+ * Populated when the system lane failed to start, so the UI can explain
+ * why the transcript is one-sided.
+ */
+systemAudioError: string | null; 
+/**
+ * Capture is open but ignoring audio.
+ */
+paused: boolean }
+/**
+ * Emitted when the capture session starts or stops.
+ */
+export type MeetingStatusEvent = { status: MeetingStatus }
+export type MeetingSummary = { id: number; meetingId: string; createdAt: number; coversFromMs: number; coversToMs: number; kind: SummaryKind; body: string }
+/**
+ * Where "Catch me up" summaries are generated.
+ */
+export type MeetingSummaryBackend = 
+/**
+ * Apple Intelligence when available, otherwise the local extractive
+ * fallback. Never leaves the device.
+ */
+"on_device" | 
+/**
+ * The configured post-processing provider. Requires explicit opt-in
+ * because meeting audio is a different sensitivity class from dictation.
+ */
+"cloud" | 
+/**
+ * Keyword-based extractive summary. Always available, no model needed.
+ */
+"extractive"
+/**
+ * A meeting plus the counts the list view needs, so the UI does not issue a
+ * query per row.
+ */
+export type MeetingSummaryRow = { meeting: Meeting; segmentCount: number; 
+/**
+ * Most recent summary body, when one exists.
+ */
+summary: string | null; tags: string[] }
 export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; sha256: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; 
 /**
  * Set for the three models surfaced in the primary picker; `None` for the
@@ -1955,11 +2579,64 @@ provider_override?: string | null;
  */
 image_paste_uses_shift?: boolean }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
+/**
+ * A running application, reported with its genuine bundle identifier.
+ */
+export type RunningAppInfo = { bundleId: string; displayName: string }
 export type SecretMap = Partial<{ [key in string]: string }>
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
 export type SoundTheme = "subtle" | "marimba" | "pop" | "custom"
+/**
+ * What kind of participant a speaker row represents.
+ */
+export type SpeakerKind = 
+/**
+ * The user. Always exactly one per meeting, always the mic lane.
+ */
+"me" | 
+/**
+ * A participant the user has named.
+ */
+"named" | 
+/**
+ * A distinct voice we can separate but cannot name.
+ */
+"unknown"
 export type StatusResponse = { email: string; created_at: number | null; revoked: boolean; active_devices: ActiveDevice[] }
 export type StyleId = "formal" | "casual" | "excited" | "custom"
+export type SummaryKind = 
+/**
+ * Background summary of a fixed window, produced as the meeting runs.
+ */
+"rolling" | 
+/**
+ * User-requested "catch me up".
+ */
+"catch_up" | 
+/**
+ * End-of-meeting wrap-up.
+ */
+"final"
+/**
+ * Whether this machine can capture the far side of a meeting, and why not.
+ */
+export type SystemAudioCapability = { 
+/**
+ * CoreAudio process taps are available (macOS 14.2+).
+ */
+supported: boolean; 
+/**
+ * Capture is active right now.
+ */
+running: boolean; 
+/**
+ * Native tap rate while running, for diagnostics.
+ */
+sampleRate: number | null; 
+/**
+ * User-facing explanation when `supported` is false.
+ */
+unavailableReason: string | null }
 /**
  * Aggregate usage statistics derived from the transcription history table.
  * All fields are lifetime totals across non-empty entries. Rows missing an

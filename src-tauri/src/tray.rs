@@ -98,6 +98,25 @@ fn version_label() -> String {
     }
 }
 
+/// Best-effort current icon state.
+///
+/// The tray does not store what it is displaying, so subsystems that need to
+/// rebuild the menu (Meeting Mode, to flip its Start/End label) would otherwise
+/// have to guess and could clobber the recording icon mid-dictation. Derived
+/// from the recording manager, which is the only thing that drives the
+/// non-idle states.
+pub fn current_tray_state(app: &AppHandle) -> TrayIconState {
+    app.try_state::<Arc<crate::managers::audio::AudioRecordingManager>>()
+        .map(|rm| {
+            if rm.is_recording() {
+                TrayIconState::Recording
+            } else {
+                TrayIconState::Idle
+            }
+        })
+        .unwrap_or(TrayIconState::Idle)
+}
+
 pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&str>) {
     let version_label = version_label();
     match build_tray_menu(app, state, locale) {
@@ -201,46 +220,84 @@ fn build_tray_menu(
         let _ = mic_submenu.append(&item);
     }
 
+    // Meeting capture. Only offered once the feature is switched on — a menu
+    // item that always errors with "Meeting Mode is turned off" is worse than
+    // no item at all. The label reflects live state so one entry both starts
+    // and ends a meeting.
+    let meeting_enabled = settings.meeting.enabled;
+    let meeting_capturing = app
+        .try_state::<Arc<crate::meetings::MeetingManager>>()
+        .map(|m| m.is_capturing())
+        .unwrap_or(false);
+    let meeting_label = if meeting_capturing {
+        &strings.end_meeting
+    } else {
+        &strings.start_meeting
+    };
+    let meeting_i = MenuItem::with_id(app, "toggle_meeting", meeting_label, true, None::<&str>)?;
+
     let sep = || PredefinedMenuItem::separator(app);
+
+    // Built as a vec rather than a fixed slice so the meeting entry can be
+    // omitted entirely when the feature is off.
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
+    let cancel_i;
+    let separators: Vec<PredefinedMenuItem<tauri::Wry>> =
+        (0..6).map(|_| sep()).collect::<tauri::Result<Vec<_>>>()?;
+    let mut next_sep = separators.iter();
+
+    items.push(&version_i);
+    items.push(&metrics_i);
 
     match state {
         TrayIconState::Recording | TrayIconState::Transcribing => {
-            let cancel_i = MenuItem::with_id(app, "cancel", &strings.cancel, true, None::<&str>)?;
-            Menu::with_items(
-                app,
-                &[
-                    &version_i,
-                    &metrics_i,
-                    &sep()?,
-                    &cancel_i,
-                    &sep()?,
-                    &copy_last_transcript_i,
-                    &sep()?,
-                    &settings_i,
-                    &sep()?,
-                    &quit_i,
-                ],
-            )
+            cancel_i = MenuItem::with_id(app, "cancel", &strings.cancel, true, None::<&str>)?;
+            if let Some(s) = next_sep.next() {
+                items.push(s);
+            }
+            items.push(&cancel_i);
+            if let Some(s) = next_sep.next() {
+                items.push(s);
+            }
+            items.push(&copy_last_transcript_i);
+            if meeting_enabled {
+                if let Some(s) = next_sep.next() {
+                    items.push(s);
+                }
+                items.push(&meeting_i);
+            }
         }
-        TrayIconState::Idle => Menu::with_items(
-            app,
-            &[
-                &version_i,
-                &metrics_i,
-                &sep()?,
-                &copy_last_transcript_i,
-                &sep()?,
-                &model_submenu,
-                &unload_model_i,
-                &sep()?,
-                &mic_submenu,
-                &sep()?,
-                &settings_i,
-                &sep()?,
-                &quit_i,
-            ],
-        ),
+        TrayIconState::Idle => {
+            if let Some(s) = next_sep.next() {
+                items.push(s);
+            }
+            items.push(&copy_last_transcript_i);
+            if meeting_enabled {
+                if let Some(s) = next_sep.next() {
+                    items.push(s);
+                }
+                items.push(&meeting_i);
+            }
+            if let Some(s) = next_sep.next() {
+                items.push(s);
+            }
+            items.push(&model_submenu);
+            items.push(&unload_model_i);
+            if let Some(s) = next_sep.next() {
+                items.push(s);
+            }
+            items.push(&mic_submenu);
+        }
     }
+
+    let tail_sep_a = sep()?;
+    let tail_sep_b = sep()?;
+    items.push(&tail_sep_a);
+    items.push(&settings_i);
+    items.push(&tail_sep_b);
+    items.push(&quit_i);
+
+    Menu::with_items(app, &items)
 }
 
 /// Short one-line summary of this week's vanity metrics for the tray menu.

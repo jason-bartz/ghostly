@@ -24,6 +24,7 @@ const TABS: Array<{
   key: TabKey;
   labelKey: string;
   Icon: React.ComponentType<{ className?: string }>;
+  aside?: boolean;
 }> = [
   {
     key: "personal_messages",
@@ -42,11 +43,16 @@ const TABS: Array<{
     key: "cleanup",
     labelKey: "settings.style.tabs.cleanup",
     Icon: Sparkles,
+    // Rule-shaped rather than category-shaped: these two configure the system
+    // itself, so the rail sets them below a divider instead of implying they
+    // are a sixth and seventh kind of writing.
+    aside: true,
   },
   {
     key: "advanced",
     labelKey: "settings.style.tabs.advanced",
     Icon: Settings2,
+    aside: true,
   },
 ];
 
@@ -92,7 +98,7 @@ export const StyleSettings: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl w-full mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <SettingsGroup title={t("settings.style.title")}>
         <ToggleSwitch
           label={t("settings.style.enable.title")}
@@ -105,30 +111,55 @@ export const StyleSettings: React.FC = () => {
       </SettingsGroup>
 
       {enabled && (
-        <div className="rounded-2xl border border-hairline-strong bg-background overflow-hidden">
-          {/* Top tab strip */}
-          <div className="flex items-center gap-1 px-2 pt-2 border-b border-hairline-strong overflow-x-auto">
-            {TABS.map(({ key, labelKey, Icon }) => {
+        <div className="rounded-2xl border border-hairline-strong bg-background overflow-hidden flex">
+          {/* Left rail. Seven tabs across the top overflowed horizontally with
+              no visible scrollbar, so "Vibe Coding" and everything after it
+              were effectively invisible. Vertically they all fit, and the list
+              stays legible if more categories are added. */}
+          <div
+            role="tablist"
+            aria-label={t("settings.style.title")}
+            className="shrink-0 w-[168px] border-e border-hairline-strong p-2 flex flex-col gap-0.5"
+          >
+            {TABS.map(({ key, labelKey, Icon, aside }, i) => {
               const active = activeTab === key;
+              const startsAside = aside && !TABS[i - 1]?.aside;
               return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActiveTab(key)}
-                  className={`relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap
-                    ${active ? "text-text" : "text-text/60 hover:text-text"}`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{t(labelKey)}</span>
-                  {active && (
-                    <span className="absolute left-2 right-2 -bottom-[1px] h-0.5 bg-logo-primary rounded-full" />
+                <React.Fragment key={key}>
+                  {startsAside && (
+                    <span
+                      aria-hidden
+                      className="my-1.5 mx-2 border-t border-hairline"
+                    />
                   )}
-                </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setActiveTab(key)}
+                    className={`group relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium text-start transition-all duration-200 ease-out cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+                      active
+                        ? "glass text-text"
+                        : "text-text-muted hover:text-text hover:bg-fill-2 border border-transparent"
+                    }`}
+                  >
+                    <span
+                      aria-hidden
+                      className={`absolute start-0 top-1/2 -translate-y-1/2 w-[2px] rounded-full bg-accent transition-all duration-200 ease-out ${
+                        active ? "h-5 opacity-100" : "h-0 opacity-0"
+                      }`}
+                    />
+                    <Icon
+                      className={`w-4 h-4 shrink-0 transition-colors ${active ? "text-accent-bright" : ""}`}
+                    />
+                    <span className="truncate">{t(labelKey)}</span>
+                  </button>
+                </React.Fragment>
               );
             })}
           </div>
 
-          <div className="p-5">
+          <div className="flex-1 min-w-0 p-5">
             {activeTab === "cleanup" ? (
               <AutoCleanupTab
                 level={cleanup}

@@ -1,6 +1,13 @@
 // Settings section components
 export { GeneralSettings } from "./general/GeneralSettings";
 export { AdvancedSettings } from "./advanced/AdvancedSettings";
+export { AppSettings } from "./app/AppSettings";
+export { AccountSettings } from "./account/AccountSettings";
+export { TranscriptionSettings } from "./transcription/TranscriptionSettings";
+export { RefinementSettings } from "./refinement/RefinementSettings";
+export { MeetingSettings } from "./meeting/MeetingSettings";
+export { MeetingsSection } from "./meeting/MeetingsSection";
+export { PerformanceSettings } from "./performance/PerformanceSettings";
 export { DebugSettings } from "./debug/DebugSettings";
 export { HistorySettings } from "./history/HistorySettings";
 export { DictionarySettings } from "./dictionary/DictionarySettings";
@@ -38,3 +45,4 @@ export { VoiceEditing } from "./VoiceEditing";
 export { ProfilesSettings } from "./profiles/ProfilesSettings";
 export { StyleSettings } from "./profiles/StyleSettings";
 export { ProfilesEnableToggle } from "./ProfilesEnableToggle";
+export { ReplayTour } from "./ReplayTour";

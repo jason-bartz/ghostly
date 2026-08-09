@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronDown,
   ArrowLeftRight,
+  Users,
 } from "lucide-react";
 import GhostlyLogo from "./icons/GhostwriterLogo";
 import { useSettings } from "../hooks/useSettings";
@@ -25,17 +26,17 @@ import { commands, type UsageStats } from "@/bindings";
 import {
   GeneralSettings,
   AdvancedSettings,
-  DictionarySettings,
   HistorySettings,
   DebugSettings,
   AboutSettings,
   HealthSettings,
-  PostProcessingSettings,
-  ModelsSettings,
-  StyleSettings,
-  UsageSettings,
   DeveloperSettings,
-  LicenseSettings,
+  AppSettings,
+  AccountSettings,
+  TranscriptionSettings,
+  RefinementSettings,
+  PerformanceSettings,
+  MeetingsSection,
 } from "./settings";
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
@@ -55,35 +56,47 @@ interface SectionConfig {
   enabled: (settings: any) => boolean;
 }
 
+/**
+ * The settings tree, in the order the product actually works:
+ * speak → transcribe → refine → insert, then the app itself, then help.
+ *
+ * The previous tree had two junk drawers. "Recording" held shortcuts, the
+ * microphone *and* the colour theme; "Output" held text insertion, model
+ * tuning, launch behaviour and GPU acceleration — four unrelated domains under
+ * a name describing one of them. Nothing about either name predicted its
+ * contents, so finding a setting meant opening both and scanning.
+ *
+ * Every destination below is named for what it contains.
+ */
 export const SECTIONS_CONFIG = {
+  history: {
+    labelKey: "sidebar.history",
+    icon: NotebookPen,
+    component: HistorySettings,
+    enabled: () => true,
+  },
   general: {
     labelKey: "sidebar.general",
     icon: Mic,
     component: GeneralSettings,
     enabled: () => true,
   },
+  transcription: {
+    labelKey: "sidebar.transcription",
+    icon: BrainCircuit,
+    component: TranscriptionSettings,
+    enabled: () => true,
+  },
   postprocessing: {
     labelKey: "sidebar.postProcessing",
     icon: Wand2,
-    component: PostProcessingSettings,
+    component: RefinementSettings,
     enabled: () => true,
   },
-  style: {
-    labelKey: "sidebar.style",
-    icon: Layers,
-    component: StyleSettings,
-    enabled: () => true,
-  },
-  dictionary: {
-    labelKey: "sidebar.dictionary",
-    icon: BookA,
-    component: DictionarySettings,
-    enabled: () => true,
-  },
-  history: {
-    labelKey: "sidebar.history",
-    icon: NotebookPen,
-    component: HistorySettings,
+  meeting: {
+    labelKey: "sidebar.meeting",
+    icon: Users,
+    component: MeetingsSection,
     enabled: () => true,
   },
   advanced: {
@@ -92,22 +105,34 @@ export const SECTIONS_CONFIG = {
     component: AdvancedSettings,
     enabled: () => true,
   },
-  models: {
-    labelKey: "sidebar.models",
-    icon: BrainCircuit,
-    component: ModelsSettings,
+  app: {
+    labelKey: "sidebar.app",
+    icon: SettingsIcon,
+    component: AppSettings,
     enabled: () => true,
   },
-  usage: {
-    labelKey: "sidebar.usage",
-    icon: Gauge,
-    component: UsageSettings,
-    enabled: () => true,
-  },
-  license: {
-    labelKey: "sidebar.license",
+  account: {
+    labelKey: "sidebar.account",
     icon: KeyRound,
-    component: LicenseSettings,
+    component: AccountSettings,
+    enabled: () => true,
+  },
+  health: {
+    labelKey: "sidebar.health",
+    icon: Stethoscope,
+    component: HealthSettings,
+    enabled: () => true,
+  },
+  about: {
+    labelKey: "sidebar.about",
+    icon: Info,
+    component: AboutSettings,
+    enabled: () => true,
+  },
+  performance: {
+    labelKey: "sidebar.performance",
+    icon: Gauge,
+    component: PerformanceSettings,
     enabled: () => true,
   },
   developer: {
@@ -122,18 +147,6 @@ export const SECTIONS_CONFIG = {
     component: DebugSettings,
     enabled: (settings) => settings?.debug_mode ?? false,
   },
-  about: {
-    labelKey: "sidebar.about",
-    icon: Info,
-    component: AboutSettings,
-    enabled: () => true,
-  },
-  health: {
-    labelKey: "sidebar.health",
-    icon: Stethoscope,
-    component: HealthSettings,
-    enabled: () => true,
-  },
 } as const satisfies Record<string, SectionConfig>;
 
 /**
@@ -146,6 +159,7 @@ export const SECTIONS_CONFIG = {
  */
 const PRIMARY_SECTIONS = [
   "history",
+  "meeting",
   "general",
   "postprocessing",
 ] as const satisfies readonly SidebarSection[];
@@ -160,24 +174,20 @@ interface SettingsGroup {
 
 const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   {
-    labelKey: "sidebar.groups.voice",
-    items: ["models", "style", "dictionary"],
+    labelKey: "sidebar.groups.dictation",
+    items: ["transcription", "advanced"],
   },
   {
-    labelKey: "sidebar.groups.system",
-    items: ["advanced", "health"],
+    labelKey: "sidebar.groups.app",
+    items: ["app", "account"],
   },
   {
-    labelKey: "sidebar.groups.account",
-    items: ["usage", "license"],
-  },
-  {
-    labelKey: "sidebar.groups.about",
-    items: ["about"],
+    labelKey: "sidebar.groups.help",
+    items: ["health", "about"],
   },
   {
     labelKey: "sidebar.groups.developer",
-    items: ["developer", "debug"],
+    items: ["performance", "developer", "debug"],
     advanced: true,
   },
 ];
@@ -239,8 +249,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         aria-hidden
         className="pointer-events-none absolute inset-y-0 end-0 w-px bg-gradient-to-b from-transparent via-[color:var(--glass-specular)] to-transparent opacity-60"
       />
-      <GhostlyLogo width={140} className="mt-5 mb-3 self-center" />
-      <SidebarMetrics />
+      <GhostlyLogo width={140} className="mt-5 mb-3 self-center shrink-0" />
+      {/* Week's stats belong to the day-to-day surfaces. In the settings view
+          the nav is long enough to squeeze the card flat, and a half-height
+          stat block reads as a rendering bug — so it steps aside entirely. */}
+      {view === "primary" && <SidebarMetrics />}
 
       {view === "primary" ? (
         <div className="flex flex-col w-full gap-0.5 pt-3 pb-2 border-t border-hairline flex-1 min-h-0">
@@ -271,11 +284,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col w-full gap-0.5 pt-3 border-t border-hairline">
+        /* Scrolls in its own right: the sidebar sits inside an overflow-hidden
+           column, so without this the groups revealed by the Advanced
+           disclosure render below the window and simply never appear. */
+        <div className="flex flex-col w-full gap-0.5 pt-3 pb-3 border-t border-hairline flex-1 min-h-0 overflow-y-auto">
           <button
             type="button"
             onClick={goBack}
-            className="flex gap-2 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-fill-2"
+            className="flex gap-2 shrink-0 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-150 ease-out text-text-muted hover:text-text hover:bg-fill-2"
           >
             <ChevronLeft
               width={16}
@@ -294,7 +310,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
             if (items.length === 0) return null;
             return (
-              <div key={group.labelKey} className="mt-4 flex flex-col gap-0.5">
+              <div
+                key={group.labelKey}
+                className="mt-4 flex flex-col gap-0.5 shrink-0"
+              >
                 <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-faint">
                   {t(group.labelKey)}
                 </p>
@@ -357,7 +376,7 @@ const AdvancedDisclosure: React.FC<AdvancedDisclosureProps> = ({
   if (groups.length === 0) return null;
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 shrink-0">
       <button
         type="button"
         onClick={onToggle}
@@ -434,7 +453,7 @@ const SidebarMetrics: React.FC = () => {
           ? "sidebar.metrics.showWeek"
           : "sidebar.metrics.showLifetime",
       )}
-      className="glass glimmer mx-1 mb-3 rounded-xl px-3 py-2.5 text-[11px] leading-tight text-left transition-colors hover:border-hairline-strong cursor-pointer"
+      className="glass glimmer shrink-0 mx-1 mb-3 rounded-xl px-3 py-2.5 text-[11px] leading-tight text-left transition-colors hover:border-hairline-strong cursor-pointer"
     >
       <div className="flex items-center justify-between mb-2">
         <p className="uppercase tracking-[0.08em] text-[9px] font-semibold text-text-faint">

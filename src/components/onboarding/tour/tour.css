@@ -1,0 +1,414 @@
+/* =============================================================================
+ * Tour — motion
+ *
+ * The whole flow is choreographed here rather than in component-level Tailwind
+ * so the timing is defined once and every step inherits the same feel. Three
+ * rules the choreography follows:
+ *
+ *   1. One easing for entrances: cubic-bezier(0.22, 1, 0.36, 1). Content
+ *      arrives fast and settles — never bounces.
+ *   2. Content enters staggered, leaves as a block. Reversing a stagger on
+ *      exit reads as hesitation.
+ *   3. Nothing loops except ambient brand motion (the mark's float, the aura).
+ *      Looping animation inside content is noise the user has to read past.
+ *
+ * Everything degrades to a static composition under `prefers-reduced-motion`.
+ * ========================================================================== */
+
+:root {
+  --tour-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tour-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* -----------------------------------------------------------------------------
+ * Step transitions
+ *
+ * Direction-aware: moving forward, the outgoing step exits left and the
+ * incoming arrives from the right. Going back reverses it, so the flow has a
+ * spatial memory instead of a generic crossfade.
+ * -------------------------------------------------------------------------- */
+
+@keyframes tour-step-in-forward {
+  from {
+    opacity: 0;
+    transform: translate3d(22px, 0, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes tour-step-in-back {
+  from {
+    opacity: 0;
+    transform: translate3d(-22px, 0, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes tour-step-out-forward {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-18px, 0, 0) scale(0.99);
+  }
+}
+
+@keyframes tour-step-out-back {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(18px, 0, 0) scale(0.99);
+  }
+}
+
+.tour-step-enter-forward {
+  animation: tour-step-in-forward 420ms var(--tour-ease) both;
+}
+
+.tour-step-enter-back {
+  animation: tour-step-in-back 420ms var(--tour-ease) both;
+}
+
+.tour-step-exit-forward {
+  animation: tour-step-out-forward 180ms ease-in both;
+}
+
+.tour-step-exit-back {
+  animation: tour-step-out-back 180ms ease-in both;
+}
+
+/* -----------------------------------------------------------------------------
+ * Stagger
+ *
+ * Any element with `data-rise` inside a step rises in sequence. The index comes
+ * from `--i` so a step can order its own beats without new CSS.
+ * -------------------------------------------------------------------------- */
+
+@keyframes tour-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+[data-rise] {
+  animation: tour-rise 480ms var(--tour-ease) both;
+  animation-delay: calc(90ms + var(--i, 0) * 70ms);
+}
+
+/* -----------------------------------------------------------------------------
+ * Brand — the mark breathes, the aura drifts behind it
+ * -------------------------------------------------------------------------- */
+
+@keyframes tour-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -7px, 0);
+  }
+}
+
+.tour-float {
+  animation: tour-float 5.5s ease-in-out infinite;
+}
+
+@keyframes tour-halo {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+.tour-halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 260px;
+  height: 260px;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    var(--color-accent-glow) 0%,
+    transparent 68%
+  );
+  filter: blur(18px);
+  animation: tour-halo 6s ease-in-out infinite;
+}
+
+/* -----------------------------------------------------------------------------
+ * Keycap demo
+ *
+ * The three-beat loop that teaches the gesture: press, hold while speaking,
+ * release and the text lands. Driven by `data-beat` on the demo root so the
+ * component owns the timing and CSS owns the appearance.
+ * -------------------------------------------------------------------------- */
+
+.tour-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 2.35rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-text);
+  background: linear-gradient(
+    180deg,
+    var(--color-fill-3) 0%,
+    var(--color-fill-1) 100%
+  );
+  border: 1px solid var(--color-hairline-strong);
+  box-shadow:
+    inset 0 1px 0 var(--glass-specular),
+    0 2px 0 -1px var(--color-hairline-strong),
+    0 4px 10px -6px var(--glass-shadow);
+  transition:
+    transform 140ms var(--tour-ease),
+    box-shadow 140ms var(--tour-ease),
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.tour-keycap-lg {
+  min-width: 3.6rem;
+  padding: 0.62rem 1rem;
+  font-size: 15px;
+  border-radius: 12px;
+}
+
+.tour-keycap[data-pressed="true"] {
+  transform: translateY(2px);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 22%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent) 8%, transparent) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 var(--glass-specular),
+    0 0 0 4px var(--color-accent-glow);
+}
+
+/* -----------------------------------------------------------------------------
+ * Waveform
+ *
+ * Bars are scaled by a CSS variable the component writes from `mic-level`, so
+ * React never re-renders 16 elements per audio frame — it writes one style
+ * property per bar and lets the compositor do the rest.
+ * -------------------------------------------------------------------------- */
+
+.tour-bar {
+  width: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    var(--color-accent-bright) 0%,
+    var(--color-accent-deep) 100%
+  );
+  transform-origin: center;
+  transform: scaleY(var(--level, 0.06));
+  transition: transform 90ms linear;
+}
+
+/* Idle shimmer for the waveform before any audio arrives — a flat line reads
+ * as broken, a slow travelling swell reads as armed. */
+@keyframes tour-bar-idle {
+  0%,
+  100% {
+    transform: scaleY(0.08);
+  }
+  50% {
+    transform: scaleY(0.22);
+  }
+}
+
+.tour-bar[data-idle="true"] {
+  animation: tour-bar-idle 1.6s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 55ms);
+  transition: none;
+}
+
+/* -----------------------------------------------------------------------------
+ * Success check — drawn, not faded in
+ * -------------------------------------------------------------------------- */
+
+@keyframes tour-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes tour-check-pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.tour-check-ring {
+  animation: tour-check-pop 420ms var(--tour-ease) both;
+}
+
+.tour-check-path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: tour-check-draw 340ms var(--tour-ease) 180ms both;
+}
+
+/* -----------------------------------------------------------------------------
+ * Typewriter caret for the simulated paste
+ * -------------------------------------------------------------------------- */
+
+@keyframes tour-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+}
+
+.tour-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  vertical-align: text-bottom;
+  margin-left: 1px;
+  background: var(--color-accent-bright);
+  animation: tour-caret 1.1s steps(1, end) infinite;
+}
+
+/* -----------------------------------------------------------------------------
+ * Feature carousel
+ * -------------------------------------------------------------------------- */
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.tour-card-in {
+  animation: tour-card-in 380ms var(--tour-ease) both;
+}
+
+/* The dot rail doubles as an auto-advance timer: the active dot fills over the
+ * dwell duration, so the carousel never moves without warning. */
+@keyframes tour-dot-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.tour-dot-fill {
+  transform-origin: left center;
+  animation: tour-dot-fill var(--dwell, 5s) linear both;
+}
+
+/* -----------------------------------------------------------------------------
+ * Scroll affordance
+ *
+ * The stage is a fixed size by design, so a long step scrolls internally. The
+ * mask makes that legible without a scrollbar shoving the layout around.
+ * -------------------------------------------------------------------------- */
+
+.tour-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 14px,
+    black calc(100% - 18px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 14px,
+    black calc(100% - 18px),
+    transparent 100%
+  );
+}
+
+.tour-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* -----------------------------------------------------------------------------
+ * Reduced motion — the composition is designed to hold still
+ * -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-step-enter-forward,
+  .tour-step-enter-back,
+  .tour-step-exit-forward,
+  .tour-step-exit-back,
+  [data-rise],
+  .tour-card-in {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .tour-float,
+  .tour-halo,
+  .tour-caret,
+  .tour-dot-fill,
+  .tour-bar[data-idle="true"] {
+    animation: none !important;
+  }
+
+  .tour-check-ring,
+  .tour-check-path {
+    animation: none !important;
+    stroke-dashoffset: 0;
+    opacity: 1;
+    transform: none;
+  }
+}
