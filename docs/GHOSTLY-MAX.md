@@ -205,21 +205,52 @@ The overflow fallback fires on `fair_use_exceeded` **only** — never on an enti
 
 **Still to do here:** the app itself has not yet talked to the live gateway. The gateway side is fully verified (§4) and the app's parsing is pinned to a captured real response, but nobody has activated a Max licence in a running build and dictated. That is the last gate before release — see §7.
 
-### Phase 2 — Ask your transcripts _(medium; the demo feature)_
+### Phase 2 — Ask your transcripts — **done**
 
-Hotkey → prompt → search the local history DB and meeting store → send only the top-k matching snippets to `ghostly-balanced` → answer.
+`ask.rs` + `AskPanel.tsx`, in the My Notes pane. Retrieval is local, reasoning is not.
 
-**Retrieval stays local, reasoning goes to the cloud.** Nothing is uploaded or indexed server-side; that's what keeps the privacy story intact. Existing surfaces: `managers/history.rs`, `meetings/store.rs`. Cost ≈ $0.015/query.
+**BM25 over the FTS indexes that already exist, not embeddings.** Embeddings retrieve better on paraphrase, and cost an embed-on-write path, a model to ship or a service to call, a vector index to migrate and a re-index of all existing history. The keyword failure mode is "nothing matches", which is honest.
 
-### Phase 3 — Learning loop _(medium; the retention argument)_
+Three things that are load-bearing and look like details:
 
-Every correction via the voice-edit loop (`edit_intent.rs`) or a post-paste edit is a labelled training pair. Batch them nightly through the **Batch API at 50% off** (no latency requirement) to update custom vocabulary and per-app prompts. Surface a weekly "Ghostly learned 7 new terms" card. Cost ≈ $0.35/user/month.
+- `retrieve_relevant` ranks by `bm25`, where the existing `search_history_entries` ranks by recency. A search box and a question want opposite things — one is "find the note I remember writing", the other is "find the best evidence, wherever it is".
+- The question is turned into a **quoted OR** query. Quoted because a dictated question contains FTS grammar (`NEAR(`, `*`, an apostrophe) which unquoted is a syntax error the user experiences as "nothing matches". OR because a question is a sentence; ANDing every content word matches nothing.
+- Results from the two stores are **interleaved**, because their BM25 scores are not comparable and concatenating lets one store fill the context budget on its own.
 
-This is the honest answer to "why a subscription and not a one-time purchase."
+The system prompt states the excerpts are quoted material rather than instructions — they are the user's own words, and a dictated "ignore your instructions" must stay data.
 
-### Phase 4 — Encrypted sync _(large — design before coding)_
+### Phase 3 — Learning loop — **done**
 
-Vocabulary, profiles, prompts, correction phrases, history — E2E encrypted across a user's Macs, restorable on a new machine. **Do not start coding this without settling:** key derivation and custody (what happens when a device is lost?), conflict resolution across three machines, and what the server can see. Rushed, this produces a data-loss bug rather than a feature.
+`learning.rs`, captured at the voice-edit site in `actions.rs`, one pass a day, card in the Dictionary pane.
+
+**Word pairs leave the machine; transcripts never do.** A local word-level diff reduces an edit to `kubernets -> Kubernetes` before anything is stored or sent. The model only decides which candidates are durable vocabulary. Mining whole transcripts would be a different product with a different privacy claim.
+
+Precision over recall everywhere, because a wrong entry corrupts every future transcript and a missed one costs nothing: word-count changes are dropped whole, only case changes and close mis-hearings qualify, words under four characters never do, a pair must be seen twice, and the model's reply is intersected with what was sent so a hallucinated pair cannot reach the vocabulary.
+
+Candidates are cleared after every pass, accepted or not — a rejected pair re-sent nightly spends money to reach the same answer forever. If the user keeps making the correction it accumulates again.
+
+**Not the Batch API, despite the plan.** After the local diff the daily payload is a few dozen short pairs, well under a cent. Halving that does not pay for submit/poll/retrieve plumbing, a 24-hour SLA, and gateway endpoints `/v1/chat/completions` already provides.
+
+### Phase 4 — Encrypted sync — **foundation done, transport and bridge remain**
+
+The three questions this section demanded be settled first are settled, and `sync/crypto.rs` + `sync/records.rs` implement them, with 18 tests. Nothing is wired to real data yet, deliberately.
+
+| Decision    | Answer                                                           |
+| ----------- | ---------------------------------------------------------------- |
+| Key custody | Passphrase → Argon2id → key. No recovery, no escrow, no reset.   |
+| Conflicts   | Last write wins per record, ties to the tombstone.               |
+| Server sees | Opaque blobs. `kind` is folded into the record id, not a column. |
+
+Scope is settings-shaped data — vocabulary, word corrections, prompts, profiles, correction phrases. **Not history.** Carrying vocabulary to a new Mac is what people want, it is kilobytes, and every record is independently replaceable; syncing transcripts would be gigabytes of the most sensitive data the app holds to solve a problem nobody asked for.
+
+Two details in the code that are easy to undo by accident:
+
+- The record id is authenticated as AAD. A server that shuffles blobs between records gets a decryption failure rather than plausible wrong data.
+- `record_id` lowercases the natural key where the data is case-insensitive (a word) and leaves it where it is not (a profile id). Backwards either way duplicates words or merges distinct profiles.
+
+**What remains:** a D1 table and push/pull endpoints on the Worker; a transport client; the bridge that maps `AppSettings` collections to `Record`s and back; settings fields (`sync_enabled`, `sync_salt`, verifier blob); and the UI — passphrase setup with blunt copy about there being no recovery, a new-device join flow, and sync status.
+
+Do the bridge last and test it against a throwaway account. It is the only part that can destroy data, and it is the part where "last write wins" stops being a table and starts being someone's vocabulary list.
 
 ### Flipping the site to live checkout — **done 2026-08-10**
 
