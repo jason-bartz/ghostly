@@ -141,6 +141,26 @@ pub struct BySession {
     pub email: String,
 }
 
+/// Response of `GET /ai/status` — the gateway's own view of what this licence
+/// is entitled to right now, plus how much of the monthly fair-use allowance
+/// has been spent.
+///
+/// The tier in the signed token is enough to decide whether to *offer* hosted
+/// AI, and is what the UI gates on offline. This endpoint exists for the
+/// numbers the token can't carry: usage counts, and a lapse that happened
+/// after the token was minted.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AiStatus {
+    pub tier: String,
+    pub ai_enabled: bool,
+    /// `ok`, or the machine-readable reason hosted AI is unavailable —
+    /// `revoked`, `not_max`, `expired`, `unpaid`.
+    pub reason: String,
+    pub expires_at: Option<i64>,
+    pub requests_used: u32,
+    pub requests_limit: u32,
+}
+
 #[derive(Debug, Deserialize)]
 struct ErrorBody {
     error: Option<String>,
@@ -175,6 +195,21 @@ fn parse_error_status(status: u16, body: &str) -> LicenseError {
             message: format!("http {}: {}", status, body),
         },
     }
+}
+
+/// Tier string carried by a Max subscription token. Tokens minted before Max
+/// existed have no tier at all and are Pro.
+pub const TIER_MAX: &str = "max";
+
+/// The stored licence key, but only when it is entitled to hosted AI.
+///
+/// Reads the tier out of the already-verified offline token, so this is a
+/// local, synchronous call — no network round-trip and no second source of
+/// truth about entitlement.
+pub fn entitled_max_key() -> Option<String> {
+    let (key, token) = load_key_and_token()?;
+    let payload = verify_token(&token).ok()?;
+    (payload.tier.as_deref() == Some(TIER_MAX)).then_some(key)
 }
 
 // ---------------- Token verification ----------------
@@ -452,6 +487,64 @@ pub async fn status(key: &str) -> Result<StatusResponse, LicenseError> {
         serde_json::from_str::<StatusResponse>(&body).map_err(|e| LicenseError::NetworkError {
             message: format!("bad status payload: {}", e),
         })
+    } else {
+        Err(parse_error_status(status_code, &body))
+    }
+}
+
+/// Ask the gateway what this licence is entitled to and how much of the
+/// monthly allowance is left. Bearer auth with the licence key, exactly as
+/// `/v1/chat/completions` uses — see the note in the Worker's `ai.ts`.
+pub async fn ai_status(key: &str) -> Result<AiStatus, LicenseError> {
+    let url = format!("{}/ai/status", base_url());
+    let resp = http()
+        .get(&url)
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|e| LicenseError::NetworkError {
+            message: e.to_string(),
+        })?;
+    let status_code = resp.status().as_u16();
+    let body = resp.text().await.unwrap_or_default();
+    if status_code == 200 {
+        serde_json::from_str::<AiStatus>(&body).map_err(|e| LicenseError::NetworkError {
+            message: format!("bad ai status payload: {}", e),
+        })
+    } else {
+        Err(parse_error_status(status_code, &body))
+    }
+}
+
+/// Mint a Stripe Customer Portal session and return its URL.
+///
+/// The URL is single-use and short-lived, so it is fetched on demand rather
+/// than cached anywhere. `NotReady` means the licence has no Stripe customer
+/// behind it — a perpetual Pro key — and there is nothing to manage.
+pub async fn billing_portal_url(key: &str) -> Result<String, LicenseError> {
+    let url = format!("{}/billing/portal", base_url());
+    let resp = http()
+        .post(&url)
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|e| LicenseError::NetworkError {
+            message: e.to_string(),
+        })?;
+    let status_code = resp.status().as_u16();
+    let body = resp.text().await.unwrap_or_default();
+    if status_code == 200 {
+        #[derive(Deserialize)]
+        struct PortalResponse {
+            url: String,
+        }
+        serde_json::from_str::<PortalResponse>(&body)
+            .map(|r| r.url)
+            .map_err(|_| LicenseError::NetworkError {
+                message: "bad portal payload".into(),
+            })
+    } else if status_code == 404 {
+        Err(LicenseError::NotReady)
     } else {
         Err(parse_error_status(status_code, &body))
     }

@@ -20,6 +20,7 @@ import { useSettingsStore } from "./stores/settingsStore";
 import { useUpdaterStore } from "./stores/updaterStore";
 import { commands } from "@/bindings";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
+import { maxErrorKey } from "@/lib/maxErrors";
 import { useAppearanceSync } from "./hooks/useAppearance";
 
 /** `null` while we're still resolving; a mode means the tour is on screen. */
@@ -206,12 +207,30 @@ function App() {
   // Listen for AI refinement failures so users aren't left guessing when the
   // raw transcript appears instead of the refined version. The Rust side emits
   // a concise reason; full stack traces are in ghostly.log.
+  //
+  // A Ghostly Max failure arrives with a `code` (see `max_gateway.rs`). Those
+  // are account states with a specific remedy — lapsed subscription, month's
+  // allowance spent — so they get their own localized copy and a button that
+  // goes where the user can act on it, rather than a generic error toast.
   useEffect(() => {
-    const unlisten = listen<{ message: string }>(
+    const unlisten = listen<{ message: string; code: string | null }>(
       "post-process-failed",
       (event) => {
-        toast.error(t("errors.postProcessFailedTitle"), {
-          description: event.payload.message,
+        const { message, code } = event.payload;
+        const key = code === null ? null : maxErrorKey(code);
+        if (key === null) {
+          toast.error(t("errors.postProcessFailedTitle"), {
+            description: message,
+          });
+          return;
+        }
+        toast.error(t("max.toast.title"), {
+          description: t(key),
+          action: {
+            label: t("max.toast.action"),
+            onClick: () =>
+              window.dispatchEvent(new Event("ghostly-navigate-to-license")),
+          },
         });
       },
     );

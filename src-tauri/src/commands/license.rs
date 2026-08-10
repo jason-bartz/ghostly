@@ -6,7 +6,7 @@ use specta::Type;
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::license::{self, BySession, LicenseError, StatusResponse};
+use crate::license::{self, AiStatus, BySession, LicenseError, StatusResponse};
 use crate::settings::{get_settings, write_settings};
 
 pub const PAYMENT_LINK: &str = "https://try-ghostly.com/#pricing";
@@ -18,28 +18,32 @@ pub struct LicenseState {
     pub email: Option<String>,
     pub expires_at: Option<i64>,
     pub machine_id: String,
+    /// `"max"` for a subscription, `"pro"` for the retired perpetual licence.
+    /// Read straight off the offline-verified token, so the UI knows the tier
+    /// without a network round-trip. `None` when unlicensed, or when the token
+    /// predates Max (all of which are Pro — see `TokenPayload::tier`).
+    pub tier: Option<String>,
+}
+
+fn unlicensed_state(mid: String) -> LicenseState {
+    LicenseState {
+        is_licensed: false,
+        key_masked: None,
+        email: None,
+        expires_at: None,
+        machine_id: mid,
+        tier: None,
+    }
 }
 
 fn current_state(app: &AppHandle) -> LicenseState {
     let settings = get_settings(app);
     let mid = license::machine_id();
     if !settings.is_pro {
-        return LicenseState {
-            is_licensed: false,
-            key_masked: None,
-            email: None,
-            expires_at: None,
-            machine_id: mid,
-        };
+        return unlicensed_state(mid);
     }
     let Some((key, token)) = license::load_key_and_token() else {
-        return LicenseState {
-            is_licensed: false,
-            key_masked: None,
-            email: None,
-            expires_at: None,
-            machine_id: mid,
-        };
+        return unlicensed_state(mid);
     };
     let payload = license::verify_token(&token).ok();
     LicenseState {
@@ -48,6 +52,13 @@ fn current_state(app: &AppHandle) -> LicenseState {
         email: payload.as_ref().map(|p| p.email.clone()),
         expires_at: payload.as_ref().map(|p| p.expires_at),
         machine_id: mid,
+        // A licensed install with no tier on the token is a pre-Max Pro key.
+        tier: Some(
+            payload
+                .as_ref()
+                .and_then(|p| p.tier.clone())
+                .unwrap_or_else(|| "pro".to_string()),
+        ),
     }
 }
 
@@ -178,6 +189,19 @@ pub fn get_license_state(app: AppHandle) -> LicenseState {
     current_state(&app)
 }
 
+/// Hosted-AI entitlement and remaining monthly allowance, straight from the
+/// gateway. Used by the Account pane; the offline token already says whether
+/// the user is on Max, so this is only for the numbers and for catching a
+/// lapse that happened after the token was minted.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_ai_status(_app: AppHandle) -> Result<AiStatus, LicenseError> {
+    let Some((key, _token)) = license::load_key_and_token() else {
+        return Err(LicenseError::NotActivated);
+    };
+    license::ai_status(&key).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_device_list(_app: AppHandle) -> Result<StatusResponse, LicenseError> {
@@ -195,6 +219,25 @@ pub async fn activate_from_session(
 ) -> Result<LicenseState, LicenseError> {
     let BySession { key, .. } = license::by_session(&session_id).await?;
     activate_license(app, key).await
+}
+
+/// Open the Stripe Customer Portal in the browser.
+///
+/// Card changes, invoices, and cancellation all live there — building any of
+/// it in-app would mean handling payment details ourselves, and would drift
+/// every time Stripe changes how proration or dunning works.
+#[tauri::command]
+#[specta::specta]
+pub async fn open_billing_portal(app: AppHandle) -> Result<(), LicenseError> {
+    let Some((key, _token)) = license::load_key_and_token() else {
+        return Err(LicenseError::NotActivated);
+    };
+    let url = license::billing_portal_url(&key).await?;
+    app.opener()
+        .open_url(url, None::<String>)
+        .map_err(|e| LicenseError::NetworkError {
+            message: format!("Failed to open the billing portal: {}", e),
+        })
 }
 
 #[tauri::command]

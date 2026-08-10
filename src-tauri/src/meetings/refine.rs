@@ -293,10 +293,13 @@ async fn cloud(app: &AppHandle, prompt: &str) -> Result<String, String> {
         .cloned()
         .unwrap_or_default();
 
-    let response = crate::llm_client::send_chat_completion(
-        &provider,
-        api_key,
-        &model,
+    let response = crate::max_gateway::send_chat_completion(
+        &settings,
+        crate::max_gateway::Target {
+            provider,
+            model,
+            api_key,
+        },
         prompt.to_string(),
         None,
         None,

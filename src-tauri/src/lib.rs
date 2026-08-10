@@ -22,6 +22,7 @@ mod license;
 mod llm_client;
 mod local_cleanup;
 mod managers;
+mod max_gateway;
 mod meetings;
 mod overlay;
 pub mod portable;
@@ -771,6 +772,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::license::revalidate_license,
             commands::license::get_license_state,
             commands::license::get_device_list,
+            commands::license::get_ai_status,
+            commands::license::open_billing_portal,
             commands::license::activate_from_session,
             commands::license::open_payment_link,
             commands::edit_chip::apply_edit_chip,

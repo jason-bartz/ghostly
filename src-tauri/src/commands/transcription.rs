@@ -1,6 +1,7 @@
 use crate::managers::transcription::TranscriptionManager;
 use crate::settings::{
     get_settings, write_settings, ModelUnloadTimeout, APPLE_INTELLIGENCE_PROVIDER_ID,
+    MAX_PROVIDER_ID,
 };
 use serde::Serialize;
 use specta::Type;
@@ -87,9 +88,19 @@ pub async fn test_post_process_connection(app: AppHandle) -> Result<(), String> 
         .cloned()
         .unwrap_or_default();
     if api_key.trim().is_empty() {
+        if provider.id == MAX_PROVIDER_ID {
+            return Err(
+                "No active Ghostly Max subscription on this device. Activate your licence in Settings → Account."
+                    .to_string(),
+            );
+        }
         return Err("No API key configured for this provider.".to_string());
     }
 
+    // Deliberately calls `llm_client` rather than `max_gateway`: this is a
+    // diagnostic, and silently succeeding via the overflow fallback would
+    // report the connection healthy when the thing being tested is not.
+    //
     // Minimal ping — keep content short to stay well below any rate quota.
     let result = crate::llm_client::send_chat_completion(
         &provider,
@@ -103,7 +114,12 @@ pub async fn test_post_process_connection(app: AppHandle) -> Result<(), String> 
 
     match result {
         Ok(_) => Ok(()),
-        Err(e) => Err(short_error(&e)),
+        Err(e) => {
+            match crate::max_gateway::parse_code(&e).filter(|_| provider.id == MAX_PROVIDER_ID) {
+                Some(code) => Err(crate::max_gateway::describe(code).to_string()),
+                None => Err(short_error(&e)),
+            }
+        }
     }
 }
 
