@@ -100,6 +100,10 @@ pub struct MeetingManager {
     paused_since: Mutex<Option<std::time::Instant>>,
     /// Serialises start/stop so two shortcut presses cannot interleave.
     transition: Mutex<()>,
+    /// Capture has ended but the transcription worker is still chewing through
+    /// what was already queued. Reported in the status so the panel can say so
+    /// instead of looking frozen.
+    draining: Arc<AtomicBool>,
     /// Incremented on every start. Background tasks capture the value current
     /// when they were spawned and exit as soon as it changes, so work belonging
     /// to a finished meeting can never bleed into the next one.
@@ -118,6 +122,7 @@ impl MeetingManager {
             paused_total_ms: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             paused_since: Mutex::new(None),
             transition: Mutex::new(()),
+            draining: Arc::new(AtomicBool::new(false)),
             generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }))
     }
@@ -131,11 +136,16 @@ impl MeetingManager {
     }
 
     pub fn status(&self) -> MeetingStatus {
+        let draining = self.draining.load(Ordering::SeqCst);
         let guard = self.active.lock().unwrap();
         match guard.as_ref() {
-            None => MeetingStatus::default(),
+            None => MeetingStatus {
+                draining,
+                ..MeetingStatus::default()
+            },
             Some(session) => MeetingStatus {
                 active: true,
+                draining,
                 meeting_id: Some(session.meeting_id.clone()),
                 title: session.title.clone(),
                 started_at: Some(session.started_at),
@@ -531,12 +541,9 @@ impl MeetingManager {
             }
         }
 
-        // Drain the queue, then join. `send` rather than `try_send` so the stop
-        // marker is never dropped by a momentarily full queue.
+        // `send` rather than `try_send` so the stop marker is never dropped by a
+        // momentarily full queue.
         let _ = session.job_tx.send(Job::Stop);
-        if let Some(handle) = session.worker.take() {
-            let _ = handle.join();
-        }
 
         let ended_at = Utc::now().timestamp();
         if let Err(e) = self.store.finish_meeting(&session.meeting_id, ended_at) {
@@ -562,41 +569,68 @@ impl MeetingManager {
         }
 
         info!("Meeting capture stopped ({})", session.meeting_id);
+
+        // Everything above is cheap and has already happened, so "End meeting"
+        // can report done now. What used to sit here — joining the transcription
+        // worker — is not cheap: the worker transcribes serially against a
+        // single inference permit, so a busy meeting can leave a queue behind it
+        // that takes minutes to clear. Blocking the command on that join is why
+        // the button appeared to hang, sometimes long after the meeting was
+        // visibly over.
+        //
+        // The drain moves to its own thread. Segments keep landing in the panel
+        // as they finish, `draining` says so in the status, and the wrap-up
+        // summary waits for the queue rather than summarising a transcript that
+        // is still missing its last few minutes.
+        self.draining.store(true, Ordering::SeqCst);
         self.emit_status();
 
-        // Wrap-up summary, produced automatically so the panel has something to
-        // show the moment the meeting ends rather than requiring another click.
-        // Spawned because summarisation is async and may hit the network.
         let app = self.app.clone();
         let store = self.store.clone();
+        let draining = self.draining.clone();
+        let manager = Arc::clone(self);
         let summary_id = session.meeting_id.clone();
-        tauri::async_runtime::spawn(async move {
-            let _ = app.emit("meeting-summarizing", &summary_id);
-            match super::summarizer::summarize_window(
-                &app,
-                &store,
-                &summary_id,
-                0,
-                i64::MAX,
-                super::types::SummaryKind::Final,
-            )
-            .await
-            {
-                Ok(body) => {
-                    let _ = app.emit(
-                        "meeting-final-summary",
-                        super::types::MeetingSummaryEvent {
-                            meeting_id: summary_id.clone(),
-                            body,
-                        },
-                    );
+        let worker = session.worker.take();
+        std::thread::Builder::new()
+            .name("meeting-drain".into())
+            .spawn(move || {
+                if let Some(handle) = worker {
+                    let _ = handle.join();
                 }
-                Err(e) => {
-                    debug!("Meeting: final summary skipped: {e}");
-                    let _ = app.emit("meeting-final-summary-failed", e);
-                }
-            }
-        });
+                draining.store(false, Ordering::SeqCst);
+                manager.emit_status();
+
+                // Summarisation is async and may hit the network, so it goes
+                // back onto the runtime rather than holding this thread.
+                tauri::async_runtime::spawn(async move {
+                    let _ = app.emit("meeting-summarizing", &summary_id);
+                    match super::summarizer::summarize_window(
+                        &app,
+                        &store,
+                        &summary_id,
+                        0,
+                        i64::MAX,
+                        super::types::SummaryKind::Final,
+                    )
+                    .await
+                    {
+                        Ok(body) => {
+                            let _ = app.emit(
+                                "meeting-final-summary",
+                                super::types::MeetingSummaryEvent {
+                                    meeting_id: summary_id.clone(),
+                                    body,
+                                },
+                            );
+                        }
+                        Err(e) => {
+                            debug!("Meeting: final summary skipped: {e}");
+                            let _ = app.emit("meeting-final-summary-failed", e);
+                        }
+                    }
+                });
+            })
+            .ok();
 
         Some(session.meeting_id)
     }

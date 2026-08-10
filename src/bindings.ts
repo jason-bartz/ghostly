@@ -2875,6 +2875,11 @@ systemAudioError: string | null;
  */
 paused: boolean; 
 /**
+ * Capture has ended, but audio captured before it ended is still being
+ * transcribed. Lines will keep arriving.
+ */
+draining: boolean; 
+/**
  * Milliseconds spent paused so far.
  * 
  * Segment timestamps count frames seen, so they stall while paused. The

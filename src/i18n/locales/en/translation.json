@@ -1799,8 +1799,9 @@
       "ending": "Ending…",
       "wrappingUp": "Writing the wrap-up…",
       "titlePlaceholder": "Meeting name…",
-      "renameMeetingHint": "Click to name this meeting",
-      "durationHint": "Time since the meeting started"
+      "renameMeetingHint": "Rename this meeting",
+      "durationHint": "Time since the meeting started",
+      "finishing": "Finishing transcription…"
     },
     "settings": {
       "loading": "Loading meeting settings…",
