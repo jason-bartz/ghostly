@@ -257,6 +257,9 @@ pub struct MeetingStatus {
     pub system_audio_error: Option<String>,
     /// Capture is open but ignoring audio.
     pub paused: bool,
+    /// Capture has ended, but audio captured before it ended is still being
+    /// transcribed. Lines will keep arriving.
+    pub draining: bool,
     /// Milliseconds spent paused so far.
     ///
     /// Segment timestamps count frames seen, so they stall while paused. The
@@ -276,6 +279,7 @@ impl Default for MeetingStatus {
             app_display_name: None,
             system_audio_error: None,
             paused: false,
+            draining: false,
             paused_ms: 0,
         }
     }

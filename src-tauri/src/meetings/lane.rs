@@ -44,8 +44,19 @@ pub struct SegmenterConfig {
 impl Default for SegmenterConfig {
     fn default() -> Self {
         Self {
-            silence_ms: 700,
-            max_segment_ms: 20_000,
+            // Tuned for a *live* transcript, where the cost of being wrong is
+            // asymmetric: a line that appears late is useless to someone
+            // reading along, while a line that splits a sentence in two is
+            // merely untidy — and the refinement pass repunctuates it anyway.
+            //
+            // The ceiling matters more than the silence threshold. At 20 s,
+            // anyone speaking without a real pause — which is most people
+            // presenting — put nothing on screen for twenty seconds and then a
+            // wall of text. The force-flush already hunts for the quietest
+            // point in a 1.5 s lookback, so a lower cap cuts in word gaps
+            // rather than mid-word.
+            silence_ms: 550,
+            max_segment_ms: 8_000,
             min_segment_ms: 300,
         }
     }

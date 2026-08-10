@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
+import { Pencil } from "lucide-react";
 import { usePanelTheme } from "./usePanelTheme";
 import { commands } from "@/bindings";
 import type { MeetingSegment, MeetingSpeaker, MeetingStatus } from "@/bindings";
@@ -343,6 +344,9 @@ const MeetingPanel: React.FC = () => {
 
   const active = (status?.active ?? false) && !pending.ending;
   const paused = pending.paused ?? status?.paused ?? false;
+  // Capture is over but queued audio is still being transcribed. Lines keep
+  // arriving, so the panel says so rather than looking like it has stalled.
+  const draining = status?.draining ?? false;
   const startedAt = status?.startedAt ?? null;
 
   // Elapsed *captured* time. Recomputed from the start timestamp on every tick
@@ -386,8 +390,9 @@ const MeetingPanel: React.FC = () => {
   };
 
   const handleEndMeeting = async () => {
-    // Optimistic: `stop_meeting` flushes both lanes and joins the transcription
-    // worker, which can take a couple of seconds on a busy model.
+    // `stop_meeting` tears capture down and returns; the queued backlog is
+    // drained on its own thread and reported as `draining`. The optimistic flag
+    // only has to cover the round trip now, not the transcription.
     setPending((previous) => ({ ...previous, ending: true }));
     const result = await commands.stopMeeting();
     if (result.status === "error") {
@@ -455,10 +460,16 @@ const MeetingPanel: React.FC = () => {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-hairline bg-surface-1/95 text-text backdrop-blur-xl">
-      {/* The whole header is the drag handle — the panel is undecorated, so
-          this is the only way to move it. Interactive children opt out with
-          their own handlers; the attribute only applies where the pointer
-          lands on the header itself. */}
+      {/* The header is the drag handle — the panel is undecorated, so this is
+          the only way to move it.
+
+          The title used to be a full-width button, which meant the one strip
+          you would instinctively grab was the one strip that could not be
+          grabbed: dragging worked only from the status dot, the clock, or the
+          gaps between them. It is now plain text that drags like the rest of
+          the bar, and editing has moved to the pencil beside it — which also
+          answers the other half of the problem, that nothing said the name was
+          editable at all. */}
       <div
         data-tauri-drag-region
         className="flex cursor-grab items-center gap-2 border-b border-hairline px-3 py-2 active:cursor-grabbing"
@@ -474,7 +485,7 @@ const MeetingPanel: React.FC = () => {
           }`}
         />
         <div data-tauri-drag-region className="min-w-0 flex-1">
-          <div data-tauri-drag-region className="flex items-baseline gap-2">
+          <div data-tauri-drag-region className="flex items-baseline gap-1.5">
             {titleDraft !== null ? (
               <input
                 autoFocus
@@ -489,18 +500,35 @@ const MeetingPanel: React.FC = () => {
                 className="min-w-0 flex-1 rounded border border-hairline-strong bg-surface-2 px-1 py-[1px] text-[13px] font-medium outline-none"
               />
             ) : (
-              <button
-                type="button"
-                disabled={!meetingId}
-                onClick={() => setTitleDraft(meetingTitle ?? "")}
-                title={t("meeting.panel.renameMeetingHint")}
-                className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:underline disabled:cursor-default disabled:no-underline"
-              >
-                {title}
-              </button>
+              <>
+                <span
+                  data-tauri-drag-region
+                  className="min-w-0 shrink truncate text-[13px] font-medium"
+                >
+                  {title}
+                </span>
+                {meetingId && (
+                  <button
+                    type="button"
+                    onClick={() => setTitleDraft(meetingTitle ?? "")}
+                    title={t("meeting.panel.renameMeetingHint")}
+                    aria-label={t("meeting.panel.renameMeetingHint")}
+                    className="shrink-0 self-center rounded p-0.5 text-text-faint transition-colors hover:bg-fill-2 hover:text-text"
+                  >
+                    <Pencil className="h-3 w-3" aria-hidden />
+                  </button>
+                )}
+                {/* Claims the slack between the title and the clock, so the
+                    widest part of the bar is draggable rather than dead. */}
+                <span
+                  data-tauri-drag-region
+                  className="min-w-0 flex-1 self-stretch"
+                />
+              </>
             )}
             {showDuration && (
               <span
+                data-tauri-drag-region
                 className="shrink-0 text-[11px] tabular-nums text-text-subtle"
                 title={t("meeting.panel.durationHint")}
               >
@@ -509,13 +537,27 @@ const MeetingPanel: React.FC = () => {
             )}
           </div>
           {active && paused && (
-            <div className="truncate text-[11px] text-warning">
+            <div
+              data-tauri-drag-region
+              className="truncate text-[11px] text-warning"
+            >
               {t("meeting.panel.pausedNotice")}
             </div>
           )}
           {active && !paused && !status?.systemAudioActive && (
-            <div className="truncate text-[11px] text-warning">
+            <div
+              data-tauri-drag-region
+              className="truncate text-[11px] text-warning"
+            >
               {t("meeting.panel.micOnly")}
+            </div>
+          )}
+          {draining && (
+            <div
+              data-tauri-drag-region
+              className="truncate text-[11px] text-text-subtle"
+            >
+              {t("meeting.panel.finishing")}
             </div>
           )}
         </div>
