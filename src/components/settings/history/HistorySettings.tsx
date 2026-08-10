@@ -53,6 +53,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { getAppInfoByName, categoryColors } from "@/lib/appIcons";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { PageHeader } from "../../ui/PageHeader";
+import { AskPanel } from "./AskPanel";
 import { NotesTimeline, type TimelineGroup } from "./NotesTimeline";
 
 const IconButton: React.FC<{
@@ -913,6 +914,11 @@ export const HistorySettings: React.FC = () => {
           />
         }
       />
+
+      {/* Ask sits above the toolbar: it answers questions across everything,
+          where search below filters the list in front of you. Two different
+          jobs, and stacking them makes the difference legible. */}
+      <AskPanel />
 
       {/* Toolbar: search + sort + actions — all 32px tall for a clean grid */}
       <div className="flex items-center gap-2">

@@ -77,6 +77,34 @@ impl GatewayCode {
     }
 }
 
+/// What a request is *for*.
+///
+/// Max is asked for a job, never a model: the gateway maps the alias to a
+/// concrete Anthropic model, so routing retunes in a Worker deploy with no app
+/// release. Bring-your-own-key providers have one model configured for
+/// everything, so the job is ignored for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Job {
+    /// Per-dictation work: refinement, voice edit, note titles, live meeting
+    /// line cleanup. Runs constantly, so it runs cheap.
+    Fast,
+    /// One-shot reasoning over a lot of text — meeting summaries, and
+    /// questions asked of the transcript history.
+    Balanced,
+    /// Anything with an image attached.
+    Vision,
+}
+
+impl Job {
+    pub fn alias(self) -> &'static str {
+        match self {
+            Job::Fast => "ghostly-fast",
+            Job::Balanced => "ghostly-balanced",
+            Job::Vision => "ghostly-vision",
+        }
+    }
+}
+
 /// One resolved LLM destination: which provider, which model, which key.
 ///
 /// Every call site already assembles exactly this triple out of settings, so
@@ -116,6 +144,18 @@ impl Target {
 
     pub fn is_max(&self) -> bool {
         self.provider.id == MAX_PROVIDER_ID
+    }
+
+    /// Point this target at the model that suits `job`.
+    ///
+    /// Only meaningful for Max. Every other provider has exactly one model the
+    /// user configured, and silently swapping it for a name they never entered
+    /// would fail — their key is for their model.
+    pub fn for_job(mut self, job: Job) -> Self {
+        if self.is_max() {
+            self.model = job.alias().to_string();
+        }
+        self
     }
 }
 

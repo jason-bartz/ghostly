@@ -1972,6 +1972,20 @@ async openBillingPortal() : Promise<Result<null, LicenseError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Answer a question from the user's own notes and meetings.
+ * 
+ * Errors are already user-facing strings — retrieval and entitlement failures
+ * both surface here, and the pane shows them verbatim.
+ */
+async askTranscripts(question: string) : Promise<Result<AskAnswer, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ask_transcripts", { question }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async activateFromSession(sessionId: string) : Promise<Result<LicenseState, LicenseError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("activate_from_session", { sessionId }) };
@@ -2251,6 +2265,26 @@ export type Appearance = "dark" | "light" |
  * Follow the macOS appearance setting, live.
  */
 "system"
+export type AskAnswer = { answer: string; sources: AskSource[]; 
+/**
+ * True when retrieval found nothing, so `answer` is a local message and
+ * no request was made. Lets the UI style it as an empty state rather than
+ * as something the model said.
+ */
+no_matches: boolean }
+/**
+ * One passage the answer was drawn from, with enough identity to open it.
+ */
+export type AskSource = { kind: AskSourceKind; 
+/**
+ * History entry id, or meeting id.
+ */
+id: string; title: string; 
+/**
+ * Unix seconds.
+ */
+when: number; snippet: string }
+export type AskSourceKind = "note" | "meeting"
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoCleanupLevel = "none" | "light" | "medium" | "high"
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"

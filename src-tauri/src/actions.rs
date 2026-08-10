@@ -1372,7 +1372,8 @@ async fn screenshot_qa_via_llm(
             provider,
             model,
             api_key,
-        },
+        }
+        .for_job(crate::max_gateway::Job::Vision),
         transcription.to_string(),
         image_png,
         Some(system_prompt),

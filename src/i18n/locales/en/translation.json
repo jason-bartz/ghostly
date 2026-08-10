@@ -2002,5 +2002,17 @@
       "noKeyHint": "Don't have an API key? Ghostly Max runs AI for you — nothing to set up.",
       "learnMore": "About Max"
     }
+  },
+  "ask": {
+    "open": "Ask your transcripts",
+    "placeholder": "What did I say about…?",
+    "submit": "Ask",
+    "privacyNote": "Ghostly searches your notes and meetings on this Mac and sends only the matching passages — never your whole history.",
+    "sources": "Based on {{count}} passage",
+    "sources_other": "Based on {{count}} passages",
+    "note": "Note",
+    "meeting": "Meeting",
+    "untitled": "Untitled",
+    "askAnother": "Ask another"
   }
 }
