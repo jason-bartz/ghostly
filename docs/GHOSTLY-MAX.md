@@ -231,26 +231,32 @@ Candidates are cleared after every pass, accepted or not — a rejected pair re-
 
 **Not the Batch API, despite the plan.** After the local diff the daily payload is a few dozen short pairs, well under a cent. Halving that does not pay for submit/poll/retrieve plumbing, a 24-hour SLA, and gateway endpoints `/v1/chat/completions` already provides.
 
-### Phase 4 — Encrypted sync — **foundation done, transport and bridge remain**
+### Phase 4 — Encrypted sync — **done**
 
-The three questions this section demanded be settled first are settled, and `sync/crypto.rs` + `sync/records.rs` implement them, with 18 tests. Nothing is wired to real data yet, deliberately.
+Vocabulary, word corrections, prompts, profiles and correction phrases travel between a user's Macs. The server holds ciphertext it cannot read.
 
-| Decision    | Answer                                                           |
-| ----------- | ---------------------------------------------------------------- |
-| Key custody | Passphrase → Argon2id → key. No recovery, no escrow, no reset.   |
-| Conflicts   | Last write wins per record, ties to the tombstone.               |
-| Server sees | Opaque blobs. `kind` is folded into the record id, not a column. |
+| Decision    | Answer                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------- |
+| Key custody | Passphrase → Argon2id → key, kept in the OS keychain. No recovery, no escrow, no reset. |
+| Conflicts   | Last write wins per record, ties to the tombstone.                                      |
+| Server sees | Opaque blobs. `kind` is folded into the record id, not a column.                        |
 
-Scope is settings-shaped data — vocabulary, word corrections, prompts, profiles, correction phrases. **Not history.** Carrying vocabulary to a new Mac is what people want, it is kilobytes, and every record is independently replaceable; syncing transcripts would be gigabytes of the most sensitive data the app holds to solve a problem nobody asked for.
+**Not history.** Carrying vocabulary to a new Mac is what people want, it is kilobytes, and every record is independently replaceable. Syncing transcripts would be gigabytes of the most sensitive data the app holds to solve a problem nobody asked for.
 
-Two details in the code that are easy to undo by accident:
+Pull → merge → apply → push. A device that has been away sees the world before it argues with it, and the push carries the merged result. It pushes everything it holds, not a delta: the server's write is monotonic so unchanged records are a no-op, and it is what makes a first sync from an established Mac work at all.
 
-- The record id is authenticated as AAD. A server that shuffles blobs between records gets a decryption failure rather than plausible wrong data.
-- `record_id` lowercases the natural key where the data is case-insensitive (a word) and leaves it where it is not (a profile id). Backwards either way duplicates words or merges distinct profiles.
+> **Four things that are each a data-loss bug if done the obvious way:**
+>
+> 1. `bridge::apply` takes the **full merged set** and rebuilds each collection, never a delta. Reasoning about what is absent from a partial list is where "the sync deleted everything" lives.
+> 2. An **empty prompt set is ignored** — it means the remote has never synced prompts, not that the user deleted theirs, and it is the one case not recoverable by retyping a word.
+> 3. `touch_sync` is called by the collection setters and **never by the engine**. Bumping it while applying a merge makes the local side newest every time, and two Macs ping-pong their edits forever.
+> 4. A record that fails to decrypt is **logged and skipped**, not fatal. One corrupt blob would otherwise wedge the account permanently.
 
-**What remains:** a D1 table and push/pull endpoints on the Worker; a transport client; the bridge that maps `AppSettings` collections to `Record`s and back; settings fields (`sync_enabled`, `sync_salt`, verifier blob); and the UI — passphrase setup with blunt copy about there being no recovery, a new-device join flow, and sync status.
+**Known cost, accepted:** one timestamp per collection, not per item — a vocabulary word is a `String` in a `Vec` with nowhere to put one. Editing one word makes the whole list newer, so a device that edited a different word a minute earlier loses it. Per-item timestamps mean five schema migrations to protect a word the user can retype. Revisit if prompts start carrying anything expensive to recreate.
 
-Do the bridge last and test it against a throwaway account. It is the only part that can destroy data, and it is the part where "last write wins" stops being a table and starts being someone's vocabulary list.
+**Known leak, accepted:** `record_id` is stored in plaintext, so the server can see that an account has `vocabulary:kubernetes`. Opaque ids need a client-side id→hash index, which has to sync, which needs an id. Hashing the natural key under the account key closes it if the threat model tightens.
+
+Endpoints verified against production: meta create/refuse-overwrite, monotonic push (a stale write does not overwrite a newer one), tombstone propagation, watermark filtering, reset, and unauthenticated rejection.
 
 ### Flipping the site to live checkout — **done 2026-08-10**
 
@@ -271,6 +277,8 @@ Do the bridge last and test it against a throwaway account. It is the only part 
 **Stripe account branding is Dashboard-only.** `/v1/accounts` only accepts branding writes for Connect accounts.
 
 **`STRIPE_SECRET_KEY` in the Worker was an invalid placeholder for months and nothing noticed**, because webhook signature verification is local HMAC over `STRIPE_WEBHOOK_SECRET` and never touches the Stripe API. `/billing/portal` and the chargeback handler are the first code that actually calls Stripe. It is now set to the `rk_live` key from `~/.ghostly-keys/stripe-admin.key`. **Replace it with a key scoped to `billing_portal:write` + `charges:read` and do not revoke the admin key until you have**, or the Manage-billing button starts returning 502.
+
+**A brand-new Worker route 404s for a few seconds after `wrangler deploy`.** Seen twice — `/v1/chat/completions` and `/sync/records` both returned `{"error":"not_found"}` on the first request and worked on the retry, while other routes from the same deploy answered immediately. Retry before debugging routing.
 
 **Adding a webhook handler is two steps, and the second is invisible from the code.** The Stripe endpoint (`we_1TMa0UBH5FhMp4sKJ0Sl4l80`) only delivers events it is subscribed to. Shipping the `invoice.paid` handler without adding `invoice.paid` to `enabled_events` would have meant no subscriber was ever granted entitlement, with nothing in the code to hint at why. Current list: `checkout.session.completed`, `charge.refunded`, `charge.dispute.created`, 3× `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed`.
 
