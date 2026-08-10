@@ -109,7 +109,7 @@ export const RefinementStep: React.FC<TourStepProps> = ({ setFooter }) => {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <StepHeader
         eyebrow={t("tour.refinement.eyebrow")}
         title={t("tour.refinement.title")}
@@ -120,7 +120,7 @@ export const RefinementStep: React.FC<TourStepProps> = ({ setFooter }) => {
       <div
         data-rise
         style={{ "--i": 1 } as React.CSSProperties}
-        className="surface-card-inlay px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-start gap-3"
+        className="surface-card-inlay px-4 py-2.5 grid grid-cols-[1fr_auto_1fr] items-start gap-3"
       >
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-faint mb-1.5">
@@ -154,7 +154,7 @@ export const RefinementStep: React.FC<TourStepProps> = ({ setFooter }) => {
                 data-rise
                 style={{ "--i": 2 + i } as React.CSSProperties}
                 onClick={() => void apply(option.id)}
-                className={`w-full text-start px-4 py-2.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+                className={`w-full text-start px-4 py-2 rounded-xl border transition-all duration-200 cursor-pointer ${
                   active
                     ? "bg-accent/[0.09] border-accent/45"
                     : "surface-card hover:border-hairline-strong hover:bg-fill-2"
@@ -162,10 +162,8 @@ export const RefinementStep: React.FC<TourStepProps> = ({ setFooter }) => {
               >
                 <div className="flex items-start gap-3">
                   <span
-                    className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 border transition-colors ${
-                      active
-                        ? "bg-accent/15 border-accent/35"
-                        : "bg-fill-2 border-hairline"
+                    className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors ${
+                      active ? "bg-accent/15" : "bg-fill-2"
                     }`}
                   >
                     <Icon
@@ -206,7 +204,7 @@ export const RefinementStep: React.FC<TourStepProps> = ({ setFooter }) => {
       <p
         data-rise
         style={{ "--i": 5 } as React.CSSProperties}
-        className="text-[11px] leading-snug text-text-faint text-center"
+        className="text-[11.5px] leading-snug text-text-muted text-center"
       >
         {t("tour.refinement.maxNote")}
       </p>

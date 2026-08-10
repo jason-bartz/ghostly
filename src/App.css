@@ -771,8 +771,11 @@ body {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--color-accent-bright);
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+    /* Flat, like `.tag`. The outline was doing the same job as the fill and
+       gave a label the visual weight of a control. Slightly stronger fill
+       compensates for the contrast the border was carrying. */
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border: none;
     border-radius: 9999px;
   }
 

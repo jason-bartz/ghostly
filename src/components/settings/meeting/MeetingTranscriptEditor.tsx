@@ -176,7 +176,7 @@ export const MeetingTranscriptEditor: React.FC<Props> = ({
         {speakers.map((speaker) => (
           <div
             key={speaker.id}
-            className="flex items-center gap-1 rounded-md border border-hairline-strong bg-fill-1 px-1.5 py-0.5"
+            className="flex items-center gap-1 rounded-md bg-fill-2 px-1.5 py-0.5"
           >
             {renamingSpeaker === speaker.id ? (
               <input

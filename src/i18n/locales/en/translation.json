@@ -258,29 +258,6 @@
       },
       "maxNote": "No API key? Ghostly Max runs it hosted, from $12/month. Everything above stays free."
     },
-    "highlights": {
-      "eyebrow": "Beyond dictation",
-      "title": "Three things Ghostly also does",
-      "body": "Not dictation, and not obvious from the main window. These are why people keep Ghostly open.",
-      "hint": "Nothing to set up now — this is just so you know it's there.",
-      "items": {
-        "notes": {
-          "title": "Notes",
-          "body": "Every transcription is saved as a searchable note — what you said, when you said it, and which app you were in. Tag them, star them, come back to them.",
-          "where": "Notes, in the sidebar."
-        },
-        "meetings": {
-          "title": "Meeting Mode",
-          "body": "Live transcription of your calls in a floating panel, both sides, on this Mac. Ghostly never joins — no bot in your participant list. Ask “Where were we?” to catch up.",
-          "where": "Meetings, in the sidebar — off until you switch it on."
-        },
-        "openMic": {
-          "title": "Open Mic",
-          "body": "Leave the mic open and stop touching keys. Every pause becomes a transcription — finish with your submit phrase to send it.",
-          "where": "Dictation, in the sidebar — off until you switch it on."
-        }
-      }
-    },
     "features": {
       "eyebrow": "Worth knowing",
       "title": "Five things people miss",
