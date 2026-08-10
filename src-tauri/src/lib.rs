@@ -37,6 +37,7 @@ mod shortcut;
 mod signal_handle;
 mod staged_capture;
 mod stream_cancel;
+mod sync;
 mod system_audio;
 mod telemetry;
 mod transcription_coordinator;
