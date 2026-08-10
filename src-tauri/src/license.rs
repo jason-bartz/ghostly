@@ -104,6 +104,10 @@ pub struct TokenPayload {
     pub expires_at: i64,
     #[serde(default)]
     pub product_version: Option<String>,
+    /// "pro" for the retired perpetual licence, "max" for the subscription.
+    /// Absent on tokens minted before Max existed, which are all Pro.
+    #[serde(default)]
+    pub tier: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

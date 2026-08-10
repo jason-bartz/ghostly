@@ -73,6 +73,9 @@ pub async fn activate_license(app: AppHandle, key: String) -> Result<LicenseStat
     let mut settings = get_settings(&app);
     settings.is_pro = true;
     write_settings(&app, settings);
+    // A Max licence carries its hosted-AI credential; wire it up immediately
+    // so the provider works without a restart.
+    crate::settings::sync_max_provider_key(&app);
 
     Ok(current_state(&app))
 }
@@ -93,6 +96,9 @@ pub async fn deactivate_license(app: AppHandle) -> Result<(), LicenseError> {
     let mut settings = get_settings(&app);
     settings.is_pro = false;
     write_settings(&app, settings);
+    // Drops the Max credential too — a deactivated machine must stop
+    // reaching the gateway.
+    crate::settings::sync_max_provider_key(&app);
 
     match remote {
         Ok(()) => Ok(()),
@@ -135,6 +141,9 @@ pub async fn revalidate_license(app: AppHandle) -> Result<LicenseState, String> 
                         settings.is_pro = true;
                         write_settings(&app, settings);
                     }
+                    // Revalidation is where a tier change lands: an upgrade to
+                    // Max, or a lapsed subscription dropping back to Pro.
+                    crate::settings::sync_max_provider_key(&app);
                 }
             }
             Ok(current_state(&app))
