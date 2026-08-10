@@ -11,6 +11,7 @@ import {
   BrainCircuit,
   Layers,
   Mic,
+  Sparkles,
   Terminal,
   Gauge,
   Stethoscope,
@@ -43,6 +44,7 @@ import {
   PerformanceSettings,
   MeetingsSection,
 } from "./settings";
+import { AskSection } from "./ask/AskSection";
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
 
@@ -102,6 +104,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.meeting",
     icon: Users,
     component: MeetingsSection,
+    enabled: () => true,
+  },
+  ask: {
+    labelKey: "sidebar.ask",
+    icon: Sparkles,
+    component: AskSection,
     enabled: () => true,
   },
   advanced: {
@@ -165,6 +173,7 @@ export const SECTIONS_CONFIG = {
 const PRIMARY_SECTIONS = [
   "history",
   "meeting",
+  "ask",
   "general",
   "postprocessing",
 ] as const satisfies readonly SidebarSection[];

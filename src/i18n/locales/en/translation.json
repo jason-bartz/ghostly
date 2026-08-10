@@ -61,7 +61,8 @@
     "milestone": {
       "label": "You've dictated",
       "progress": "{{percent}}% to {{title}}"
-    }
+    },
+    "ask": "Ask"
   },
   "onboarding": {
     "recommended": "Recommended",
@@ -803,6 +804,9 @@
         "appCount": "{{count}} app",
         "appCount_other": "{{count}} apps",
         "unknownApp": "Unknown app"
+      },
+      "reveal": {
+        "notFound": "Couldn't find that note — it may have been deleted."
       }
     },
     "debug": {
@@ -1922,7 +1926,8 @@
       "merged_one": "Moved {{count}} line",
       "merged_other": "Moved {{count}} lines",
       "reassignLine": "Change who said this",
-      "editLine": "Click to correct this line"
+      "editLine": "Click to correct this line",
+      "revealNotFound": "Couldn't find that meeting — it may have been deleted."
     }
   },
   "max": {
@@ -1978,10 +1983,50 @@
     "upsell": {
       "noKeyHint": "Don't have an API key? Ghostly Max runs AI for you — nothing to set up.",
       "learnMore": "About Max"
+    },
+    "upgrade": {
+      "eyebrow": "Ghostly Max",
+      "headline": "The AI, already switched on.",
+      "subhead": "Everything in the free app, with no API key to find, paste or pay for — plus the features that need a server to exist. Your voice still never leaves this Mac.",
+      "benefits": {
+        "noKey": {
+          "title": "Nothing to set up",
+          "body": "Cleanup, voice editing and meeting summaries work the moment you activate. No provider to pick, no key to paste, no model to choose."
+        },
+        "routing": {
+          "title": "The right model for each job",
+          "body": "A fast one for cleanup, a stronger one for summaries and questions. Tuned and updated server-side, so there is no config screen to keep up with."
+        },
+        "ask": {
+          "title": "Ask your transcripts",
+          "body": "Question everything you have ever dictated or recorded, and open the note or meeting behind every citation."
+        },
+        "vocabulary": {
+          "title": "Learns your vocabulary",
+          "body": "Names, products and jargon you correct once stop coming back wrong."
+        },
+        "sync": {
+          "title": "Encrypted sync and restore",
+          "body": "Your notes and settings on every Mac you own, end-to-end encrypted with a key only you hold."
+        },
+        "privacy": {
+          "title": "Your voice stays on your Mac",
+          "body": "Transcription is on-device on every tier, paid or not. Max sends text for reasoning — never your audio."
+        }
+      },
+      "price": {
+        "amount": "$12",
+        "period": "/ month",
+        "yearly": "or $108 a year — two months free"
+      },
+      "cta": "Get Ghostly Max",
+      "payYearly": "Pay yearly instead",
+      "finePrint": "Cancel any time from Settings → Account. Checkout opens in your browser; your licence activates back here automatically.",
+      "haveKey": "Already subscribed? Activate your licence",
+      "compare": "See the full comparison"
     }
   },
   "ask": {
-    "open": "Ask your transcripts",
     "placeholder": "What did I say about…?",
     "submit": "Ask",
     "privacyNote": "Ghostly searches your notes and meetings on this Mac and sends only the matching passages — never your whole history.",
@@ -1990,7 +2035,35 @@
     "note": "Note",
     "meeting": "Meeting",
     "untitled": "Untitled",
-    "askAnother": "Ask another"
+    "askAnother": "Ask another",
+    "title": "Ask",
+    "subtitle": "Ask a question of everything you've dictated and recorded.",
+    "clear": "Clear",
+    "copy": "Copy",
+    "copied": "Answer copied",
+    "openSource": "Open this in its own pane",
+    "scope": {
+      "label": "What to search",
+      "both": "Everything",
+      "notes": "Notes",
+      "meetings": "Meetings"
+    },
+    "export": {
+      "button": "Export",
+      "plainText": "Plain text",
+      "saved": "Answer saved",
+      "sourcesHeading": "Sources",
+      "footer": "Asked in Ghostly · searched: {{scope}}"
+    },
+    "locked": {
+      "pill": "Max feature",
+      "title": "Ask your transcripts",
+      "subscribe": "Subscribe to Max",
+      "useOwnKey": "Or use your own API key",
+      "onDevice": "Ask needs a cloud model — the on-device one can't hold enough of your history at once. Ghostly Max includes one, or you can point Refinement at your own provider.",
+      "noProvider": "Ask needs a cloud model to reason over the passages it finds. Ghostly Max includes one, or you can configure your own provider in Refinement.",
+      "noKey": "Ask needs a cloud model to reason over the passages it finds. Subscribe to Ghostly Max, or add an API key for your provider in Refinement."
+    }
   },
   "dictionary": {
     "learned": {

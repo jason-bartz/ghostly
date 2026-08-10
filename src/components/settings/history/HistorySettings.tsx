@@ -44,6 +44,7 @@ import {
   type HistoryUpdatePayload,
 } from "@/bindings";
 import { useOsType } from "@/hooks/useOsType";
+import { useReveal, type RevealTarget } from "@/lib/reveal";
 import { formatDateTime } from "@/utils/dateFormat";
 import { AudioPlayer } from "../../ui/AudioPlayer";
 import { DateRangePicker, type DateRange } from "../../ui/DateRangePicker";
@@ -53,7 +54,6 @@ import { useSettings } from "@/hooks/useSettings";
 import { getAppInfoByName, categoryColors } from "@/lib/appIcons";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { PageHeader } from "../../ui/PageHeader";
-import { AskPanel } from "./AskPanel";
 import { NotesTimeline, type TimelineGroup } from "./NotesTimeline";
 
 const IconButton: React.FC<{
@@ -100,6 +100,24 @@ const ToolbarButton: React.FC<{
 );
 
 const PAGE_SIZE = 30;
+
+/** How far back a citation may reach before we give up walking the timeline. */
+const MAX_REVEAL_PAGES = 20;
+
+/**
+ * Append a page, skipping rows already present.
+ *
+ * The reveal walk and the infinite scroll can both be fetching, and the same
+ * page arriving twice would render duplicate entries with duplicate React keys.
+ */
+function appendUnseen(
+  current: HistoryEntry[],
+  page: HistoryEntry[],
+): HistoryEntry[] {
+  const seen = new Set(current.map((e) => e.id));
+  const additions = page.filter((e) => !seen.has(e.id));
+  return additions.length > 0 ? [...current, ...additions] : current;
+}
 
 type SortMode = "newest" | "oldest" | "saved";
 
@@ -301,6 +319,69 @@ export const HistorySettings: React.FC = () => {
       }
     };
   }, [searchQuery, selectedTags, dateRange]);
+
+  // Jumping here from a citation in Ask. The cited note may be hundreds of
+  // entries down a list that loads thirty at a time, so walk toward it rather
+  // than dropping the user at the top and calling that navigation.
+  const [revealedId, setRevealedId] = useState<number | null>(null);
+
+  const revealNote = useCallback(
+    async (target: RevealTarget) => {
+      const id = target.noteId;
+      if (id === undefined) return;
+
+      // A citation addresses the whole timeline, so whatever narrowed it has
+      // to go — otherwise the entry is "missing" because a tag filter hid it.
+      setSearchQuery("");
+      setSelectedTags([]);
+      setDateRange(null);
+      setRevealedId(id);
+
+      // The first page is usually still in flight — this runs on mount, right
+      // after the navigation. Walking past it would race the load that replaces
+      // the whole list, and everything appended here would vanish.
+      for (let i = 0; loadingRef.current && i < 60; i++) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+
+      // Fetched directly rather than through `loadPage`, which declines to run
+      // while the infinite scroll holds the lock — a decline here would read as
+      // "that note doesn't exist".
+      let known = entriesRef.current;
+      let pages = 0;
+      while (!known.some((e) => e.id === id) && pages < MAX_REVEAL_PAGES) {
+        const cursor = known[known.length - 1]?.id ?? null;
+        const result = await commands.getHistoryEntries(cursor, PAGE_SIZE);
+        if (result.status !== "ok") break;
+        const { entries: page, has_more } = result.data;
+        known = [...known, ...page];
+        setEntries((prev) => appendUnseen(prev, page));
+        setHasMore(has_more);
+        pages += 1;
+        if (!has_more || page.length === 0) break;
+      }
+
+      if (!known.some((e) => e.id === id)) {
+        toast.error(t("settings.history.reveal.notFound"));
+        setRevealedId(null);
+        return;
+      }
+
+      // Two frames: one for React to commit the newly loaded rows, one for the
+      // browser to lay them out before we ask for the element's position.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          document
+            .querySelector(`[data-entry-id="${id}"]`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }),
+      );
+      window.setTimeout(() => setRevealedId(null), 2600);
+    },
+    [t],
+  );
+
+  useReveal("history", revealNote);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -796,6 +877,7 @@ export const HistorySettings: React.FC = () => {
       isSelected={selected.has(entry.id)}
       onToggleSelect={() => toggleSelect(entry.id)}
       selectionActive={selected.size > 0}
+      revealed={revealedId === entry.id}
     />
   );
 
@@ -914,11 +996,6 @@ export const HistorySettings: React.FC = () => {
           />
         }
       />
-
-      {/* Ask sits above the toolbar: it answers questions across everything,
-          where search below filters the list in front of you. Two different
-          jobs, and stacking them makes the difference legible. */}
-      <AskPanel />
 
       {/* Toolbar: search + sort + actions — all 32px tall for a clean grid */}
       <div className="flex items-center gap-2">
@@ -1211,6 +1288,8 @@ interface HistoryEntryProps {
   onToggleSelect: () => void;
   /** True when any entry is selected — keeps checkboxes visible even when not hovering. */
   selectionActive: boolean;
+  /** Briefly ringed after being jumped to from an Ask citation. */
+  revealed: boolean;
 }
 
 /** Highlight matching text in a string */
@@ -1341,6 +1420,7 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   isSelected,
   onToggleSelect,
   selectionActive,
+  revealed,
 }) => {
   const { t, i18n } = useTranslation();
   const [showCopied, setShowCopied] = useState(false);
@@ -1454,9 +1534,10 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
 
   return (
     <div
+      data-entry-id={entry.id}
       className={`group/entry relative pl-9 pr-4 py-2 pb-5 flex flex-col gap-3 transition-colors ${
         isSelected ? "bg-logo-primary/5" : ""
-      }`}
+      } ${revealed ? "rounded-lg ring-2 ring-accent/60 bg-accent/5" : ""}`}
     >
       <input
         type="checkbox"

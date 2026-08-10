@@ -28,6 +28,7 @@ import { SegmentedControl } from "../../ui/SegmentedControl";
 import { PageHeader } from "../../ui/PageHeader";
 import { MeetingTranscriptEditor } from "./MeetingTranscriptEditor";
 import { commands } from "../../../bindings";
+import { useReveal, type RevealTarget } from "@/lib/reveal";
 import type {
   MeetingSegment,
   MeetingSpeaker,
@@ -200,6 +201,59 @@ export const MeetingsLibrary: React.FC = () => {
       setExpanded({ segments: segments.data, speakers: speakers.data });
     }
   };
+
+  // Arriving from a citation in Ask. The library already loads the most recent
+  // 200 meetings, so the usual case is a row that is present but off-screen and
+  // collapsed; a filter left over from a previous visit is the one thing that
+  // could hide it, so it goes first.
+  const [revealedId, setRevealedId] = useState<string | null>(null);
+
+  const revealMeeting = useCallback(
+    async (target: RevealTarget) => {
+      const id = target.meetingId;
+      if (id === undefined) return;
+
+      setQuery("");
+      setRange(null);
+      setTagFilter(null);
+
+      const result = await commands.browseMeetings(null, null, null, 200);
+      if (result.status !== "ok") {
+        toast.error(result.error);
+        return;
+      }
+      setRows(result.data);
+      if (!result.data.some((row) => row.meeting.id === id)) {
+        toast.error(t("meeting.library.revealNotFound"));
+        return;
+      }
+
+      setRevealedId(id);
+      setExpandedId(id);
+      setExpanded(null);
+      const [segments, speakers] = await Promise.all([
+        commands.getMeetingSegments(id),
+        commands.getMeetingSpeakers(id),
+      ]);
+      if (segments.status === "ok" && speakers.status === "ok") {
+        setExpanded({ segments: segments.data, speakers: speakers.data });
+      }
+
+      // Two frames: one for React to commit the rows, one for layout to settle
+      // before we ask the element where it is.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          document
+            .querySelector(`[data-meeting-id="${id}"]`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }),
+      );
+      window.setTimeout(() => setRevealedId(null), 2600);
+    },
+    [t],
+  );
+
+  useReveal("meeting", revealMeeting);
 
   const handleCopy = async (meetingId: string) => {
     const result = await commands.exportMeetingText(meetingId, true);
@@ -562,9 +616,14 @@ export const MeetingsLibrary: React.FC = () => {
                   return (
                     <div
                       key={row.meeting.id}
-                      className={
-                        index > 0 ? "border-t border-hairline" : undefined
-                      }
+                      data-meeting-id={row.meeting.id}
+                      className={`${
+                        index > 0 ? "border-t border-hairline" : ""
+                      } ${
+                        revealedId === row.meeting.id
+                          ? "rounded-lg bg-accent/5 ring-2 ring-accent/60"
+                          : ""
+                      }`}
                     >
                       <div className="group flex items-start gap-2 px-3 py-2.5">
                         <button
