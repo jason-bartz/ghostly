@@ -11,7 +11,6 @@ import { ModelStateEvent, RecordingErrorEvent } from "./lib/types/events";
 import "./App.css";
 import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import { EulaGate } from "./components/EulaGate";
-import { PaywallModal } from "./components/PaywallModal";
 import Footer from "./components/footer";
 import { Tour, type TourMode } from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
@@ -391,7 +390,6 @@ function App() {
       </div>
       {/* Fixed footer at bottom */}
       <Footer />
-      <PaywallModal />
       <UpdateModal />
     </div>
   );
