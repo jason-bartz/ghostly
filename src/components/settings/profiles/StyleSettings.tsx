@@ -119,7 +119,7 @@ export const StyleSettings: React.FC = () => {
           <div
             role="tablist"
             aria-label={t("settings.style.title")}
-            className="shrink-0 w-[168px] border-e border-hairline-strong p-2 flex flex-col gap-0.5"
+            className="shrink-0 w-[190px] border-e border-hairline-strong p-2 flex flex-col gap-0.5"
           >
             {TABS.map(({ key, labelKey, Icon, aside }, i) => {
               const active = activeTab === key;

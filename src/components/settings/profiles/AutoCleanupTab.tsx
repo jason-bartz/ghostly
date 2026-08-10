@@ -1,6 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { StyleCard } from "./StyleCard";
+import { StylePicker, type StyleOption } from "./StylePicker";
+import { SectionLabel } from "./SectionLabel";
 import type { AutoCleanupLevel } from "./types";
 
 interface AutoCleanupTabProps {
@@ -13,30 +14,38 @@ const LEVELS: Array<{
   titleKey: string;
   subKey: string;
   sampleKey: string;
+  /** Ordinal weight, drawn as the little meter on the row. */
+  intensity: number;
+  isDefault?: boolean;
 }> = [
   {
     id: "none",
     titleKey: "settings.style.cleanup.none.title",
     subKey: "settings.style.cleanup.none.subtitle",
     sampleKey: "settings.style.cleanup.none.sample",
+    intensity: 0,
   },
   {
     id: "light",
     titleKey: "settings.style.cleanup.light.title",
     subKey: "settings.style.cleanup.light.subtitle",
     sampleKey: "settings.style.cleanup.light.sample",
+    intensity: 1,
   },
   {
     id: "medium",
     titleKey: "settings.style.cleanup.medium.title",
     subKey: "settings.style.cleanup.medium.subtitle",
     sampleKey: "settings.style.cleanup.medium.sample",
+    intensity: 2,
+    isDefault: true,
   },
   {
     id: "high",
     titleKey: "settings.style.cleanup.high.title",
     subKey: "settings.style.cleanup.high.subtitle",
     sampleKey: "settings.style.cleanup.high.sample",
+    intensity: 3,
   },
 ];
 
@@ -46,33 +55,39 @@ export const AutoCleanupTab: React.FC<AutoCleanupTabProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const pick = (next: AutoCleanupLevel) => {
-    onLevelChanged(next);
-  };
+  const options: StyleOption[] = LEVELS.map((lvl) => ({
+    id: lvl.id,
+    title: t(lvl.titleKey),
+    subtitle: t(lvl.subKey),
+    sample: t(lvl.sampleKey),
+    intensity: lvl.intensity,
+    badge: lvl.isDefault ? (
+      <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-text-faint">
+        {t("settings.style.cleanup.defaultBadge")}
+      </span>
+    ) : undefined,
+  }));
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-xl bg-gradient-to-r from-accent-alt/15 via-accent-alt/5 to-transparent border border-accent-alt/20 px-4 py-3">
-        <div className="text-sm font-medium">
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-medium">
           {t("settings.style.cleanup.headerTitle")}
-        </div>
-        <div className="text-xs text-text/60 mt-0.5">
+        </h3>
+        <p className="text-[12.5px] text-text-muted leading-snug mt-0.5">
           {t("settings.style.cleanup.headerSubtitle")}
-        </div>
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {LEVELS.map((lvl) => (
-          <StyleCard
-            key={lvl.id}
-            title={t(lvl.titleKey)}
-            subtitle={t(lvl.subKey)}
-            sample={t(lvl.sampleKey)}
-            selected={level === lvl.id}
-            onSelect={() => pick(lvl.id)}
-          />
-        ))}
-      </div>
+      <section>
+        <SectionLabel>{t("settings.style.cleanup.sectionLabel")}</SectionLabel>
+        <StylePicker
+          ariaLabel={t("settings.style.cleanup.sectionLabel")}
+          options={options}
+          value={level}
+          onSelect={(id) => onLevelChanged(id as AutoCleanupLevel)}
+        />
+      </section>
     </div>
   );
 };
