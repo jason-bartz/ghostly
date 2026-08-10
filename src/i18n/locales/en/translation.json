@@ -1066,7 +1066,7 @@
           "sample": "Hey joey, are we still on for coffee? I think we should leave earlier to make it there in time. There might be traffic. What are you thinking?"
         },
         "medium": {
-          "title": "Medium (Default)",
+          "title": "Medium",
           "subtitle": "Improves clarity, removes “ums,” and makes more concise",
           "sample": "Hey joey, are we still on for coffee? We should leave earlier; there might be traffic. What do you think?"
         },
@@ -1074,7 +1074,9 @@
           "title": "High",
           "subtitle": "Rewrites for brevity and polish while keeping your meaning",
           "sample": "Hey joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?"
-        }
+        },
+        "sectionLabel": "Cleanup level",
+        "defaultBadge": "Default"
       },
       "advanced": {
         "title": "Advanced rules",
@@ -1085,6 +1087,12 @@
         "add": "Add rule",
         "newRule": "New rule",
         "detectFailed": "Couldn't detect the frontmost app."
+      },
+      "sections": {
+        "style": "Writing style"
+      },
+      "preview": {
+        "label": "Preview"
       }
     },
     "developer": {
