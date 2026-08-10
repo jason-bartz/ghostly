@@ -18,7 +18,6 @@ import PermissionsStep from "./steps/PermissionsStep";
 import ShortcutStep from "./steps/ShortcutStep";
 import PracticeStep from "./steps/PracticeStep";
 import RefinementStep from "./steps/RefinementStep";
-import HighlightsStep from "./steps/HighlightsStep";
 import FeaturesStep from "./steps/FeaturesStep";
 import FinishStep from "./steps/FinishStep";
 
@@ -31,7 +30,6 @@ const FULL_FLOW: TourStepId[] = [
   "shortcut",
   "practice",
   "refinement",
-  "highlights",
   "features",
   "finish",
 ];
@@ -179,8 +177,6 @@ export const Tour: React.FC<TourProps> = ({ mode, onComplete }) => {
         return <PracticeStep {...stepProps} />;
       case "refinement":
         return <RefinementStep {...stepProps} />;
-      case "highlights":
-        return <HighlightsStep {...stepProps} />;
       case "features":
         return <FeaturesStep {...stepProps} />;
       case "finish":

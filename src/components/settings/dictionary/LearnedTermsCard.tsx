@@ -53,8 +53,7 @@ export const LearnedTermsCard: React.FC = () => {
         {terms.map((term) => (
           <span
             key={`${term.wrong}-${term.correct}`}
-            className="inline-flex items-center gap-1.5 rounded-md border border-hairline-strong
-                       bg-fill-2 px-2 py-1 text-xs"
+            className="tag gap-1.5"
             title={t("dictionary.learned.pair", {
               wrong: term.wrong,
               correct: term.correct,

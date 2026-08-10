@@ -178,20 +178,14 @@
   font-weight: 600;
   line-height: 1;
   color: var(--color-text);
-  background: linear-gradient(
-    180deg,
-    var(--color-fill-3) 0%,
-    var(--color-fill-1) 100%
-  );
-  border: 1px solid var(--color-hairline-strong);
-  box-shadow:
-    inset 0 1px 0 var(--glass-specular),
-    0 2px 0 -1px var(--color-hairline-strong),
-    0 4px 10px -6px var(--glass-shadow);
+  /* Flat. The gradient, border and three-layer shadow were simulating a
+     physical keycap — a lot of chrome for a glyph that is being read, not
+     pressed. A single fill reads as "this is a key" just as well. */
+  background: var(--color-fill-2);
+  border: none;
+  box-shadow: none;
   transition:
     transform 140ms var(--tour-ease),
-    box-shadow 140ms var(--tour-ease),
-    border-color 140ms ease,
     background 140ms ease;
 }
 
@@ -203,16 +197,11 @@
 }
 
 .tour-keycap[data-pressed="true"] {
+  /* The press still needs to be unmistakable, so it keeps the nudge and gains
+     a solid accent fill rather than a gradient and a ring. */
   transform: translateY(2px);
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--color-accent) 22%, transparent) 0%,
-    color-mix(in srgb, var(--color-accent) 8%, transparent) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 var(--glass-specular),
-    0 0 0 4px var(--color-accent-glow);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--color-accent-bright);
 }
 
 /* -----------------------------------------------------------------------------
