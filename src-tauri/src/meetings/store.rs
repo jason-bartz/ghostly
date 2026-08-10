@@ -467,6 +467,52 @@ impl MeetingStore {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Meeting lines most relevant to an FTS query, best match first.
+    ///
+    /// Returns the line with enough of its meeting to cite — a bare sentence
+    /// with no idea which meeting or when it was said is not evidence anyone
+    /// can check.
+    pub fn retrieve_relevant_segments(
+        &self,
+        fts_query: &str,
+        limit: usize,
+    ) -> Result<Vec<(Meeting, MeetingSegment)>> {
+        let conn = self.conn()?;
+        // `m.id` and `s.id` collide, and both mappers read columns by name, so
+        // the segment side is aliased and mapped explicitly.
+        let mut stmt = conn.prepare(
+            "SELECT m.id, m.title, m.started_at, m.ended_at, m.app_bundle_id,
+                    m.app_display_name, m.detection_source, m.captured_system_audio,
+                    s.id AS seg_id, s.meeting_id AS seg_meeting_id,
+                    s.speaker_id AS seg_speaker_id, s.lane AS seg_lane,
+                    s.start_ms AS seg_start_ms, s.end_ms AS seg_end_ms,
+                    s.text AS seg_text, s.label_source AS seg_label_source,
+                    s.is_crosstalk AS seg_is_crosstalk
+             FROM meeting_segments_fts f
+             JOIN meeting_segments s ON s.id = f.rowid
+             JOIN meetings m ON m.id = s.meeting_id
+             WHERE f.text MATCH ?1
+             ORDER BY bm25(meeting_segments_fts) ASC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![fts_query, limit as i64], |row| {
+            let meeting = Self::map_meeting(row)?;
+            let segment = MeetingSegment {
+                id: row.get("seg_id")?,
+                meeting_id: row.get("seg_meeting_id")?,
+                speaker_id: row.get("seg_speaker_id")?,
+                lane: Lane::from_str(&row.get::<_, String>("seg_lane")?),
+                start_ms: row.get("seg_start_ms")?,
+                end_ms: row.get("seg_end_ms")?,
+                text: row.get("seg_text")?,
+                label_source: LabelSource::from_str(&row.get::<_, String>("seg_label_source")?),
+                is_crosstalk: row.get("seg_is_crosstalk")?,
+            };
+            Ok((meeting, segment))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     /// Meetings that started within a closed date range, in unix seconds.
     pub fn meetings_in_range(&self, from: i64, to: i64, limit: i64) -> Result<Vec<Meeting>> {
         let conn = self.conn()?;

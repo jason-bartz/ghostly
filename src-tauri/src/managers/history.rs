@@ -929,6 +929,31 @@ impl HistoryManager {
         Ok(entries)
     }
 
+    /// Notes most relevant to an FTS query, best match first.
+    ///
+    /// Distinct from [`Self::search_history_entries`], which orders by recency
+    /// because that is what a search box wants: you are looking for a note you
+    /// remember writing. Answering a question wants the opposite — the best
+    /// evidence, wherever it sits in the history — so this ranks by `bm25` and
+    /// leaves recency to the caller as a tiebreak.
+    pub fn retrieve_relevant(&self, fts_query: &str, limit: usize) -> Result<Vec<HistoryEntry>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT h.id, h.file_name, h.timestamp, h.saved, h.title,
+                    h.transcription_text, h.post_processed_text,
+                    h.post_process_prompt, h.post_process_requested, h.source_app
+             FROM transcription_history h
+             JOIN history_fts ON history_fts.rowid = h.id
+             WHERE history_fts MATCH ?1
+             ORDER BY bm25(history_fts) ASC
+             LIMIT ?2",
+        )?;
+        let entries = stmt
+            .query_map(params![fts_query, limit as i64], Self::map_history_entry)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
     /// Return entries matching any combination of text query, tag names, and
     /// date range. All filters are optional and additive. Newest first.
     pub async fn filter_history_entries(

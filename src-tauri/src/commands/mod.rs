@@ -1,3 +1,4 @@
+pub mod ask;
 pub mod audio;
 pub mod edit_chip;
 pub mod history;

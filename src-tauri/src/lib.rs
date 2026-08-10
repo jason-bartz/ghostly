@@ -1,6 +1,7 @@
 mod actions;
 mod ai_metadata;
 mod app_identity;
+mod ask;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
 mod audio_feedback;
@@ -774,6 +775,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::license::get_device_list,
             commands::license::get_ai_status,
             commands::license::open_billing_portal,
+            commands::ask::ask_transcripts,
             commands::license::activate_from_session,
             commands::license::open_payment_link,
             commands::edit_chip::apply_edit_chip,

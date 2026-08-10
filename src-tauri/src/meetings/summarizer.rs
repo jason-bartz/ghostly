@@ -402,13 +402,17 @@ async fn cloud(app: &AppHandle, instructions: &str, transcript: &str) -> Result<
     // Non-streaming deliberately: the streaming helper is OpenAI-SSE only, has
     // no retries, and its 30 s timeout would cut a long generation short.
     let prompt = format!("{SYSTEM_PROMPT}\n\n{instructions}\n\nTranscript:\n{transcript}");
+    // A summary is one call over an hour of transcript, where the difference
+    // between a good and a mediocre model is the whole value of the feature —
+    // unlike per-line refinement, which runs hundreds of times a meeting.
     let response = crate::max_gateway::send_chat_completion(
         &settings,
         crate::max_gateway::Target {
             provider,
             model,
             api_key,
-        },
+        }
+        .for_job(crate::max_gateway::Job::Balanced),
         prompt,
         None,
         None,
