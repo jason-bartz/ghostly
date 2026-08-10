@@ -2,6 +2,7 @@ pub mod ask;
 pub mod audio;
 pub mod edit_chip;
 pub mod history;
+pub mod learning;
 pub mod license;
 pub mod meetings;
 pub mod models;

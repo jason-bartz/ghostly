@@ -1867,6 +1867,15 @@ impl ShortcutAction for TranscribeAction {
                                 .await
                                 {
                                     Some(revised) => {
+                                        // The pair the user just produced is
+                                        // the only ground truth Ghostly ever
+                                        // gets about its own mistakes.
+                                        crate::learning::record_edit(
+                                            &ah,
+                                            &prior.final_text,
+                                            &revised,
+                                        );
+
                                         if wav_saved {
                                             // Record the edit as a history entry so it's auditable.
                                             let source_app = rm.take_source_app();

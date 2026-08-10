@@ -1986,6 +1986,28 @@ async askTranscripts(question: string) : Promise<Result<AskAnswer, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Terms Ghostly taught itself in the last week.
+ */
+async getRecentlyLearned() : Promise<Result<LearnedTerm[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_recently_learned") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run a learning pass now instead of waiting for the daily one.
+ */
+async runLearningPass() : Promise<Result<LearnedTerm[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("run_learning_pass") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async activateFromSession(sessionId: string) : Promise<Result<LicenseState, LicenseError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("activate_from_session", { sessionId }) };
@@ -2472,6 +2494,10 @@ export type Lane =
  * System audio tap — remote participants.
  */
 "system"
+/**
+ * What a learning pass concluded, for the UI card.
+ */
+export type LearnedTerm = { wrong: string; correct: string; learned_at: number }
 export type LicenseError = { code: "invalid_key" } | { code: "revoked" } | { code: "device_limit_reached"; limit: number; active_devices: ActiveDevice[] } | { code: "not_activated" } | { code: "network_error"; message: string } | { code: "invalid_token" } | { code: "not_ready" }
 export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string; 
 /**

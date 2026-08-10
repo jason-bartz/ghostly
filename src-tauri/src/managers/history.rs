@@ -230,6 +230,29 @@ static MIGRATIONS: &[M] = &[
             INSERT INTO meeting_segments_fts(rowid, text) VALUES (new.id, new.text);
         END;",
     ),
+    // Vocabulary learning: word substitutions observed in the user's own edits,
+    // counted rather than listed. One row per distinct pair with an occurrence
+    // count is all the signal there is — a term corrected once is noise, a term
+    // corrected repeatedly is vocabulary — and it means the table cannot grow
+    // with usage the way an event log would.
+    //
+    // Deliberately holds no sentences. The diff that produces these rows runs
+    // before anything is stored, so the transcripts the corrections came from
+    // are never copied here.
+    M::up(
+        "CREATE TABLE IF NOT EXISTS learning_candidates (
+            wrong       TEXT NOT NULL,
+            correct     TEXT NOT NULL,
+            occurrences INTEGER NOT NULL DEFAULT 1,
+            first_seen  INTEGER NOT NULL,
+            last_seen   INTEGER NOT NULL,
+            PRIMARY KEY (wrong, correct)
+        );",
+    ),
+    // Which corrections Ghostly worked out for itself, so the "learned this
+    // week" card can show them without claiming credit for the ones the user
+    // typed in by hand.
+    M::up("ALTER TABLE word_corrections ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';"),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -1395,6 +1418,93 @@ impl HistoryManager {
             }
         }
 
+        Ok(())
+    }
+
+    // ---- Vocabulary learning ------------------------------------------------
+
+    /// Count one observation of `wrong` → `correct`.
+    pub fn record_learning_candidate(&self, wrong: &str, correct: &str) -> Result<()> {
+        let conn = self.get_connection()?;
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO learning_candidates (wrong, correct, occurrences, first_seen, last_seen)
+             VALUES (?1, ?2, 1, ?3, ?3)
+             ON CONFLICT(wrong, correct) DO UPDATE SET
+               occurrences = occurrences + 1,
+               last_seen   = excluded.last_seen",
+            params![wrong, correct, now],
+        )?;
+        Ok(())
+    }
+
+    /// Pairs seen at least `min_occurrences` times, most-corrected first.
+    pub fn pending_learning_candidates(
+        &self,
+        min_occurrences: u32,
+        limit: usize,
+    ) -> Result<Vec<crate::learning::Candidate>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT wrong, correct FROM learning_candidates
+              WHERE occurrences >= ?1
+              ORDER BY occurrences DESC, last_seen DESC
+              LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![min_occurrences, limit as i64], |row| {
+            Ok(crate::learning::Candidate {
+                wrong: row.get(0)?,
+                correct: row.get(1)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// Save a correction Ghostly worked out for itself.
+    ///
+    /// Separate from [`Self::upsert_word_correction`] only in that it records
+    /// where the entry came from — a hand-typed correction and a learned one
+    /// behave identically, but only the learned ones are Ghostly's to boast
+    /// about.
+    pub fn upsert_learned_correction(&self, wrong: &str, correct: &str) -> Result<()> {
+        let conn = self.get_connection()?;
+        let now = Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO word_corrections (wrong, correct, enabled, created_at, source)
+             VALUES (?1, ?2, 1, ?3, 'learned')
+             ON CONFLICT(wrong) DO UPDATE SET correct = excluded.correct, enabled = 1",
+            params![wrong, correct, now],
+        )?;
+        Ok(())
+    }
+
+    /// Terms Ghostly learned since `since`, newest first.
+    pub fn recently_learned(&self, since: i64) -> Result<Vec<crate::learning::LearnedTerm>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT wrong, correct, created_at FROM word_corrections
+              WHERE source = 'learned' AND created_at >= ?1
+              ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![since], |row| {
+            Ok(crate::learning::LearnedTerm {
+                wrong: row.get(0)?,
+                correct: row.get(1)?,
+                learned_at: row.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// Forget every candidate considered in a pass.
+    ///
+    /// Both the accepted and the rejected: a pair the model declined once will
+    /// be declined again, and re-sending it every night would spend money to
+    /// reach the same answer forever. If the user keeps making the correction,
+    /// it simply accumulates again and gets a fresh hearing.
+    pub fn clear_learning_candidates(&self) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM learning_candidates", [])?;
         Ok(())
     }
 
