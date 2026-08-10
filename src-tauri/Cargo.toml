@@ -91,10 +91,7 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 url = "2"
-
-# Encrypted sync: Argon2id for the passphrase-derived key,
-# XChaCha20-Poly1305 for the record envelope, and zeroize so the derived key
-# does not linger in freed memory.
+tauri-plugin-notification = "2.3.3"
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
 zeroize = "1"

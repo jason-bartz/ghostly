@@ -1,0 +1,1784 @@
+[
+  {
+    "words": 107,
+    "title": "Stopping by Woods on a Snowy Evening",
+    "author": "Robert Frost",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 108,
+    "title": "The New Colossus",
+    "author": "Emma Lazarus",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 111,
+    "title": "Ozymandias",
+    "author": "Percy Bysshe Shelley",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 114,
+    "title": "Sonnet 18",
+    "author": "William Shakespeare",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 116,
+    "title": "Invictus",
+    "author": "William Ernest Henley",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 145,
+    "title": "The Road Not Taken",
+    "author": "Robert Frost",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 166,
+    "title": "Jabberwocky",
+    "author": "Lewis Carroll",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 200,
+    "title": "Do Not Go Gentle into That Good Night",
+    "author": "Dylan Thomas",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 209,
+    "title": "O Captain! My Captain!",
+    "author": "Walt Whitman",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 272,
+    "title": "The Gettysburg Address",
+    "author": "Abraham Lincoln",
+    "category": "speech",
+    "notable": true
+  },
+  {
+    "words": 288,
+    "title": "Annabel Lee",
+    "author": "Edgar Allan Poe",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 292,
+    "title": "If—",
+    "author": "Rudyard Kipling",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 372,
+    "title": "The Charge of the Light Brigade",
+    "author": "Alfred, Lord Tennyson",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 701,
+    "title": "The Second Inaugural Address",
+    "author": "Abraham Lincoln",
+    "category": "speech"
+  },
+  {
+    "words": 1075,
+    "title": "The Raven",
+    "author": "Edgar Allan Poe",
+    "category": "poem",
+    "notable": true
+  },
+  {
+    "words": 1458,
+    "title": "The Declaration of Independence",
+    "category": "reference"
+  },
+  {
+    "words": 1469,
+    "title": "Hills Like White Elephants",
+    "author": "Ernest Hemingway",
+    "category": "story",
+    "approx": true
+  },
+  {
+    "words": 1600,
+    "title": "I Have a Dream",
+    "author": "Martin Luther King Jr.",
+    "category": "speech",
+    "approx": true
+  },
+  {
+    "words": 2406,
+    "title": "The Cask of Amontillado",
+    "author": "Edgar Allan Poe",
+    "category": "story"
+  },
+  {
+    "words": 2500,
+    "title": "an average TED talk",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 3300,
+    "title": "The Waste Land",
+    "author": "T. S. Eliot",
+    "category": "poem",
+    "approx": true
+  },
+  {
+    "words": 3420,
+    "title": "A Modest Proposal",
+    "author": "Jonathan Swift",
+    "category": "story"
+  },
+  {
+    "words": 3745,
+    "title": "An Occurrence at Owl Creek Bridge",
+    "author": "Ambrose Bierce",
+    "category": "story"
+  },
+  {
+    "words": 3773,
+    "title": "The Lottery",
+    "author": "Shirley Jackson",
+    "category": "story",
+    "approx": true
+  },
+  {
+    "words": 3860,
+    "title": "The Rime of the Ancient Mariner",
+    "author": "Samuel Taylor Coleridge",
+    "category": "poem"
+  },
+  {
+    "words": 4543,
+    "title": "The Constitution of the United States",
+    "category": "reference",
+    "notable": true
+  },
+  {
+    "words": 5000,
+    "title": "the Tao Te Ching",
+    "author": "Laozi",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 6085,
+    "title": "The Yellow Wallpaper",
+    "author": "Charlotte Perkins Gilman",
+    "category": "story"
+  },
+  {
+    "words": 6700,
+    "title": "A Good Man Is Hard to Find",
+    "author": "Flannery O'Connor",
+    "category": "story",
+    "approx": true
+  },
+  {
+    "words": 7087,
+    "title": "The Fall of the House of Usher",
+    "author": "Edgar Allan Poe",
+    "category": "story"
+  },
+  {
+    "words": 7591,
+    "title": "the U.S. Constitution, with all 27 amendments",
+    "category": "reference"
+  },
+  {
+    "words": 9354,
+    "title": "Civil Disobedience",
+    "author": "Henry David Thoreau",
+    "category": "story"
+  },
+  {
+    "words": 10000,
+    "title": "The Art of War",
+    "author": "Sun Tzu",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 10700,
+    "title": "Self-Reliance",
+    "author": "Ralph Waldo Emerson",
+    "category": "story",
+    "approx": true
+  },
+  {
+    "words": 12215,
+    "title": "The Legend of Sleepy Hollow",
+    "author": "Washington Irving",
+    "category": "story"
+  },
+  {
+    "words": 14358,
+    "title": "Bartleby, the Scrivener",
+    "author": "Herman Melville",
+    "category": "story"
+  },
+  {
+    "words": 17284,
+    "title": "A Midsummer Night's Dream",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 17676,
+    "title": "the complete Sonnets",
+    "author": "William Shakespeare",
+    "category": "poem"
+  },
+  {
+    "words": 18393,
+    "title": "Macbeth",
+    "author": "William Shakespeare",
+    "category": "play",
+    "notable": true
+  },
+  {
+    "words": 19000,
+    "title": "Death of a Salesman",
+    "author": "Arthur Miller",
+    "category": "play",
+    "approx": true
+  },
+  {
+    "words": 20714,
+    "title": "The Importance of Being Earnest",
+    "author": "Oscar Wilde",
+    "category": "play"
+  },
+  {
+    "words": 21014,
+    "title": "Julius Caesar",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 21500,
+    "title": "A Streetcar Named Desire",
+    "author": "Tennessee Williams",
+    "category": "play",
+    "approx": true
+  },
+  {
+    "words": 21935,
+    "title": "The Metamorphosis",
+    "author": "Franz Kafka",
+    "category": "novel"
+  },
+  {
+    "words": 21997,
+    "title": "Common Sense",
+    "author": "Thomas Paine",
+    "category": "reference"
+  },
+  {
+    "words": 22400,
+    "title": "The Mouse and the Motorcycle",
+    "author": "Beverly Cleary",
+    "category": "novel"
+  },
+  {
+    "words": 23000,
+    "title": "The Crucible",
+    "author": "Arthur Miller",
+    "category": "play",
+    "approx": true
+  },
+  {
+    "words": 23433,
+    "title": "The Tempest",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 25000,
+    "title": "an average feature film screenplay",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 25631,
+    "title": "Strange Case of Dr Jekyll and Mr Hyde",
+    "author": "Robert Louis Stevenson",
+    "category": "novel"
+  },
+  {
+    "words": 25958,
+    "title": "Romeo and Juliet",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 26479,
+    "title": "A Doll's House",
+    "author": "Henrik Ibsen",
+    "category": "play"
+  },
+  {
+    "words": 26525,
+    "title": "Alice's Adventures in Wonderland",
+    "author": "Lewis Carroll",
+    "category": "novel"
+  },
+  {
+    "words": 26601,
+    "title": "The Old Man and the Sea",
+    "author": "Ernest Hemingway",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 27680,
+    "title": "King Lear",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 27926,
+    "title": "Othello",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 28541,
+    "title": "A Christmas Carol",
+    "author": "Charles Dickens",
+    "category": "novel"
+  },
+  {
+    "words": 29160,
+    "title": "Of Mice and Men",
+    "author": "John Steinbeck",
+    "category": "novel"
+  },
+  {
+    "words": 29752,
+    "title": "Through the Looking-Glass",
+    "author": "Lewis Carroll",
+    "category": "novel"
+  },
+  {
+    "words": 29966,
+    "title": "Animal Farm",
+    "author": "George Orwell",
+    "category": "novel"
+  },
+  {
+    "words": 30644,
+    "title": "Charlie and the Chocolate Factory",
+    "author": "Roald Dahl",
+    "category": "novel"
+  },
+  {
+    "words": 31824,
+    "title": "The Call of the Wild",
+    "author": "Jack London",
+    "category": "novel"
+  },
+  {
+    "words": 31961,
+    "title": "Hamlet",
+    "author": "William Shakespeare",
+    "category": "play"
+  },
+  {
+    "words": 32454,
+    "title": "The Time Machine",
+    "author": "H. G. Wells",
+    "category": "novel"
+  },
+  {
+    "words": 34717,
+    "title": "Ethan Frome",
+    "author": "Edith Wharton",
+    "category": "novel"
+  },
+  {
+    "words": 35877,
+    "title": "Candide",
+    "author": "Voltaire",
+    "category": "novel"
+  },
+  {
+    "words": 36014,
+    "title": "The Stranger",
+    "author": "Albert Camus",
+    "category": "novel"
+  },
+  {
+    "words": 37917,
+    "title": "Heart of Darkness",
+    "author": "Joseph Conrad",
+    "category": "novel"
+  },
+  {
+    "words": 38019,
+    "title": "Faust",
+    "author": "Johann Wolfgang von Goethe",
+    "category": "play"
+  },
+  {
+    "words": 38421,
+    "title": "The Lion, the Witch and the Wardrobe",
+    "author": "C. S. Lewis",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 39170,
+    "title": "Beowulf",
+    "category": "epic"
+  },
+  {
+    "words": 39649,
+    "title": "The Wonderful Wizard of Oz",
+    "author": "L. Frank Baum",
+    "category": "novel"
+  },
+  {
+    "words": 40750,
+    "title": "Narrative of the Life of Frederick Douglass",
+    "author": "Frederick Douglass",
+    "category": "novel"
+  },
+  {
+    "words": 42277,
+    "title": "The Turn of the Screw",
+    "author": "Henry James",
+    "category": "novel"
+  },
+  {
+    "words": 43427,
+    "title": "A Study in Scarlet",
+    "author": "Arthur Conan Doyle",
+    "category": "novel"
+  },
+  {
+    "words": 44877,
+    "title": "Aesop's Fables",
+    "category": "story"
+  },
+  {
+    "words": 46094,
+    "title": "The Red Badge of Courage",
+    "author": "Stephen Crane",
+    "category": "novel"
+  },
+  {
+    "words": 46118,
+    "title": "Fahrenheit 451",
+    "author": "Ray Bradbury",
+    "category": "novel"
+  },
+  {
+    "words": 47268,
+    "title": "Peter Pan",
+    "author": "J. M. Barrie",
+    "category": "novel"
+  },
+  {
+    "words": 48196,
+    "title": "The Great Gatsby",
+    "author": "F. Scott Fitzgerald",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 48523,
+    "title": "The Outsiders",
+    "author": "S. E. Hinton",
+    "category": "novel"
+  },
+  {
+    "words": 49459,
+    "title": "Slaughterhouse-Five",
+    "author": "Kurt Vonnegut",
+    "category": "novel"
+  },
+  {
+    "words": 49943,
+    "title": "The Prince",
+    "author": "Niccolò Machiavelli",
+    "category": "reference"
+  },
+  {
+    "words": 50839,
+    "title": "The Jungle Book",
+    "author": "Rudyard Kipling",
+    "category": "novel"
+  },
+  {
+    "words": 54243,
+    "title": "The Hours",
+    "author": "Michael Cunningham",
+    "category": "novel"
+  },
+  {
+    "words": 56533,
+    "title": "A Wizard of Earthsea",
+    "author": "Ursula K. Le Guin",
+    "category": "novel"
+  },
+  {
+    "words": 58426,
+    "title": "The Wind in the Willows",
+    "author": "Kenneth Grahame",
+    "category": "novel"
+  },
+  {
+    "words": 59259,
+    "title": "The Hound of the Baskervilles",
+    "author": "Arthur Conan Doyle",
+    "category": "novel"
+  },
+  {
+    "words": 59900,
+    "title": "Lord of the Flies",
+    "author": "William Golding",
+    "category": "novel"
+  },
+  {
+    "words": 59961,
+    "title": "Black Beauty",
+    "author": "Anna Sewell",
+    "category": "novel"
+  },
+  {
+    "words": 60075,
+    "title": "The War of the Worlds",
+    "author": "H. G. Wells",
+    "category": "novel"
+  },
+  {
+    "words": 61922,
+    "title": "All Quiet on the Western Front",
+    "author": "Erich Maria Remarque",
+    "category": "novel"
+  },
+  {
+    "words": 63334,
+    "title": "Around the World in Eighty Days",
+    "author": "Jules Verne",
+    "category": "novel"
+  },
+  {
+    "words": 63422,
+    "title": "Mrs Dalloway",
+    "author": "Virginia Woolf",
+    "category": "novel"
+  },
+  {
+    "words": 63766,
+    "title": "Brave New World",
+    "author": "Aldous Huxley",
+    "category": "novel"
+  },
+  {
+    "words": 64029,
+    "title": "The Awakening",
+    "author": "Kate Chopin",
+    "category": "novel"
+  },
+  {
+    "words": 64768,
+    "title": "The Martian Chronicles",
+    "author": "Ray Bradbury",
+    "category": "novel"
+  },
+  {
+    "words": 65373,
+    "title": "Billy Budd",
+    "author": "Herman Melville",
+    "category": "novel"
+  },
+  {
+    "words": 66556,
+    "title": "The Color Purple",
+    "author": "Alice Walker",
+    "category": "novel"
+  },
+  {
+    "words": 67203,
+    "title": "The Fault in Our Stars",
+    "author": "John Green",
+    "category": "novel"
+  },
+  {
+    "words": 67280,
+    "title": "A Clockwork Orange",
+    "author": "Anthony Burgess",
+    "category": "novel"
+  },
+  {
+    "words": 67707,
+    "title": "The Sun Also Rises",
+    "author": "Ernest Hemingway",
+    "category": "novel"
+  },
+  {
+    "words": 68628,
+    "title": "The Souls of Black Folk",
+    "author": "W. E. B. Du Bois",
+    "category": "novel"
+  },
+  {
+    "words": 68637,
+    "title": "Treasure Island",
+    "author": "Robert Louis Stevenson",
+    "category": "novel"
+  },
+  {
+    "words": 70800,
+    "title": "The Adventures of Tom Sawyer",
+    "author": "Mark Twain",
+    "category": "novel"
+  },
+  {
+    "words": 71957,
+    "title": "Meditations",
+    "author": "Marcus Aurelius",
+    "category": "reference"
+  },
+  {
+    "words": 72179,
+    "title": "White Fang",
+    "author": "Jack London",
+    "category": "novel"
+  },
+  {
+    "words": 73404,
+    "title": "The Catcher in the Rye",
+    "author": "J. D. Salinger",
+    "category": "novel"
+  },
+  {
+    "words": 74120,
+    "title": "Winesburg, Ohio",
+    "author": "Sherwood Anderson",
+    "category": "novel"
+  },
+  {
+    "words": 74240,
+    "title": "A Farewell to Arms",
+    "author": "Ernest Hemingway",
+    "category": "novel"
+  },
+  {
+    "words": 75042,
+    "title": "Frankenstein",
+    "author": "Mary Shelley",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 76742,
+    "title": "Up from Slavery",
+    "author": "Booker T. Washington",
+    "category": "novel"
+  },
+  {
+    "words": 77325,
+    "title": "Harry Potter and the Sorcerer's Stone",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 77797,
+    "title": "the Quran",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 78980,
+    "title": "The Picture of Dorian Gray",
+    "author": "Oscar Wilde",
+    "category": "novel"
+  },
+  {
+    "words": 79360,
+    "title": "Do Androids Dream of Electric Sheep?",
+    "author": "Philip K. Dick",
+    "category": "novel"
+  },
+  {
+    "words": 80000,
+    "title": "an average PhD dissertation",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 80272,
+    "title": "Paradise Lost",
+    "author": "John Milton",
+    "category": "epic"
+  },
+  {
+    "words": 80632,
+    "title": "The Secret Garden",
+    "author": "Frances Hodgson Burnett",
+    "category": "novel"
+  },
+  {
+    "words": 81365,
+    "title": "My Ántonia",
+    "author": "Willa Cather",
+    "category": "novel"
+  },
+  {
+    "words": 82762,
+    "title": "The Diary of a Young Girl",
+    "author": "Anne Frank",
+    "category": "novel"
+  },
+  {
+    "words": 83335,
+    "title": "Persuasion",
+    "author": "Jane Austen",
+    "category": "novel"
+  },
+  {
+    "words": 83728,
+    "title": "The Trial",
+    "author": "Franz Kafka",
+    "category": "novel"
+  },
+  {
+    "words": 83826,
+    "title": "The Scarlet Letter",
+    "author": "Nathaniel Hawthorne",
+    "category": "novel"
+  },
+  {
+    "words": 84799,
+    "title": "Harry Potter and the Chamber of Secrets",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 85199,
+    "title": "The Unbearable Lightness of Being",
+    "author": "Milan Kundera",
+    "category": "novel"
+  },
+  {
+    "words": 88942,
+    "title": "1984",
+    "author": "George Orwell",
+    "category": "novel"
+  },
+  {
+    "words": 92400,
+    "title": "Song of Solomon",
+    "author": "Toni Morrison",
+    "category": "novel"
+  },
+  {
+    "words": 94240,
+    "title": "The Left Hand of Darkness",
+    "author": "Ursula K. Le Guin",
+    "category": "novel"
+  },
+  {
+    "words": 95356,
+    "title": "The Hobbit",
+    "author": "J. R. R. Tolkien",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 99277,
+    "title": "All the Pretty Horses",
+    "author": "Cormac McCarthy",
+    "category": "novel"
+  },
+  {
+    "words": 99750,
+    "title": "The Hunger Games",
+    "author": "Suzanne Collins",
+    "category": "novel"
+  },
+  {
+    "words": 100000,
+    "title": "a weekday edition of The New York Times",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 100388,
+    "title": "To Kill a Mockingbird",
+    "author": "Harper Lee",
+    "category": "novel"
+  },
+  {
+    "words": 100609,
+    "title": "Ender's Game",
+    "author": "Orson Scott Card",
+    "category": "novel"
+  },
+  {
+    "words": 101385,
+    "title": "The Age of Innocence",
+    "author": "Edith Wharton",
+    "category": "novel"
+  },
+  {
+    "words": 102501,
+    "title": "Anne of Green Gables",
+    "author": "L. M. Montgomery",
+    "category": "novel"
+  },
+  {
+    "words": 104506,
+    "title": "The Adventures of Sherlock Holmes",
+    "author": "Arthur Conan Doyle",
+    "category": "story"
+  },
+  {
+    "words": 104672,
+    "title": "Twenty Thousand Leagues Under the Sea",
+    "author": "Jules Verne",
+    "category": "novel"
+  },
+  {
+    "words": 105079,
+    "title": "Gulliver's Travels",
+    "author": "Jonathan Swift",
+    "category": "novel"
+  },
+  {
+    "words": 105143,
+    "title": "Divergent",
+    "author": "Veronica Roth",
+    "category": "novel"
+  },
+  {
+    "words": 106821,
+    "title": "Harry Potter and the Prisoner of Azkaban",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 107551,
+    "title": "The Aeneid",
+    "author": "Virgil",
+    "category": "epic"
+  },
+  {
+    "words": 108629,
+    "title": "The Divine Comedy",
+    "author": "Dante Alighieri",
+    "category": "epic"
+  },
+  {
+    "words": 109571,
+    "title": "The Adventures of Huckleberry Finn",
+    "author": "Mark Twain",
+    "category": "novel"
+  },
+  {
+    "words": 112815,
+    "title": "The Golden Compass",
+    "author": "Philip Pullman",
+    "category": "novel"
+  },
+  {
+    "words": 115666,
+    "title": "Madame Bovary",
+    "author": "Gustave Flaubert",
+    "category": "novel"
+  },
+  {
+    "words": 115813,
+    "title": "Walden",
+    "author": "Henry David Thoreau",
+    "category": "novel"
+  },
+  {
+    "words": 115946,
+    "title": "Wuthering Heights",
+    "author": "Emily Brontë",
+    "category": "novel"
+  },
+  {
+    "words": 118862,
+    "title": "Sense and Sensibility",
+    "author": "Jane Austen",
+    "category": "novel"
+  },
+  {
+    "words": 118875,
+    "title": "Twilight",
+    "author": "Stephenie Meyer",
+    "category": "novel"
+  },
+  {
+    "words": 120920,
+    "title": "Robinson Crusoe",
+    "author": "Daniel Defoe",
+    "category": "novel"
+  },
+  {
+    "words": 121712,
+    "title": "Leaves of Grass",
+    "author": "Walt Whitman",
+    "category": "poem"
+  },
+  {
+    "words": 123378,
+    "title": "Atonement",
+    "author": "Ian McEwan",
+    "category": "novel"
+  },
+  {
+    "words": 127363,
+    "title": "Pride and Prejudice",
+    "author": "Jane Austen",
+    "category": "novel"
+  },
+  {
+    "words": 128960,
+    "title": "Tales from Earthsea",
+    "author": "Ursula K. Le Guin",
+    "category": "novel"
+  },
+  {
+    "words": 129572,
+    "title": "The Odyssey",
+    "author": "Homer",
+    "category": "epic",
+    "notable": true
+  },
+  {
+    "words": 130115,
+    "title": "The Silmarillion",
+    "author": "J. R. R. Tolkien",
+    "category": "novel"
+  },
+  {
+    "words": 134710,
+    "title": "Schindler's List",
+    "author": "Thomas Keneally",
+    "category": "novel"
+  },
+  {
+    "words": 135886,
+    "title": "A Tale of Two Cities",
+    "author": "Charles Dickens",
+    "category": "novel"
+  },
+  {
+    "words": 138978,
+    "title": "The Da Vinci Code",
+    "author": "Dan Brown",
+    "category": "novel"
+  },
+  {
+    "words": 139460,
+    "title": "Metamorphoses",
+    "author": "Ovid",
+    "category": "epic"
+  },
+  {
+    "words": 142664,
+    "title": "Pet Sematary",
+    "author": "Stephen King",
+    "category": "novel"
+  },
+  {
+    "words": 144523,
+    "title": "One Hundred Years of Solitude",
+    "author": "Gabriel García Márquez",
+    "category": "novel"
+  },
+  {
+    "words": 145092,
+    "title": "A Tree Grows in Brooklyn",
+    "author": "Betty Smith",
+    "category": "novel"
+  },
+  {
+    "words": 145719,
+    "title": "Gone Girl",
+    "author": "Gillian Flynn",
+    "category": "novel"
+  },
+  {
+    "words": 149189,
+    "title": "The Jungle",
+    "author": "Upton Sinclair",
+    "category": "novel"
+  },
+  {
+    "words": 152204,
+    "title": "Salem's Lot",
+    "author": "Stephen King",
+    "category": "novel"
+  },
+  {
+    "words": 155717,
+    "title": "The Time Traveler's Wife",
+    "author": "Audrey Niffenegger",
+    "category": "novel"
+  },
+  {
+    "words": 156154,
+    "title": "Watership Down",
+    "author": "Richard Adams",
+    "category": "novel"
+  },
+  {
+    "words": 156198,
+    "title": "The Two Towers",
+    "author": "J. R. R. Tolkien",
+    "category": "novel"
+  },
+  {
+    "words": 156475,
+    "title": "Sister Carrie",
+    "author": "Theodore Dreiser",
+    "category": "novel"
+  },
+  {
+    "words": 157000,
+    "title": "Eragon",
+    "author": "Christopher Paolini",
+    "category": "novel"
+  },
+  {
+    "words": 157562,
+    "title": "Emma",
+    "author": "Jane Austen",
+    "category": "novel"
+  },
+  {
+    "words": 157665,
+    "title": "Alias Grace",
+    "author": "Margaret Atwood",
+    "category": "novel"
+  },
+  {
+    "words": 157969,
+    "title": "Oliver Twist",
+    "author": "Charles Dickens",
+    "category": "novel"
+  },
+  {
+    "words": 161321,
+    "title": "Dracula",
+    "author": "Bram Stoker",
+    "category": "novel"
+  },
+  {
+    "words": 165581,
+    "title": "The Shining",
+    "author": "Stephen King",
+    "category": "novel"
+  },
+  {
+    "words": 166455,
+    "title": "Main Street",
+    "author": "Sinclair Lewis",
+    "category": "novel"
+  },
+  {
+    "words": 168640,
+    "title": "The Amber Spyglass",
+    "author": "Philip Pullman",
+    "category": "novel"
+  },
+  {
+    "words": 169441,
+    "title": "Harry Potter and the Half-Blood Prince",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 169481,
+    "title": "The Grapes of Wrath",
+    "author": "John Steinbeck",
+    "category": "novel"
+  },
+  {
+    "words": 169509,
+    "title": "The Girl with the Dragon Tattoo",
+    "author": "Stieg Larsson",
+    "category": "novel"
+  },
+  {
+    "words": 174106,
+    "title": "For Whom the Bell Tolls",
+    "author": "Ernest Hemingway",
+    "category": "novel"
+  },
+  {
+    "words": 174269,
+    "title": "Catch-22",
+    "author": "Joseph Heller",
+    "category": "novel"
+  },
+  {
+    "words": 177679,
+    "title": "The Poisonwood Bible",
+    "author": "Barbara Kingsolver",
+    "category": "novel"
+  },
+  {
+    "words": 180924,
+    "title": "Uncle Tom's Cabin",
+    "author": "Harriet Beecher Stowe",
+    "category": "novel"
+  },
+  {
+    "words": 183222,
+    "title": "American Gods",
+    "author": "Neil Gaiman",
+    "category": "novel"
+  },
+  {
+    "words": 184478,
+    "title": "Great Expectations",
+    "author": "Charles Dickens",
+    "category": "novel"
+  },
+  {
+    "words": 185392,
+    "title": "Jane Eyre",
+    "author": "Charlotte Brontë",
+    "category": "novel"
+  },
+  {
+    "words": 186112,
+    "title": "Little Women",
+    "author": "Louisa May Alcott",
+    "category": "novel"
+  },
+  {
+    "words": 186418,
+    "title": "Memoirs of a Geisha",
+    "author": "Arthur Golden",
+    "category": "novel"
+  },
+  {
+    "words": 187240,
+    "title": "Dune",
+    "author": "Frank Herbert",
+    "category": "novel"
+  },
+  {
+    "words": 187790,
+    "title": "The Fellowship of the Ring",
+    "author": "J. R. R. Tolkien",
+    "category": "novel"
+  },
+  {
+    "words": 189218,
+    "title": "The Iliad",
+    "author": "Homer",
+    "category": "epic"
+  },
+  {
+    "words": 190858,
+    "title": "Harry Potter and the Goblet of Fire",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 192347,
+    "title": "The Federalist Papers",
+    "category": "reference"
+  },
+  {
+    "words": 196774,
+    "title": "The Corrections",
+    "author": "Jonathan Franzen",
+    "category": "novel"
+  },
+  {
+    "words": 198227,
+    "title": "Harry Potter and the Deathly Hallows",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 203507,
+    "title": "Crime and Punishment",
+    "author": "Fyodor Dostoevsky",
+    "category": "novel"
+  },
+  {
+    "words": 208773,
+    "title": "Midnight's Children",
+    "author": "Salman Rushdie",
+    "category": "novel"
+  },
+  {
+    "words": 212796,
+    "title": "Moby-Dick",
+    "author": "Herman Melville",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 216020,
+    "title": "The Amazing Adventures of Kavalier & Clay",
+    "author": "Michael Chabon",
+    "category": "novel"
+  },
+  {
+    "words": 216285,
+    "title": "The Republic",
+    "author": "Plato",
+    "category": "reference"
+  },
+  {
+    "words": 225395,
+    "title": "East of Eden",
+    "author": "John Steinbeck",
+    "category": "novel"
+  },
+  {
+    "words": 236061,
+    "title": "A Prayer for Owen Meany",
+    "author": "John Irving",
+    "category": "novel"
+  },
+  {
+    "words": 257154,
+    "title": "Harry Potter and the Order of the Phoenix",
+    "author": "J. K. Rowling",
+    "category": "novel"
+  },
+  {
+    "words": 259000,
+    "title": "The Name of the Wind",
+    "author": "Patrick Rothfuss",
+    "category": "novel"
+  },
+  {
+    "words": 265065,
+    "title": "Ulysses",
+    "author": "James Joyce",
+    "category": "novel"
+  },
+  {
+    "words": 279774,
+    "title": "The Canterbury Tales",
+    "author": "Geoffrey Chaucer",
+    "category": "epic"
+  },
+  {
+    "words": 298000,
+    "title": "A Game of Thrones",
+    "author": "George R. R. Martin",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 300000,
+    "title": "a Sunday edition of The New York Times",
+    "category": "reference",
+    "approx": true
+  },
+  {
+    "words": 300942,
+    "title": "The Hunger Games trilogy",
+    "author": "Suzanne Collins",
+    "category": "series"
+  },
+  {
+    "words": 305000,
+    "title": "Outlander",
+    "author": "Diana Gabaldon",
+    "category": "novel"
+  },
+  {
+    "words": 308931,
+    "title": "Jonathan Strange & Mr Norrell",
+    "author": "Susanna Clarke",
+    "category": "novel"
+  },
+  {
+    "words": 311596,
+    "title": "The Fountainhead",
+    "author": "Ayn Rand",
+    "category": "novel"
+  },
+  {
+    "words": 316389,
+    "title": "Middlemarch",
+    "author": "George Eliot",
+    "category": "novel"
+  },
+  {
+    "words": 324945,
+    "title": "Gravity's Rainbow",
+    "author": "Thomas Pynchon",
+    "category": "novel"
+  },
+  {
+    "words": 326000,
+    "title": "A Clash of Kings",
+    "author": "George R. R. Martin",
+    "category": "novel"
+  },
+  {
+    "words": 345535,
+    "title": "The Chronicles of Narnia",
+    "author": "C. S. Lewis",
+    "category": "series"
+  },
+  {
+    "words": 349775,
+    "title": "Anna Karenina",
+    "author": "Leo Tolstoy",
+    "category": "novel"
+  },
+  {
+    "words": 350687,
+    "title": "The Brothers Karamazov",
+    "author": "Fyodor Dostoevsky",
+    "category": "novel"
+  },
+  {
+    "words": 353463,
+    "title": "Bleak House",
+    "author": "Charles Dickens",
+    "category": "novel"
+  },
+  {
+    "words": 354826,
+    "title": "David Copperfield",
+    "author": "Charles Dickens",
+    "category": "novel"
+  },
+  {
+    "words": 360947,
+    "title": "Lonesome Dove",
+    "author": "Larry McMurtry",
+    "category": "novel"
+  },
+  {
+    "words": 384123,
+    "title": "His Dark Materials",
+    "author": "Philip Pullman",
+    "category": "series"
+  },
+  {
+    "words": 387000,
+    "title": "The Way of Kings",
+    "author": "Brandon Sanderson",
+    "category": "novel"
+  },
+  {
+    "words": 418053,
+    "title": "Gone with the Wind",
+    "author": "Margaret Mitchell",
+    "category": "novel"
+  },
+  {
+    "words": 424000,
+    "title": "A Storm of Swords",
+    "author": "George R. R. Martin",
+    "category": "novel"
+  },
+  {
+    "words": 427246,
+    "title": "Don Quixote",
+    "author": "Miguel de Cervantes",
+    "category": "novel"
+  },
+  {
+    "words": 442500,
+    "title": "Percy Jackson & the Olympians",
+    "author": "Rick Riordan",
+    "category": "series"
+  },
+  {
+    "words": 445134,
+    "title": "It",
+    "author": "Stephen King",
+    "category": "novel"
+  },
+  {
+    "words": 460976,
+    "title": "The Count of Monte Cristo",
+    "author": "Alexandre Dumas",
+    "category": "novel"
+  },
+  {
+    "words": 466000,
+    "title": "The Gormenghast Trilogy",
+    "author": "Mervyn Peake",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 471485,
+    "title": "The Stand",
+    "author": "Stephen King",
+    "category": "novel"
+  },
+  {
+    "words": 481103,
+    "title": "The Lord of the Rings",
+    "author": "J. R. R. Tolkien",
+    "category": "series",
+    "notable": true
+  },
+  {
+    "words": 543709,
+    "title": "Infinite Jest",
+    "author": "David Foster Wallace",
+    "category": "novel"
+  },
+  {
+    "words": 561996,
+    "title": "Atlas Shrugged",
+    "author": "Ayn Rand",
+    "category": "novel"
+  },
+  {
+    "words": 563290,
+    "title": "War and Peace",
+    "author": "Leo Tolstoy",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 565630,
+    "title": "Les Misérables",
+    "author": "Victor Hugo",
+    "category": "novel"
+  },
+  {
+    "words": 587287,
+    "title": "the Twilight saga",
+    "author": "Stephenie Meyer",
+    "category": "series"
+  },
+  {
+    "words": 591554,
+    "title": "A Suitable Boy",
+    "author": "Vikram Seth",
+    "category": "novel"
+  },
+  {
+    "words": 615000,
+    "title": "Jerusalem",
+    "author": "Alan Moore",
+    "category": "novel",
+    "approx": true
+  },
+  {
+    "words": 630000,
+    "title": "The Tale of Genji",
+    "author": "Murasaki Shikibu",
+    "category": "novel",
+    "approx": true
+  },
+  {
+    "words": 632000,
+    "title": "the Millennium trilogy",
+    "author": "Stieg Larsson",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 660000,
+    "title": "the complete Sherlock Holmes canon",
+    "author": "Arthur Conan Doyle",
+    "category": "series",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 671000,
+    "title": "The Gulag Archipelago",
+    "author": "Aleksandr Solzhenitsyn",
+    "category": "novel",
+    "approx": true
+  },
+  {
+    "words": 682000,
+    "title": "Journey to the West",
+    "author": "Wu Cheng'en",
+    "category": "epic",
+    "approx": true
+  },
+  {
+    "words": 725000,
+    "title": "Water Margin",
+    "author": "Shi Nai'an",
+    "category": "epic",
+    "approx": true
+  },
+  {
+    "words": 783137,
+    "title": "the King James Bible",
+    "category": "reference",
+    "notable": true
+  },
+  {
+    "words": 830000,
+    "title": "Dream of the Red Chamber",
+    "author": "Cao Xueqin",
+    "category": "novel",
+    "approx": true
+  },
+  {
+    "words": 839000,
+    "title": "the Dune Chronicles",
+    "author": "Frank Herbert",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 884647,
+    "title": "the complete works of Shakespeare",
+    "author": "William Shakespeare",
+    "category": "series",
+    "notable": true
+  },
+  {
+    "words": 969000,
+    "title": "Clarissa",
+    "author": "Samuel Richardson",
+    "category": "novel",
+    "approx": true
+  },
+  {
+    "words": 1054000,
+    "title": "A Chorus of Dragons",
+    "author": "Jenn Lyons",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1084170,
+    "title": "all seven Harry Potter books",
+    "author": "J. K. Rowling",
+    "category": "series",
+    "notable": true
+  },
+  {
+    "words": 1189000,
+    "title": "Otherland",
+    "author": "Tad Williams",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1202000,
+    "title": "The Night's Dawn Trilogy",
+    "author": "Peter F. Hamilton",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1256000,
+    "title": "The Dark Tower",
+    "author": "Stephen King",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1267069,
+    "title": "In Search of Lost Time",
+    "author": "Marcel Proust",
+    "category": "novel",
+    "notable": true
+  },
+  {
+    "words": 1368000,
+    "title": "The Book of the New Sun",
+    "author": "Gene Wolfe",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1493000,
+    "title": "The Expanse",
+    "author": "James S. A. Corey",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1548000,
+    "title": "the Foundation universe",
+    "author": "Isaac Asimov",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1749000,
+    "title": "A Song of Ice and Fire",
+    "author": "George R. R. Martin",
+    "category": "series",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 1780000,
+    "title": "The First Law",
+    "author": "Joe Abercrombie",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1824000,
+    "title": "The Sun Eater",
+    "author": "Christopher Ruocchio",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 1924000,
+    "title": "Shadows of the Apt",
+    "author": "Adrian Tchaikovsky",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 2062000,
+    "title": "The Chronicles of Thomas Covenant",
+    "author": "Stephen R. Donaldson",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 2169000,
+    "title": "The Stormlight Archive",
+    "author": "Brandon Sanderson",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 2250000,
+    "title": "The Red Wheel",
+    "author": "Aleksandr Solzhenitsyn",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 2392000,
+    "title": "the Mahabharata",
+    "category": "epic",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 2473000,
+    "title": "The Wars of Light and Shadow",
+    "author": "Janny Wurts",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 2504000,
+    "title": "Memory, Sorrow and Thorn",
+    "author": "Tad Williams",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 2612000,
+    "title": "the Foreigner series",
+    "author": "C. J. Cherryh",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 3363000,
+    "title": "the Lymond and Niccolò chronicles",
+    "author": "Dorothy Dunnett",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 3668000,
+    "title": "the Outlander series",
+    "author": "Diana Gabaldon",
+    "category": "series",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 4061000,
+    "title": "Realm of the Elderlings",
+    "author": "Robin Hobb",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 4090000,
+    "title": "the Essalieyan universe",
+    "author": "Michelle West",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 4300000,
+    "title": "all 41 Discworld novels",
+    "author": "Terry Pratchett",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 4360000,
+    "title": "The Wheel of Time",
+    "author": "Robert Jordan and Brandon Sanderson",
+    "category": "series",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 4802000,
+    "title": "The Saga of Recluce",
+    "author": "L. E. Modesitt Jr.",
+    "category": "series",
+    "approx": true
+  },
+  {
+    "words": 6229000,
+    "title": "The Malazan Book of the Fallen",
+    "author": "Steven Erikson",
+    "category": "series",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 44000000,
+    "title": "the Encyclopædia Britannica",
+    "category": "reference",
+    "approx": true,
+    "notable": true
+  },
+  {
+    "words": 59000000,
+    "title": "the Oxford English Dictionary",
+    "category": "reference",
+    "approx": true,
+    "notable": true
+  }
+]

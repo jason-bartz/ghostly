@@ -16,6 +16,7 @@
 //! single HMAC-signed JSON blob, which survives app reinstall and deletion of
 //! application support data.
 
+use crate::milestones::{self, Milestone};
 use chrono::{Datelike, Duration as ChronoDuration, Local, NaiveDate, TimeZone, Weekday};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,10 @@ use std::sync::Mutex;
 
 /// Number of prior completed weeks to retain for the stats view.
 const HISTORY_RETENTION_WEEKS: usize = 12;
+
+/// Wire-format version written by `save_blob`. Bump alongside a new
+/// `UsageBlobV<n>Shape` mirror and a fallback arm in `load_blob`.
+const SCHEMA_VERSION: u32 = 4;
 
 /// Keychain service + account under which the blob is stored.
 const KEYCHAIN_SERVICE: &str = "computer.ghostly.usage";
@@ -54,6 +59,8 @@ const TYPING_WPM_BASELINE: u64 = 40;
 ///        DB. The fields are retained because existing v3 blobs on disk
 ///        deserialize against this struct — dropping them would fail to load
 ///        every current user's usage state. They are written but never read.
+///   v4 — adds `last_milestone_check_words`, the high-water mark for milestone
+///        notifications.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct UsageBlob {
     version: u32,
@@ -75,6 +82,19 @@ struct UsageBlob {
     lifetime_transcription_count: u64,
     #[serde(default)]
     lifetime_longest_words: u64,
+    /// v4 addition — `lifetime_words` as of the last time milestones were
+    /// evaluated. Each `record` looks for notable thresholds in the interval
+    /// (marker, new total] and then moves the marker to the new total.
+    ///
+    /// `None` means "never evaluated", which is what an install upgrading
+    /// from v3 deserializes to. That is deliberately distinct from `Some(0)`:
+    /// a user arriving with 600k lifetime words already banked has crossed
+    /// nearly every threshold, and seeding from 0 would greet the upgrade
+    /// with a banner for a book they passed months ago. The first `record`
+    /// after upgrade seeds the marker silently; genuinely new installs get
+    /// `Some(0)` from `fresh_blob` and are notified from their first words on.
+    #[serde(default)]
+    last_milestone_check_words: Option<u64>,
 }
 
 /// Serialize-only mirror of `UsageBlob`'s v2 shape, used to verify HMACs
@@ -90,6 +110,26 @@ struct UsageBlobV2Shape<'a> {
     lifetime_seconds: u64,
     lifetime_words: u64,
     history: &'a [CompletedWeek],
+}
+
+/// Serialize-only mirror of `UsageBlob`'s v3 shape — v2 plus the two
+/// Achievements counters, without the v4 milestone marker.
+///
+/// Field order must match the v3 `UsageBlob` exactly: the hash is taken over
+/// `serde_json` output, and serde emits struct fields in declaration order,
+/// so reordering these silently invalidates every stored blob.
+#[derive(Serialize)]
+struct UsageBlobV3Shape<'a> {
+    version: u32,
+    current_week_start: &'a str,
+    current_week_seconds: u64,
+    current_week_words: u64,
+    warned_this_week: bool,
+    lifetime_seconds: u64,
+    lifetime_words: u64,
+    history: &'a [CompletedWeek],
+    lifetime_transcription_count: u64,
+    lifetime_longest_words: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -220,11 +260,22 @@ impl UsageManager {
     /// Record a successful transcription's audio duration + word count
     /// against this week's counters and the lifetime counters. Pro users are
     /// recorded too (for the vanity metric) but never trip the cap.
-    pub fn record(&self, duration_secs: u64, word_count: u64) {
+    ///
+    /// Returns the notable milestone this transcription crossed, if any, so
+    /// the caller can post a notification. Detection lives here because this
+    /// is the one choke point every finished transcription passes through —
+    /// dictation via `actions.rs` and meetings via `meetings/session.rs` both
+    /// land on it, so neither has to remember to check.
+    ///
+    /// The marker advances whether or not the caller ends up notifying. That
+    /// keeps the notification setting from having retroactive effect: turning
+    /// it on should surface the *next* milestone, not replay the ones crossed
+    /// while it was off.
+    pub fn record(&self, duration_secs: u64, word_count: u64) -> Option<&'static Milestone> {
         if duration_secs == 0 && word_count == 0 {
-            return;
+            return None;
         }
-        let snapshot = {
+        let (snapshot, crossed) = {
             let mut blob = self.state.lock().expect("usage mutex poisoned");
             self.rotate_if_needed(&mut blob);
             blob.current_week_seconds = blob.current_week_seconds.saturating_add(duration_secs);
@@ -235,9 +286,20 @@ impl UsageManager {
             if word_count > blob.lifetime_longest_words {
                 blob.lifetime_longest_words = word_count;
             }
-            blob.clone()
+
+            let total = blob.lifetime_words;
+            let crossed = match blob.last_milestone_check_words {
+                // Upgraded from v3: adopt the current total as the baseline
+                // without notifying. See the field's doc comment.
+                None => None,
+                Some(previous) => milestones::notable_crossed(previous, total),
+            };
+            blob.last_milestone_check_words = Some(total);
+
+            (blob.clone(), crossed)
         };
         save_blob(&snapshot);
+        crossed
     }
 
     /// Monotonic counters used by the Achievements page. Kept in a dedicated
@@ -340,7 +402,7 @@ fn next_week_start_unix() -> i64 {
 
 fn fresh_blob() -> UsageBlob {
     UsageBlob {
-        version: 3,
+        version: SCHEMA_VERSION,
         current_week_start: current_week_start_iso(),
         current_week_seconds: 0,
         current_week_words: 0,
@@ -350,6 +412,10 @@ fn fresh_blob() -> UsageBlob {
         history: Vec::new(),
         lifetime_transcription_count: 0,
         lifetime_longest_words: 0,
+        // Explicitly zero rather than `None`: this install has no history to
+        // be retroactively congratulated for, so milestones count from the
+        // first word. `None` is reserved for blobs upgraded from v3.
+        last_milestone_check_words: Some(0),
     }
 }
 
@@ -384,6 +450,25 @@ fn compute_hmac_v2_shape(blob: &UsageBlob) -> String {
         history: &blob.history,
     };
     let payload = serde_json::to_vec(&v2).unwrap_or_default();
+    hmac_of(&payload)
+}
+
+/// HMAC against the v3 wire shape, for blobs written before the milestone
+/// marker landed. Same role as [`compute_hmac_v2_shape`], one schema newer.
+fn compute_hmac_v3_shape(blob: &UsageBlob) -> String {
+    let v3 = UsageBlobV3Shape {
+        version: blob.version,
+        current_week_start: &blob.current_week_start,
+        current_week_seconds: blob.current_week_seconds,
+        current_week_words: blob.current_week_words,
+        warned_this_week: blob.warned_this_week,
+        lifetime_seconds: blob.lifetime_seconds,
+        lifetime_words: blob.lifetime_words,
+        history: &blob.history,
+        lifetime_transcription_count: blob.lifetime_transcription_count,
+        lifetime_longest_words: blob.lifetime_longest_words,
+    };
+    let payload = serde_json::to_vec(&v3).unwrap_or_default();
     hmac_of(&payload)
 }
 
@@ -434,13 +519,19 @@ fn load_blob() -> Option<UsageBlob> {
     if expected_current == envelope.hmac {
         return Some(envelope.blob);
     }
-    // Fall back to the v2 wire shape. Old blobs written before the
-    // Achievements counters landed are hashed over a smaller struct; serde
-    // defaults the new fields to 0 on load, and the next save rewrites with
-    // the current-shape HMAC.
+    // Fall back through the older wire shapes, newest first. Blobs written by
+    // earlier builds are hashed over a smaller struct; serde defaults the
+    // fields they lack, and the next save rewrites with the current-shape
+    // HMAC. Losing this fallback would drop every existing user's lifetime
+    // totals on upgrade, since a mismatch is treated as tampering.
+    let expected_v3 = compute_hmac_v3_shape(&envelope.blob);
+    if expected_v3 == envelope.hmac {
+        debug!("Usage blob matched v3 HMAC; upgrading to v4 on next save");
+        return Some(envelope.blob);
+    }
     let expected_v2 = compute_hmac_v2_shape(&envelope.blob);
     if expected_v2 == envelope.hmac {
-        debug!("Usage blob matched v2 HMAC; upgrading to v3 on next save");
+        debug!("Usage blob matched v2 HMAC; upgrading to v4 on next save");
         return Some(envelope.blob);
     }
     // Tamper / corruption. Treat as fresh-but-over-limit so we don't
@@ -460,7 +551,7 @@ fn save_blob(blob: &UsageBlob) {
     // Always write at the current schema version so next load hits the
     // current-shape HMAC without falling back.
     let mut upgraded = blob.clone();
-    upgraded.version = 3;
+    upgraded.version = SCHEMA_VERSION;
     let envelope = SignedEnvelope {
         hmac: compute_hmac(&upgraded),
         blob: upgraded,
@@ -519,6 +610,7 @@ mod tests {
             history: Vec::new(),
             lifetime_transcription_count: 0,
             lifetime_longest_words: 0,
+            last_milestone_check_words: None,
         };
         // Simulate an old build's stored HMAC (hashed over the v2 shape).
         let old_hmac = compute_hmac_v2_shape(&legacy);
@@ -532,5 +624,69 @@ mod tests {
         legacy.lifetime_transcription_count = 7;
         legacy.lifetime_longest_words = 123;
         assert_eq!(old_hmac, compute_hmac_v2_shape(&legacy));
+    }
+
+    /// Same contract one schema newer: a v3 blob written before the milestone
+    /// marker existed must still validate, or the v4 upgrade wipes the
+    /// lifetime totals of every user on the current release.
+    #[test]
+    fn v3_hmac_still_validates_for_legacy_blob() {
+        let mut legacy = UsageBlob {
+            version: 3,
+            current_week_start: "2026-04-13".to_string(),
+            current_week_seconds: 120,
+            current_week_words: 500,
+            warned_this_week: false,
+            lifetime_seconds: 9_000,
+            lifetime_words: 40_000,
+            history: Vec::new(),
+            lifetime_transcription_count: 7,
+            lifetime_longest_words: 123,
+            // A v3 blob has no such key; serde defaults it on load.
+            last_milestone_check_words: None,
+        };
+        let old_hmac = compute_hmac_v3_shape(&legacy);
+        assert_ne!(old_hmac, compute_hmac(&legacy));
+        // Populating the v4 field must not disturb the v3 hash.
+        legacy.last_milestone_check_words = Some(40_000);
+        assert_eq!(old_hmac, compute_hmac_v3_shape(&legacy));
+    }
+
+    /// The upgrade path that matters most: someone arriving with a large
+    /// lifetime total must not be congratulated for books they passed long
+    /// ago. The first record seeds the marker and stays silent, and the one
+    /// after it notifies normally.
+    #[test]
+    fn upgraded_blob_seeds_silently_then_notifies() {
+        let mut blob = fresh_blob();
+        blob.lifetime_words = 600_000;
+        blob.last_milestone_check_words = None;
+
+        // First record after upgrade: crosses nothing, seeds the marker.
+        let total = blob.lifetime_words + 100;
+        let crossed = match blob.last_milestone_check_words {
+            None => None,
+            Some(previous) => milestones::notable_crossed(previous, total),
+        };
+        blob.last_milestone_check_words = Some(total);
+        assert!(crossed.is_none(), "upgrade must not replay old milestones");
+        assert_eq!(blob.last_milestone_check_words, Some(600_100));
+
+        // Next crossing behaves normally — 783,137 is the King James Bible.
+        let crossed =
+            milestones::notable_crossed(blob.last_milestone_check_words.unwrap(), 800_000);
+        assert_eq!(crossed.map(|m| m.words), Some(783_137));
+    }
+
+    /// A genuinely new install counts from zero, so early milestones fire.
+    #[test]
+    fn fresh_install_notifies_from_the_first_word() {
+        let blob = fresh_blob();
+        assert_eq!(blob.last_milestone_check_words, Some(0));
+        let crossed = milestones::notable_crossed(0, 300);
+        assert_eq!(
+            crossed.map(|m| m.title.as_str()),
+            Some("The Gettysburg Address")
+        );
     }
 }

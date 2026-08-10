@@ -819,7 +819,11 @@ fn transcribe_worker(
         // suppression, so a line the user never sees is never charged for.
         if let Some(usage) = app.try_state::<Arc<crate::managers::usage::UsageManager>>() {
             let duration_secs = ((segment.end_ms - segment.start_ms).max(0) / 1000) as u64;
-            usage.record(duration_secs, text.split_whitespace().count() as u64);
+            if let Some(milestone) =
+                usage.record(duration_secs, text.split_whitespace().count() as u64)
+            {
+                crate::milestones::announce(&app, milestone);
+            }
         }
 
         let stored = super::types::MeetingSegment {

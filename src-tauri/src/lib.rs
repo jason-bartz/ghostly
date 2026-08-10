@@ -1,9 +1,9 @@
 mod actions;
 mod ai_metadata;
 mod app_identity;
-mod ask;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
+mod ask;
 mod audio_feedback;
 pub mod audio_toolkit;
 pub mod cli;
@@ -26,6 +26,8 @@ mod local_cleanup;
 mod managers;
 mod max_gateway;
 mod meetings;
+mod milestones;
+mod notification_i18n;
 mod overlay;
 pub mod portable;
 mod profiles;
@@ -878,6 +880,7 @@ pub fn run(cli_args: CliArgs) {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_macos_permissions::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_deep_link::init())

@@ -6,6 +6,7 @@ import { StartHidden } from "../StartHidden";
 import { AutostartToggle } from "../AutostartToggle";
 import { ShowTrayIcon } from "../ShowTrayIcon";
 import { ShowDockIcon } from "../ShowDockIcon";
+import { MilestoneNotifications } from "../MilestoneNotifications";
 import { ReplayTour } from "../ReplayTour";
 import { PageHeader } from "../../ui/PageHeader";
 
@@ -38,6 +39,10 @@ export const AppSettings: React.FC = () => {
       <SettingsGroup title={t("settings.app.groups.menusAndDock")}>
         <ShowTrayIcon descriptionMode="tooltip" grouped={true} />
         <ShowDockIcon descriptionMode="tooltip" grouped={true} />
+      </SettingsGroup>
+
+      <SettingsGroup title={t("settings.app.groups.notifications")}>
+        <MilestoneNotifications descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.app.groups.help")}>
