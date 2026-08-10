@@ -405,6 +405,19 @@ pub struct AppSettings {
     /// `current_binding` that was still sitting on the old default.
     #[serde(default)]
     pub binding_defaults_v2_migrated: bool,
+    /// Marker for the `append_trailing_space` default flip. When false,
+    /// `migrate_trailing_space_default` switches it on once so existing
+    /// installs pick up the new default, then sets this true so a user who
+    /// turns it back off is left alone.
+    #[serde(default)]
+    pub trailing_space_default_migrated: bool,
+    /// Marker for the meeting-AI "Automatic" default. When false, meeting
+    /// summaries and live refinement still sitting on the old `on_device`
+    /// default are moved to `auto` once, so a user who already pays for Max or
+    /// configured a provider stops having to pick it a second and third time.
+    /// An explicit `off`, `cloud` or `extractive` choice is left alone.
+    #[serde(default)]
+    pub meeting_ai_auto_migrated: bool,
     #[serde(default = "default_autostart_enabled")]
     pub autostart_enabled: bool,
     #[serde(default = "default_model")]
@@ -510,7 +523,10 @@ pub struct AppSettings {
     pub post_process_selected_prompt_id: Option<String>,
     #[serde(default)]
     pub mute_while_recording: bool,
-    #[serde(default)]
+    /// Adds a single space after every pasted transcription, so dictating two
+    /// sentences in a row does not run them together and the caret is left
+    /// ready for the next one.
+    #[serde(default = "default_append_trailing_space")]
     pub append_trailing_space: bool,
     #[serde(default = "default_app_language")]
     pub app_language: String,
@@ -718,15 +734,32 @@ pub struct MeetingAppPolicy {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum MeetingSummaryBackend {
+    /// Follow the AI already chosen for dictation refinement: the configured
+    /// cloud provider when there is a usable one, on-device otherwise. See
+    /// [`AppSettings::has_usable_cloud_ai`].
+    #[default]
+    Auto,
     /// Apple Intelligence when available, otherwise the local extractive
     /// fallback. Never leaves the device.
-    #[default]
     OnDevice,
     /// The configured post-processing provider. Requires explicit opt-in
     /// because meeting audio is a different sensitivity class from dictation.
     Cloud,
     /// Keyword-based extractive summary. Always available, no model needed.
     Extractive,
+}
+
+impl MeetingSummaryBackend {
+    /// Turns `Auto` into the backend it actually means right now. Every read of
+    /// this setting goes through here, so `Auto` never reaches a match arm that
+    /// has to guess.
+    pub fn resolve(self, settings: &AppSettings) -> Self {
+        match self {
+            Self::Auto if settings.has_usable_cloud_ai() => Self::Cloud,
+            Self::Auto => Self::OnDevice,
+            other => other,
+        }
+    }
 }
 
 /// Where live transcript lines are cleaned up as a meeting runs.
@@ -738,15 +771,31 @@ pub enum MeetingSummaryBackend {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum MeetingRefinementBackend {
+    /// Follow the AI already chosen for dictation refinement: the configured
+    /// cloud provider when there is a usable one, on-device otherwise. See
+    /// [`AppSettings::has_usable_cloud_ai`].
+    #[default]
+    Auto,
     /// Verbatim ASR. Nothing is post-processed.
     Off,
     /// Apple Intelligence. Never leaves the device; falls back to verbatim when
     /// unavailable.
-    #[default]
     OnDevice,
     /// The configured post-processing provider. Every transcript line is sent
     /// to it, so this needs a deliberate choice.
     Cloud,
+}
+
+impl MeetingRefinementBackend {
+    /// Turns `Auto` into the backend it actually means right now. See
+    /// [`MeetingSummaryBackend::resolve`].
+    pub fn resolve(self, settings: &AppSettings) -> Self {
+        match self {
+            Self::Auto if settings.has_usable_cloud_ai() => Self::Cloud,
+            Self::Auto => Self::OnDevice,
+            other => other,
+        }
+    }
 }
 
 /// Note the container-level `#[serde(default)]`: a missing field falls back to
@@ -779,6 +828,18 @@ pub struct MeetingSettings {
     /// Sustained seconds with no conferencing app before capture auto-stops.
     /// Generous because apps briefly release audio on mute/unmute.
     pub auto_stop_grace_secs: u32,
+    /// Sustained seconds with nothing said before capture ends itself. 0 turns
+    /// it off.
+    ///
+    /// Distinct from [`Self::auto_stop_grace_secs`], which watches the
+    /// *conferencing app* and therefore only ever ends a capture detection
+    /// started. This watches the *audio*, applies to manual captures too, and
+    /// exists for the meeting you walked away from without ending.
+    pub auto_end_silence_secs: u32,
+    /// Hide the live panel when a meeting ends through
+    /// [`Self::auto_end_silence_secs`]. Off by default, so the wrap-up summary
+    /// is waiting on screen when you come back.
+    pub auto_close_panel_on_auto_end: bool,
     /// Where summaries run.
     pub summary_backend: MeetingSummaryBackend,
     /// Minutes between background rolling summaries. Keeps "catch me up"
@@ -827,15 +888,20 @@ impl Default for MeetingSettings {
                 "interview".to_string(),
             ],
             auto_stop_grace_secs: 25,
-            summary_backend: MeetingSummaryBackend::OnDevice,
+            // Off by default. Ending a meeting the user has not finished with
+            // is destructive enough that it has to be asked for.
+            auto_end_silence_secs: 0,
+            auto_close_panel_on_auto_end: false,
+            summary_backend: MeetingSummaryBackend::Auto,
             rolling_summary_minutes: 5,
             user_display_name: String::new(),
             mention_alerts: true,
             show_live_panel: true,
-            // On by default, but on-device, so nothing leaves the Mac unless
-            // the user deliberately picks their cloud provider. Falls back to
-            // verbatim ASR when Apple Intelligence is unavailable.
-            live_refinement: MeetingRefinementBackend::OnDevice,
+            // Follows the AI the user already picked for dictation. With no
+            // cloud provider configured that is Apple Intelligence, so nothing
+            // leaves the Mac; it falls back to verbatim ASR when even that is
+            // unavailable.
+            live_refinement: MeetingRefinementBackend::Auto,
             retention_days: 30,
             panel_x: None,
             panel_y: None,
@@ -916,6 +982,13 @@ fn default_model() -> String {
 
 fn default_always_on_microphone() -> bool {
     false
+}
+
+/// On by default. Dictation is rarely a single sentence, and without the space
+/// the second one arrives welded to the first — a correction the user has to
+/// make by hand every time. Cheap to undo, tedious to keep fixing.
+fn default_append_trailing_space() -> bool {
+    true
 }
 
 fn default_continuous_silence_ms() -> u32 {
@@ -1517,6 +1590,8 @@ pub fn get_default_settings() -> AppSettings {
         confirm_paste_default_set: true,
         meeting_default_enabled_migrated: true,
         binding_defaults_v2_migrated: true,
+        trailing_space_default_migrated: true,
+        meeting_ai_auto_migrated: true,
         autostart_enabled: default_autostart_enabled(),
         selected_model: "".to_string(),
         always_on_microphone: false,
@@ -1553,7 +1628,7 @@ pub fn get_default_settings() -> AppSettings {
         post_process_prompts: default_post_process_prompts(),
         post_process_selected_prompt_id: None,
         mute_while_recording: false,
-        append_trailing_space: false,
+        append_trailing_space: default_append_trailing_space(),
         app_language: default_app_language(),
         milestone_notifications: default_milestone_notifications(),
         experimental_enabled: false,
@@ -1609,6 +1684,39 @@ impl AppSettings {
     /// paths (usage cap, paywall) gate on this.
     pub fn effective_is_pro(&self) -> bool {
         self.is_pro && !self.dev_force_free_tier
+    }
+
+    /// Whether the AI the user already chose for dictation refinement is
+    /// actually usable — Ghostly Max with a live entitlement, or a cloud
+    /// provider they have configured with a model.
+    ///
+    /// This is what "Automatic" resolves against everywhere. Someone who has
+    /// paid for Max, or gone to the trouble of pasting an API key, has already
+    /// answered "which AI should Ghostly use"; asking again per feature is a
+    /// settings screen pretending to be a choice.
+    ///
+    /// Apple Intelligence is deliberately excluded: it is reachable through the
+    /// on-device path already, and routing it here would send meeting text
+    /// through the cloud plumbing for no reason.
+    pub fn has_usable_cloud_ai(&self) -> bool {
+        let Some(provider) = self.active_post_process_provider() else {
+            return false;
+        };
+        if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
+            return false;
+        }
+        if provider.id == MAX_PROVIDER_ID {
+            return self.effective_is_pro();
+        }
+        let has_model = self
+            .post_process_models
+            .get(&provider.id)
+            .is_some_and(|model| !model.trim().is_empty());
+        let has_key = self
+            .post_process_api_keys
+            .get(&provider.id)
+            .is_some_and(|key| !key.trim().is_empty());
+        has_model && has_key
     }
 
     pub fn active_post_process_provider(&self) -> Option<&PostProcessProvider> {
@@ -1744,6 +1852,8 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     changed |= migrate_confirm_paste_default(&mut settings);
     changed |= migrate_meeting_enabled_default(&mut settings);
     changed |= migrate_binding_defaults_v2(&mut settings);
+    changed |= migrate_trailing_space_default(&mut settings);
+    changed |= migrate_meeting_ai_auto(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1776,6 +1886,44 @@ fn migrate_meeting_enabled_default(settings: &mut AppSettings) -> bool {
     }
     settings.meeting.enabled = true;
     settings.meeting_default_enabled_migrated = true;
+    true
+}
+
+/// Turns the trailing space on once for installs that predate it becoming the
+/// default. Same shape as the Meeting Mode flip above.
+///
+/// Note what this does *not* do: the flag only exists before the migration
+/// runs, so there is no way to tell "never touched it" from "deliberately
+/// turned it off", and this overrides both. That is the intended trade — the
+/// setting is trivially reversible and a run-on sentence is not — but it is an
+/// override, not a default change, and anyone who had it off will notice.
+fn migrate_trailing_space_default(settings: &mut AppSettings) -> bool {
+    if settings.trailing_space_default_migrated {
+        return false;
+    }
+    settings.append_trailing_space = true;
+    settings.trailing_space_default_migrated = true;
+    true
+}
+
+/// Moves meeting AI settings that are still on the old `on_device` default
+/// over to `auto`, so they follow the provider the user already chose.
+///
+/// Only the old default is touched: someone who deliberately selected
+/// on-device for meetings would have had to pick it out of a list that already
+/// defaulted to it, which is indistinguishable from never having looked — but
+/// `off`, `cloud` and `extractive` are unambiguous choices and stay put.
+fn migrate_meeting_ai_auto(settings: &mut AppSettings) -> bool {
+    if settings.meeting_ai_auto_migrated {
+        return false;
+    }
+    if settings.meeting.summary_backend == MeetingSummaryBackend::OnDevice {
+        settings.meeting.summary_backend = MeetingSummaryBackend::Auto;
+    }
+    if settings.meeting.live_refinement == MeetingRefinementBackend::OnDevice {
+        settings.meeting.live_refinement = MeetingRefinementBackend::Auto;
+    }
+    settings.meeting_ai_auto_migrated = true;
     true
 }
 
@@ -1951,6 +2099,8 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     changed |= migrate_confirm_paste_default(&mut settings);
     changed |= migrate_meeting_enabled_default(&mut settings);
     changed |= migrate_binding_defaults_v2(&mut settings);
+    changed |= migrate_trailing_space_default(&mut settings);
+    changed |= migrate_meeting_ai_auto(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(

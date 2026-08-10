@@ -132,8 +132,24 @@ impl TranscriptionManager {
                     // model is never unloaded mid-session.
                     let is_recording = app_handle_cloned
                         .try_state::<Arc<AudioRecordingManager>>()
-                        .map_or(false, |a| a.is_recording());
-                    if is_recording {
+                        .is_some_and(|a| a.is_recording());
+
+                    // Open Mic and Meeting Mode capture without ever entering
+                    // `RecordingState::Recording` — neither goes through
+                    // `try_start_recording` — so the check above reports a hot
+                    // mic as idle. Each transcribed utterance refreshes the
+                    // timer, but one quiet stretch longer than the timeout
+                    // unloads the model, and nothing in either path ever loads
+                    // it again: the session keeps capturing and silently
+                    // discards everything said for the rest of its life.
+                    let is_hands_free = app_handle_cloned
+                        .try_state::<Arc<crate::managers::continuous::ContinuousDictationManager>>()
+                        .is_some_and(|c| c.is_armed())
+                        || app_handle_cloned
+                            .try_state::<Arc<crate::meetings::MeetingManager>>()
+                            .is_some_and(|m| m.is_capturing());
+
+                    if is_recording || is_hands_free {
                         manager_cloned.touch_activity();
                         continue;
                     }

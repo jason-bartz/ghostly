@@ -1,7 +1,7 @@
 use crate::input;
 use crate::settings;
 use crate::settings::OverlayPosition;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 
 /// True while the overlay is displaying the staged screenshot+dictation
@@ -9,6 +9,12 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 /// read the separate `staged_overlay_position` setting instead of the normal
 /// recording-pill position. Reset when the overlay hides.
 static IS_STAGED: AtomicBool = AtomicBool::new(false);
+
+/// Bumped by every show and every hide. The deferred hide that lets the
+/// fade-out play captures the value current when it was scheduled and does
+/// nothing if it has moved on, so a show arriving during the fade cancels the
+/// hide instead of being undone by it 300 ms later.
+static HIDE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(not(target_os = "macos"))]
 use log::debug;
@@ -285,8 +291,15 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
 }
 
 /// Creates the recording overlay window and keeps it hidden by default
+///
+/// Safe to call more than once; the second call is a no-op. `show_overlay_state`
+/// relies on that to rebuild a window that startup failed to create.
 #[cfg(not(target_os = "macos"))]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
+    if app_handle.get_webview_window("recording_overlay").is_some() {
+        return;
+    }
+
     // On Linux (Wayland), monitor detection often fails, but we don't need exact coordinates
     // for Layer Shell as we use anchors. On other platforms, we require a monitor.
     #[cfg(not(target_os = "linux"))]
@@ -346,9 +359,34 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
 }
 
 /// Creates the recording overlay panel and keeps it hidden by default (macOS)
+///
+/// Safe to call more than once; the second call is a no-op.
 #[cfg(target_os = "macos")]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
-    if let Some((x, y)) = calculate_overlay_position(app_handle) {
+    if app_handle.get_webview_window("recording_overlay").is_some() {
+        return;
+    }
+
+    // A monitor we cannot find is not a reason to skip the overlay entirely.
+    //
+    // This used to be `if let Some((x, y)) = calculate_overlay_position(..)`
+    // with no `else`, and that one silent early return is how the recording
+    // pill disappeared for a whole session at a time. `calculate_overlay_position`
+    // resolves the monitor under the cursor, and the cursor comes from Enigo —
+    // which the *frontend* initialises, long after setup runs here — so the
+    // cursor lookup always fails at this point and the whole thing rests on
+    // `primary_monitor()`. When the app launches before the display is ready
+    // (login autostart, clamshell, dock-on-wake), that returns None too, the
+    // panel is never built, and every later `show()` finds no window and does
+    // nothing. No error, no retry, no overlay until the next relaunch.
+    //
+    // The position is corrected by `update_overlay_position` on every show, so
+    // a placeholder here costs nothing.
+    let (x, y) = calculate_overlay_position(app_handle).unwrap_or_else(|| {
+        log::warn!("No monitor available yet; creating the overlay at a placeholder position");
+        (100.0, 100.0)
+    });
+    {
         // PanelBuilder creates a Tauri window then converts it to NSPanel.
         // The window remains registered, so get_webview_window() still works.
         match PanelBuilder::<_, RecordingOverlayPanel>::new(app_handle, "recording_overlay")
@@ -373,7 +411,7 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
             .build()
         {
             Ok(panel) => {
-                let _ = panel.hide();
+                panel.hide();
             }
             Err(e) => {
                 log::error!("Failed to create recording overlay panel: {}", e);
@@ -396,6 +434,29 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
         settings.overlay_position
     };
     if effective_position == OverlayPosition::None {
+        return;
+    }
+
+    // Cancel a hide that is still counting down. `hide_recording_overlay`
+    // defers the native hide by 300 ms so the fade-out can play, and that timer
+    // has no way to know the overlay has since been asked to come back — so a
+    // show landing inside the window (recording → transcribing → next
+    // utterance, or Open Mic firing twice in quick succession) got wiped by the
+    // previous hide a fraction of a second later.
+    HIDE_GENERATION.fetch_add(1, Ordering::SeqCst);
+
+    // Recover from a startup that could not build the panel. `PanelBuilder`
+    // touches AppKit, so this has to be posted to the main thread and lands
+    // after the current call returns — meaning this particular show is lost and
+    // the next one appears. That is deliberate: the alternative is deferring
+    // the whole body, which would reorder `show-overlay` after a `hide-overlay`
+    // emitted synchronously right behind it (see `hide_recording_overlay`) and
+    // strand the pill on screen. One skipped pill beats a stuck one, and with
+    // the placeholder-position fallback above this path should never run.
+    if app_handle.get_webview_window("recording_overlay").is_none() {
+        log::warn!("Recording overlay window is missing; rebuilding it");
+        let app = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || create_recording_overlay(&app));
         return;
     }
 
@@ -489,10 +550,17 @@ pub fn hide_recording_overlay(app_handle: &AppHandle) {
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         // Emit event to trigger fade-out animation
         let _ = overlay_window.emit("hide-overlay", ());
-        // Hide the window after a short delay to allow animation to complete
+
+        // Hide the window after a short delay to allow animation to complete.
+        // Tagged with the current generation so a show landing inside those
+        // 300 ms wins — see `HIDE_GENERATION`.
+        let generation = HIDE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
         let window_clone = overlay_window.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(300));
+            if HIDE_GENERATION.load(Ordering::SeqCst) != generation {
+                return;
+            }
             let _ = window_clone.hide();
         });
     }

@@ -10,6 +10,7 @@ import { SettingsGroup } from "../../ui/SettingsGroup";
 import { SettingContainer } from "../../ui/SettingContainer";
 import { commands } from "../../../bindings";
 import type {
+  MeetingAiResolution,
   MeetingSettings as MeetingSettingsType,
   SystemAudioCapability,
 } from "../../../bindings";
@@ -26,6 +27,11 @@ export const MeetingSettings: React.FC = () => {
 
   const [settings, setSettings] = useState<MeetingSettingsType | null>(null);
   const [capability, setCapability] = useState<SystemAudioCapability | null>(
+    null,
+  );
+  // What "Automatic" currently picks. Shown rather than left to be guessed —
+  // the answer decides whether meeting text leaves the Mac.
+  const [aiResolution, setAiResolution] = useState<MeetingAiResolution | null>(
     null,
   );
   const [saving, setSaving] = useState(false);
@@ -66,6 +72,9 @@ export const MeetingSettings: React.FC = () => {
     });
     void commands.getSystemAudioCapability().then((value) => {
       if (active) setCapability(value);
+    });
+    void commands.getMeetingAiResolution().then((value) => {
+      if (active) setAiResolution(value);
     });
     return () => {
       active = false;
@@ -219,6 +228,53 @@ export const MeetingSettings: React.FC = () => {
               formatValue={(value) => `${Math.round(value)}s`}
             />
 
+            {/* Silence auto-end sits next to the app-based auto-stop above
+                because they answer the same question — "when should Ghostly
+                let go?" — from two different signals. */}
+            <Slider
+              value={settings.autoEndSilenceSecs}
+              onChange={(value) =>
+                void patch({ autoEndSilenceSecs: Math.round(value / 30) * 30 })
+              }
+              min={0}
+              max={1800}
+              step={30}
+              label={t("meeting.settings.autoEndSilenceLabel")}
+              description={t("meeting.settings.autoEndSilenceDescription")}
+              descriptionMode="tooltip"
+              grouped
+              formatValue={(value) => {
+                const total = Math.round(value);
+                if (total === 0) return t("meeting.settings.autoEndSilenceOff");
+                const minutes = Math.floor(total / 60);
+                const seconds = total % 60;
+                if (minutes === 0)
+                  return t("meeting.settings.silenceSeconds", {
+                    count: seconds,
+                  });
+                if (seconds === 0)
+                  return t("meeting.settings.silenceMinutes", {
+                    count: minutes,
+                  });
+                return `${t("meeting.settings.silenceMinutes", {
+                  count: minutes,
+                })} ${t("meeting.settings.silenceSeconds", { count: seconds })}`;
+              }}
+            />
+
+            {settings.autoEndSilenceSecs > 0 && (
+              <ToggleSwitch
+                checked={settings.autoClosePanelOnAutoEnd}
+                onChange={(value) =>
+                  void patch({ autoClosePanelOnAutoEnd: value })
+                }
+                label={t("meeting.settings.autoClosePanelLabel")}
+                description={t("meeting.settings.autoClosePanelDescription")}
+                descriptionMode="tooltip"
+                grouped
+              />
+            )}
+
             <SettingContainer
               title={t("meeting.settings.exclusionsLabel")}
               description={t("meeting.settings.exclusionsDescription")}
@@ -258,6 +314,10 @@ export const MeetingSettings: React.FC = () => {
               <Dropdown
                 options={[
                   {
+                    value: "auto",
+                    label: t("meeting.settings.aiAutomatic"),
+                  },
+                  {
                     value: "on_device",
                     label: t("meeting.settings.liveRefinementOnDevice"),
                   },
@@ -280,6 +340,19 @@ export const MeetingSettings: React.FC = () => {
               />
             </SettingContainer>
 
+            {settings.liveRefinement === "auto" && aiResolution && (
+              <Alert
+                variant={aiResolution.usesCloud ? "warning" : "info"}
+                contained
+              >
+                {aiResolution.usesCloud
+                  ? t("meeting.settings.autoUsingCloud", {
+                      provider: aiResolution.providerName,
+                    })
+                  : t("meeting.settings.autoUsingOnDevice")}
+              </Alert>
+            )}
+
             {settings.liveRefinement === "cloud" && (
               <Alert variant="warning" contained>
                 {t("meeting.settings.liveRefinementCloudWarning")}
@@ -296,6 +369,10 @@ export const MeetingSettings: React.FC = () => {
             >
               <Dropdown
                 options={[
+                  {
+                    value: "auto",
+                    label: t("meeting.settings.aiAutomatic"),
+                  },
                   {
                     value: "on_device",
                     label: t("meeting.settings.summaryOnDevice"),
@@ -318,6 +395,19 @@ export const MeetingSettings: React.FC = () => {
                 }
               />
             </SettingContainer>
+
+            {settings.summaryBackend === "auto" && aiResolution && (
+              <Alert
+                variant={aiResolution.usesCloud ? "warning" : "info"}
+                contained
+              >
+                {aiResolution.usesCloud
+                  ? t("meeting.settings.autoUsingCloud", {
+                      provider: aiResolution.providerName,
+                    })
+                  : t("meeting.settings.autoUsingOnDevice")}
+              </Alert>
+            )}
 
             {settings.summaryBackend === "cloud" && (
               <Alert variant="warning" contained>

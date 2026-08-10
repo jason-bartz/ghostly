@@ -133,7 +133,12 @@ pub fn spawn(
 fn backend_is_reachable(app: &AppHandle, backend: MeetingRefinementBackend) -> bool {
     match backend {
         MeetingRefinementBackend::Off => false,
-        MeetingRefinementBackend::OnDevice => on_device_available(),
+        // `Auto` is resolved by the caller; grouped with on-device so a future
+        // call site that forgets degrades to the private path rather than
+        // silently doing nothing.
+        MeetingRefinementBackend::Auto | MeetingRefinementBackend::OnDevice => {
+            on_device_available()
+        }
         MeetingRefinementBackend::Cloud => {
             let settings = get_settings(app);
             let Some(provider) = settings
@@ -250,7 +255,7 @@ async fn run_backend(
 ) -> Result<String, String> {
     match backend {
         MeetingRefinementBackend::Off => Err("Refinement is off".to_string()),
-        MeetingRefinementBackend::OnDevice => on_device(prompt),
+        MeetingRefinementBackend::Auto | MeetingRefinementBackend::OnDevice => on_device(prompt),
         MeetingRefinementBackend::Cloud => cloud(app, prompt).await,
     }
 }

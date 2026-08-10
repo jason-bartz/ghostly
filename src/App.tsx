@@ -211,6 +211,25 @@ function App() {
     };
   }, [t]);
 
+  // Open Mic dropped an utterance. Worth a toast rather than a log line: the
+  // mic stays open and the tray keeps saying Recording, so a silent failure is
+  // indistinguishable from the feature simply not existing — which is exactly
+  // how the unloaded-model bug presented for months.
+  useEffect(() => {
+    const unlisten = listen<string>("continuous-dictation-error", (event) => {
+      toast.error(t("errors.openMicFailedTitle"), {
+        description: event.payload || t("errors.openMicFailed"),
+        // A stable id so a repeated failure replaces the toast instead of
+        // stacking one per utterance — whatever broke is usually broken for
+        // every utterance, and burying the screen in toasts is its own bug.
+        id: "open-mic-error",
+      });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
   // Listen for AI refinement failures so users aren't left guessing when the
   // raw transcript appears instead of the refined version. The Rust side emits
   // a concise reason; full stack traces are in ghostly.log.
