@@ -786,6 +786,7 @@ pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), Str
         .retain(|k, _| keep.contains(k));
     settings.custom_words = words;
     settings::write_settings(&app, settings);
+    crate::settings::touch_sync(&app);
     Ok(())
 }
 
@@ -1077,6 +1078,7 @@ pub fn add_post_process_prompt(
 
     settings.post_process_prompts.push(new_prompt.clone());
     settings::write_settings(&app, settings);
+    crate::settings::touch_sync(&app);
 
     Ok(new_prompt)
 }
@@ -1099,6 +1101,7 @@ pub fn update_post_process_prompt(
         existing_prompt.name = name;
         existing_prompt.prompt = prompt;
         settings::write_settings(&app, settings);
+        crate::settings::touch_sync(&app);
         Ok(())
     } else {
         Err(format!("Prompt with id '{}' not found", id))
@@ -1130,6 +1133,7 @@ pub fn delete_post_process_prompt(app: AppHandle, id: String) -> Result<(), Stri
     }
 
     settings::write_settings(&app, settings);
+    crate::settings::touch_sync(&app);
     Ok(())
 }
 

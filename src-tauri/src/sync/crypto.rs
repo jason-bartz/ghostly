@@ -54,6 +54,21 @@ impl std::fmt::Debug for SyncKey {
     }
 }
 
+/// Serialise a derived key for the OS keychain.
+///
+/// Only ever handed to `keychain::set_secret`. The passphrase it came from is
+/// never stored anywhere, in any form.
+pub fn export_key(key: &SyncKey) -> String {
+    B64.encode(key.0)
+}
+
+/// Read a key back out of the keychain.
+pub fn import_key(encoded: &str) -> Option<SyncKey> {
+    let bytes = B64.decode(encoded).ok()?;
+    let arr: [u8; KEY_LEN] = bytes.try_into().ok()?;
+    Some(SyncKey(arr))
+}
+
 /// A fresh random salt, base64 for storage.
 pub fn new_salt() -> String {
     let mut salt = [0u8; SALT_LEN];
@@ -249,6 +264,16 @@ mod tests {
         assert!(open(&key, "r", "").is_err());
         assert!(open(&key, "r", &B64.encode([0u8; 8])).is_err());
         assert!(derive_key("pass", "not base64!!").is_err());
+    }
+
+    #[test]
+    fn a_key_survives_the_keychain_round_trip() {
+        let salt = new_salt();
+        let key = key_for("pass", &salt);
+        let restored = import_key(&export_key(&key)).expect("imports");
+        let sealed = seal(&key, "r", b"x").unwrap();
+        assert_eq!(open(&restored, "r", &sealed).unwrap(), b"x");
+        assert!(import_key("nonsense").is_none());
     }
 
     #[test]

@@ -67,3 +67,54 @@ pub fn delete_api_key(provider_id: &str) {
         let _ = e.delete_password();
     }
 }
+
+// ---- Non-provider secrets -------------------------------------------------
+//
+// Kept under a separate service from the API keys, because
+// `hydrate_api_keys_from_keychain` walks the provider list and treats every
+// entry in the API-key service as a provider credential. A sync key filed
+// there would be invisible to that walk today and a confusing surprise the
+// first time anyone enumerated it.
+
+const SECRET_SERVICE: &str = "computer.ghostly.secrets";
+
+fn secret_entry(account: &str) -> Option<Entry> {
+    match Entry::new(SECRET_SERVICE, account) {
+        Ok(e) => Some(e),
+        Err(err) => {
+            warn!("Failed to open keychain entry for '{}': {}", account, err);
+            None
+        }
+    }
+}
+
+pub fn set_secret(account: &str, value: &str) -> bool {
+    let Some(e) = secret_entry(account) else {
+        return false;
+    };
+    match e.set_password(value) {
+        Ok(()) => true,
+        Err(err) => {
+            warn!("Failed to save secret '{}' to keychain: {}", account, err);
+            false
+        }
+    }
+}
+
+pub fn get_secret(account: &str) -> Option<String> {
+    let e = secret_entry(account)?;
+    match e.get_password() {
+        Ok(pw) => Some(pw),
+        Err(keyring::Error::NoEntry) => None,
+        Err(err) => {
+            warn!("Failed to read secret '{}' from keychain: {}", account, err);
+            None
+        }
+    }
+}
+
+pub fn delete_secret(account: &str) {
+    if let Some(e) = secret_entry(account) {
+        let _ = e.delete_password();
+    }
+}

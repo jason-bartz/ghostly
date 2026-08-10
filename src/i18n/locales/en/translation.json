@@ -2023,5 +2023,27 @@
       "pair": "“{{wrong}}” is corrected to “{{correct}}”",
       "editHint": "Each one is an ordinary entry in Word corrections below — edit or remove any of them there."
     }
+  },
+  "sync": {
+    "title": "Sync across your Macs",
+    "description": "Carries your vocabulary, word corrections, prompts, profiles and correction phrases between the Macs you use. Encrypted on this Mac before it leaves — Ghostly cannot read any of it.",
+    "noRecovery": "Your passphrase is the only key. It is never sent to us, so if you forget it there is no reset and no recovery — the synced copy is gone. Store it somewhere safe.",
+    "passphrasePlaceholder": "Sync passphrase",
+    "confirmPlaceholder": "Confirm passphrase",
+    "turnOn": "Turn on sync",
+    "unlockThisMac": "Unlock on this Mac",
+    "working": "Working…",
+    "setupHint": "At least 8 characters. You will type this once on each of your other Macs.",
+    "joinHint": "This account already syncs. Enter the same passphrase you used on your other Mac.",
+    "mismatch": "Those two passphrases don't match.",
+    "setupDone": "Sync is on.",
+    "unlocked": "This Mac is now syncing.",
+    "lastSynced": "Last synced {{when}}",
+    "neverSynced": "Not synced yet",
+    "syncNow": "Sync now",
+    "syncedCount": "Synced — {{applied}} changes in, {{pushed}} records out",
+    "turnOff": "Turn off on this Mac",
+    "eraseServerCopy": "Erase synced copy",
+    "localSafe": "Both leave everything on this Mac untouched. Turning off stops this Mac syncing; erasing removes the copy your Macs share."
   }
 }
