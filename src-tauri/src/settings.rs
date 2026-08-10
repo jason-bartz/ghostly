@@ -492,6 +492,13 @@ pub struct AppSettings {
     pub append_trailing_space: bool,
     #[serde(default = "default_app_language")]
     pub app_language: String,
+    /// Whether crossing a notable dictation milestone posts a system
+    /// notification. Defaults on: the banners are rare by construction (see
+    /// `milestones.rs`), and a feature nobody can discover is worth less than
+    /// the handful of interruptions it costs. The sidebar card still tracks
+    /// every milestone when this is off.
+    #[serde(default = "default_milestone_notifications")]
+    pub milestone_notifications: bool,
     #[serde(default)]
     pub experimental_enabled: bool,
     #[serde(default)]
@@ -978,6 +985,10 @@ fn default_audio_feedback_volume() -> f32 {
 
 fn default_sound_theme() -> SoundTheme {
     SoundTheme::Subtle
+}
+
+fn default_milestone_notifications() -> bool {
+    true
 }
 
 fn default_app_language() -> String {
@@ -1517,6 +1528,7 @@ pub fn get_default_settings() -> AppSettings {
         mute_while_recording: false,
         append_trailing_space: false,
         app_language: default_app_language(),
+        milestone_notifications: default_milestone_notifications(),
         experimental_enabled: false,
         lazy_stream_close: false,
         continuous_dictation_enabled: false,
@@ -1934,17 +1946,14 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
 /// matters as much as setting: a lapsed subscriber must stop sending requests
 /// the gateway would only reject.
 pub fn sync_max_provider_key(app: &AppHandle) {
-    let entitled_key = crate::license::load_key_and_token().and_then(|(key, token)| {
-        let payload = crate::license::verify_token(&token).ok()?;
-        if payload.tier.as_deref() == Some("max") {
-            Some(key)
-        } else {
-            None
-        }
-    });
+    let entitled_key = crate::license::entitled_max_key();
 
     let mut settings = get_settings(app);
-    let changed = match entitled_key {
+    // `newly_entitled` is the *transition* into hosted AI, not the steady state.
+    // This function runs on every revalidation, so anything keyed off the
+    // steady state would re-apply itself on a timer.
+    let mut newly_entitled = false;
+    let mut changed = match &entitled_key {
         Some(key) => {
             let existing = settings.post_process_api_keys.get(MAX_PROVIDER_ID);
             if existing.map(String::as_str) == Some(key.as_str()) {
@@ -1952,19 +1961,53 @@ pub fn sync_max_provider_key(app: &AppHandle) {
             } else {
                 settings
                     .post_process_api_keys
-                    .insert(MAX_PROVIDER_ID.to_string(), key);
+                    .insert(MAX_PROVIDER_ID.to_string(), key.clone());
+                newly_entitled = true;
                 true
             }
         }
-        None => settings
-            .post_process_api_keys
-            .remove(MAX_PROVIDER_ID)
-            .is_some(),
+        None => {
+            // Dropping it from the map is not enough. `write_settings` never
+            // deletes keychain entries (see the note there — deleting on empty
+            // once turned a locked keychain into permanent key loss), so
+            // `hydrate_api_keys_from_keychain` would put the licence key
+            // straight back on the next `get_settings`, and a deactivated Mac
+            // would keep authenticating against the gateway and spending the
+            // subscriber's allowance.
+            //
+            // The blanket no-delete rule is about keys the *user* typed and
+            // cannot recover. This one is derived from the licence token, so
+            // re-deriving it costs nothing and deleting it loses nothing.
+            crate::keychain::delete_api_key(MAX_PROVIDER_ID);
+            settings
+                .post_process_api_keys
+                .remove(MAX_PROVIDER_ID)
+                .is_some()
+        }
     };
+
+    // Gaining Max selects the hosted provider: it is what the subscriber just
+    // bought, and the whole pitch is that there is nothing to configure. Only
+    // on the transition, though — forcing it on every revalidation would stomp
+    // a deliberate choice a few minutes after the user made it.
+    //
+    // Losing it deliberately does *not* redirect them anywhere. Silently
+    // sending a lapsed subscriber's dictation to some other provider they
+    // happen to have a key for is a worse surprise than no refinement plus an
+    // explicit "your subscription lapsed" state in Settings.
+    if newly_entitled && settings.post_process_provider_id != MAX_PROVIDER_ID {
+        settings.post_process_provider_id = MAX_PROVIDER_ID.to_string();
+        changed = true;
+    }
 
     if changed {
         write_settings(app, settings);
     }
+
+    // The cap is per-licence-month on the server; a licence change is the one
+    // local event that can invalidate what we think we know about it (a
+    // support-raised cap, a different key, a fresh subscription).
+    crate::max_gateway::clear_fair_use_flag();
 }
 
 pub fn write_settings(app: &AppHandle, settings: AppSettings) {

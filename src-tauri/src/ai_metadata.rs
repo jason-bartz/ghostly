@@ -169,11 +169,16 @@ pub async fn generate(
         _ => (None, None),
     };
 
+    let target = crate::max_gateway::Target {
+        provider: provider.clone(),
+        model,
+        api_key,
+    };
+
     let result = if provider.supports_structured_output {
-        llm_client::send_chat_completion_with_schema(
-            &provider,
-            api_key,
-            &model,
+        crate::max_gateway::send_chat_completion_with_schema(
+            settings,
+            target,
             input,
             Some(system.clone()),
             Some(schema),
@@ -188,10 +193,9 @@ pub async fn generate(
             "{}\n\nReturn ONLY valid JSON, no markdown.\n\nTranscription:\n{}",
             system, input
         );
-        llm_client::send_chat_completion(
-            &provider,
-            api_key,
-            &model,
+        crate::max_gateway::send_chat_completion(
+            settings,
+            target,
             prompt,
             reasoning_effort,
             reasoning,

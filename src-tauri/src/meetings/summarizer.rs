@@ -402,9 +402,18 @@ async fn cloud(app: &AppHandle, instructions: &str, transcript: &str) -> Result<
     // Non-streaming deliberately: the streaming helper is OpenAI-SSE only, has
     // no retries, and its 30 s timeout would cut a long generation short.
     let prompt = format!("{SYSTEM_PROMPT}\n\n{instructions}\n\nTranscript:\n{transcript}");
-    let response =
-        crate::llm_client::send_chat_completion(&provider, api_key, &model, prompt, None, None)
-            .await?;
+    let response = crate::max_gateway::send_chat_completion(
+        &settings,
+        crate::max_gateway::Target {
+            provider,
+            model,
+            api_key,
+        },
+        prompt,
+        None,
+        None,
+    )
+    .await?;
 
     response
         .map(|text| text.trim().to_string())

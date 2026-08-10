@@ -1943,6 +1943,35 @@ async getDeviceList() : Promise<Result<StatusResponse, LicenseError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Hosted-AI entitlement and remaining monthly allowance, straight from the
+ * gateway. Used by the Account pane; the offline token already says whether
+ * the user is on Max, so this is only for the numbers and for catching a
+ * lapse that happened after the token was minted.
+ */
+async getAiStatus() : Promise<Result<AiStatus, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_ai_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Open the Stripe Customer Portal in the browser.
+ * 
+ * Card changes, invoices, and cancellation all live there — building any of
+ * it in-app would mean handling payment details ourselves, and would drift
+ * every time Stripe changes how proration or dunning works.
+ */
+async openBillingPortal() : Promise<Result<null, LicenseError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_billing_portal") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async activateFromSession(sessionId: string) : Promise<Result<LicenseState, LicenseError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("activate_from_session", { sessionId }) };
@@ -1993,6 +2022,22 @@ meetingStatusEvent: "meeting-status-event"
 /** user-defined types **/
 
 export type ActiveDevice = { machine_id: string | null; machine_name?: string | null; activated_at: number | null; last_validated_at: number | null }
+/**
+ * Response of `GET /ai/status` — the gateway's own view of what this licence
+ * is entitled to right now, plus how much of the monthly fair-use allowance
+ * has been spent.
+ * 
+ * The tier in the signed token is enough to decide whether to *offer* hosted
+ * AI, and is what the UI gates on offline. This endpoint exists for the
+ * numbers the token can't carry: usage counts, and a lapse that happened
+ * after the token was minted.
+ */
+export type AiStatus = { tier: string; ai_enabled: boolean; 
+/**
+ * `ok`, or the machine-readable reason hosted AI is unavailable —
+ * `revoked`, `not_max`, `expired`, `unpaid`.
+ */
+reason: string; expires_at: number | null; requests_used: number; requests_limit: number }
 export type AppContext = { bundleId: string | null; processName: string | null; windowClass: string | null; exePath: string | null; windowTitle: string | null }
 export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; 
 /**
@@ -2055,7 +2100,15 @@ refinement_enabled?: boolean;
  * 
  * Turn off to send AI-app dictation through the configured LLM anyway.
  */
-deterministic_cleanup_in_ai_apps?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
+deterministic_cleanup_in_ai_apps?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; 
+/**
+ * Whether crossing a notable dictation milestone posts a system
+ * notification. Defaults on: the banners are rare by construction (see
+ * `milestones.rs`), and a feature nobody can discover is worth less than
+ * the handful of interruptions it costs. The sidebar card still tracks
+ * every milestone when this is off.
+ */
+milestone_notifications?: boolean; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
 /**
  * Enables Open Mic, the hands-free dictation mode. When true, an
  * additional shortcut opens/closes a VAD-driven loop that transcribes each
@@ -2386,7 +2439,14 @@ export type Lane =
  */
 "system"
 export type LicenseError = { code: "invalid_key" } | { code: "revoked" } | { code: "device_limit_reached"; limit: number; active_devices: ActiveDevice[] } | { code: "not_activated" } | { code: "network_error"; message: string } | { code: "invalid_token" } | { code: "not_ready" }
-export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string }
+export type LicenseState = { is_licensed: boolean; key_masked: string | null; email: string | null; expires_at: number | null; machine_id: string; 
+/**
+ * `"max"` for a subscription, `"pro"` for the retired perpetual licence.
+ * Read straight off the offline-verified token, so the UI knows the tier
+ * without a network round-trip. `None` when unlicensed, or when the token
+ * predates Max (all of which are Pro — see `TokenPayload::tier`).
+ */
+tier: string | null }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 export type MatchRule = 
 /**

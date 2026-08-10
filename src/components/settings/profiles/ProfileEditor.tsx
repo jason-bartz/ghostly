@@ -5,6 +5,7 @@ import { Dropdown, SettingContainer, ToggleSwitch } from "../../ui";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { useSettings } from "../../../hooks/useSettings";
+import { isMaxLicense, useMaxStore } from "@/stores/maxStore";
 import type { MatchRuleKind, MatchRuleLike, ProfileLike } from "./types";
 
 interface Props {
@@ -45,10 +46,15 @@ export const ProfileEditor: React.FC<Props> = ({
     (getSetting("post_process_prompts") as
       | Array<{ id: string; name: string }>
       | undefined) ?? [];
-  const providers =
+  // Ghostly Max ships in every install's provider list so the backend can
+  // resolve it the instant a subscription activates, but overriding a profile
+  // onto a provider this install isn't entitled to would just 402.
+  const isMax = useMaxStore((s) => isMaxLicense(s.license));
+  const providers = (
     (getSetting("post_process_providers") as
       | Array<{ id: string; label: string }>
-      | undefined) ?? [];
+      | undefined) ?? []
+  ).filter((p) => p.id !== "ghostly_max" || isMax);
 
   const update = <K extends keyof ProfileLike>(key: K, value: ProfileLike[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));

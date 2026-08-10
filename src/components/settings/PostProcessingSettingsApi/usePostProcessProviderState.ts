@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSettings } from "../../../hooks/useSettings";
 import { commands, type PostProcessProvider } from "@/bindings";
+import { isMaxLicense, useMaxStore } from "@/stores/maxStore";
 import type { ModelOption } from "./types";
 import type { DropdownOption } from "../../ui/Dropdown";
 
@@ -29,8 +30,10 @@ type PostProcessProviderState = {
 };
 
 const APPLE_PROVIDER_ID = "apple_intelligence";
+const MAX_PROVIDER_ID = "ghostly_max";
 
 export const usePostProcessProviderState = (): PostProcessProviderState => {
+  const isMax = useMaxStore((s) => isMaxLicense(s.license));
   const {
     settings,
     isUpdating,
@@ -65,12 +68,27 @@ export const usePostProcessProviderState = (): PostProcessProviderState => {
   const apiKey = settings?.post_process_api_keys?.[selectedProviderId] ?? "";
   const model = settings?.post_process_models?.[selectedProviderId] ?? "";
 
+  // Ghostly Max is seeded into every install's provider list so the backend
+  // can resolve it the moment a subscription activates. Offering it in the
+  // picker to someone without one would hand them an API-key field they can't
+  // fill and a provider that answers 402 on every dictation.
+  //
+  // The exception is a lapsed subscriber: their selection is still Max, and
+  // dropping it from the options would leave the dropdown showing nothing at
+  // all instead of the state they need to see.
   const providerOptions = useMemo<DropdownOption[]>(() => {
-    return providers.map((provider) => ({
-      value: provider.id,
-      label: provider.label,
-    }));
-  }, [providers]);
+    return providers
+      .filter(
+        (provider) =>
+          provider.id !== MAX_PROVIDER_ID ||
+          isMax ||
+          provider.id === selectedProviderId,
+      )
+      .map((provider) => ({
+        value: provider.id,
+        label: provider.label,
+      }));
+  }, [providers, isMax, selectedProviderId]);
 
   const handleProviderSelect = useCallback(
     async (providerId: string) => {

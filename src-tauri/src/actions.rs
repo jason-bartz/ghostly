@@ -14,6 +14,7 @@ use crate::screenshot;
 use crate::session::{self, SessionBuffer, SessionEntry};
 use crate::settings::{
     get_settings, AppSettings, VoiceEditReplaceStrategy, APPLE_INTELLIGENCE_PROVIDER_ID,
+    MAX_PROVIDER_ID,
 };
 use crate::shortcut;
 use crate::tray::{change_tray_icon, TrayIconState};
@@ -310,12 +311,26 @@ fn refinement_diverged(input: &str, output: &str) -> Option<String> {
 /// Event payload emitted when AI refinement fails for a real reason (network,
 /// bad key, provider error) — not graceful skips like "no prompt selected".
 /// Frontend listens and shows a toast; pipeline still pastes the raw transcript.
+///
+/// `code` is set only for Ghostly Max gateway rejections (`not_max`,
+/// `expired`, `unpaid`, `fair_use_exceeded`, `upstream_error`). Those are
+/// account states with a specific remedy, so the frontend renders them as
+/// actionable UI rather than as an error string.
 #[derive(Clone, serde::Serialize)]
 struct PostProcessFailedEvent {
     message: String,
+    code: Option<String>,
 }
 
 fn emit_post_process_failed(app: &AppHandle, message: impl Into<String>) {
+    emit_post_process_failed_with_code(app, message, None);
+}
+
+fn emit_post_process_failed_with_code(
+    app: &AppHandle,
+    message: impl Into<String>,
+    code: Option<&str>,
+) {
     let message = message.into();
     // Report the *shape* of the failure before the message is handed to the UI.
     // `classify_failure_message` reads the text only to pick an enum variant;
@@ -325,7 +340,10 @@ fn emit_post_process_failed(app: &AppHandle, message: impl Into<String>) {
         crate::telemetry::ErrorKind::RefinementFailed,
         classify_failure_message(&message),
     );
-    let payload = PostProcessFailedEvent { message };
+    let payload = PostProcessFailedEvent {
+        message,
+        code: code.map(str::to_string),
+    };
     if let Err(e) = app.emit("post-process-failed", payload) {
         warn!("Failed to emit post-process-failed event: {}", e);
     }
@@ -338,7 +356,10 @@ fn emit_screenshot_qa_failed(app: &AppHandle, message: impl Into<String>) {
         crate::telemetry::ErrorKind::ScreenshotFailed,
         classify_failure_message(&message),
     );
-    let payload = PostProcessFailedEvent { message };
+    let payload = PostProcessFailedEvent {
+        message,
+        code: None,
+    };
     if let Err(e) = app.emit("screenshot-qa-failed", payload) {
         warn!("Failed to emit screenshot-qa-failed event: {}", e);
     }
@@ -497,9 +518,12 @@ async fn post_process_transcription(
     // Swift FFI and can't stream, so it falls through to the existing code.
     if provider.id != APPLE_INTELLIGENCE_PROVIDER_ID {
         return post_process_transcription_streaming(
-            &provider,
-            api_key,
-            &model,
+            settings,
+            crate::max_gateway::Target {
+                provider,
+                model,
+                api_key,
+            },
             &prompt,
             transcription,
             transformative,
@@ -774,9 +798,8 @@ async fn post_process_transcription(
 /// Returns `Some(text)` on success, `None` on cancellation or failure. Failure
 /// cases emit a `post-process-failed` event so the user sees a toast.
 async fn post_process_transcription_streaming(
-    provider: &crate::settings::PostProcessProvider,
-    api_key: String,
-    model: &str,
+    settings: &AppSettings,
+    target: crate::max_gateway::Target,
     prompt_template: &str,
     transcription: &str,
     transformative: bool,
@@ -823,10 +846,13 @@ async fn post_process_transcription_streaming(
         emit_transcription_preview(&app_for_delta, &snapshot);
     };
 
-    let result = crate::llm_client::send_chat_completion_stream(
-        provider,
-        api_key,
-        model,
+    // Goes through `max_gateway` rather than `llm_client` directly so a Max
+    // subscriber who has spent the month's allowance falls through to their own
+    // key instead of losing the refinement. Identical for every other provider.
+    let provider_id = target.provider.id.clone();
+    let result = crate::max_gateway::send_chat_completion_stream(
+        settings,
+        target,
         user_content,
         system_prompt,
         Arc::clone(&cancel_token),
@@ -854,7 +880,7 @@ async fn post_process_transcription_streaming(
                 // sends its answer straight to the paste buffer.
                 warn!(
                     "Streaming refinement diverged for provider '{}': {}; falling back to raw transcript",
-                    provider.id, reason
+                    provider_id, reason
                 );
                 emit_post_process_failed(
                     app,
@@ -864,7 +890,7 @@ async fn post_process_transcription_streaming(
             } else {
                 debug!(
                     "Streaming post-processing succeeded for provider '{}'. Output length: {} chars",
-                    provider.id,
+                    provider_id,
                     cleaned.len()
                 );
                 Some(cleaned)
@@ -877,17 +903,35 @@ async fn post_process_transcription_streaming(
         Err(e) => {
             error!(
                 "Streaming post-processing failed for provider '{}': {}. Falling back to original transcription.",
-                provider.id, e
+                provider_id, e
             );
-            emit_post_process_failed(
-                app,
-                format!(
-                    "AI refinement failed: {}. Pasted raw transcription instead.",
-                    short_error_reason(&e)
-                ),
-            );
+            emit_refinement_failure(app, &provider_id, &e);
             None
         }
+    }
+}
+
+/// Report a refinement failure to the UI, preserving the gateway's error code
+/// when there is one.
+///
+/// A hosted-AI failure is a *state* the user can act on — lapsed subscription,
+/// month's allowance spent — not a transport error. Passing the code through
+/// lets the frontend render it as such instead of putting an HTTP body in a
+/// toast. Everything else keeps the existing generic message.
+fn emit_refinement_failure(app: &AppHandle, provider_id: &str, err: &str) {
+    match crate::max_gateway::parse_code(err).filter(|_| provider_id == MAX_PROVIDER_ID) {
+        Some(code) => emit_post_process_failed_with_code(
+            app,
+            crate::max_gateway::describe(code),
+            Some(code.as_str()),
+        ),
+        None => emit_post_process_failed(
+            app,
+            format!(
+                "AI refinement failed: {}. Pasted raw transcription instead.",
+                short_error_reason(err)
+            ),
+        ),
     }
 }
 
@@ -1189,10 +1233,13 @@ pub(crate) async fn voice_edit_via_llm(
             "required": ["revised_text"],
             "additionalProperties": false
         });
-        if let Ok(Some(content)) = crate::llm_client::send_chat_completion_with_schema(
-            &provider,
-            api_key.clone(),
-            &model,
+        if let Ok(Some(content)) = crate::max_gateway::send_chat_completion_with_schema(
+            settings,
+            crate::max_gateway::Target {
+                provider: provider.clone(),
+                model: model.clone(),
+                api_key: api_key.clone(),
+            },
             user_content.clone(),
             Some(VOICE_EDIT_SYSTEM_PROMPT.to_string()),
             Some(schema),
@@ -1218,10 +1265,13 @@ pub(crate) async fn voice_edit_via_llm(
 
     // Legacy chat completion
     let full_prompt = format!("{}\n\n{}", VOICE_EDIT_SYSTEM_PROMPT, user_content);
-    match crate::llm_client::send_chat_completion(
-        &provider,
-        api_key,
-        &model,
+    match crate::max_gateway::send_chat_completion(
+        settings,
+        crate::max_gateway::Target {
+            provider,
+            model,
+            api_key,
+        },
         full_prompt,
         reasoning_effort,
         reasoning,
@@ -1316,10 +1366,13 @@ async fn screenshot_qa_via_llm(
                 .to_string()
         });
 
-    match crate::llm_client::send_chat_completion_with_image(
-        &provider,
-        api_key,
-        &model,
+    match crate::max_gateway::send_chat_completion_with_image(
+        settings,
+        crate::max_gateway::Target {
+            provider,
+            model,
+            api_key,
+        },
         transcription.to_string(),
         image_png,
         Some(system_prompt),

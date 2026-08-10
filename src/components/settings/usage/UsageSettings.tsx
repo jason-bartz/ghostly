@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { commands, type UsageStats } from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
+import { isMaxLicense, useMaxStore } from "@/stores/maxStore";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -111,6 +112,14 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
   const limitLabel = formatDurationShort(stats.weekly_limit_secs);
   const uncapped = stats.weekly_limit_secs === 0;
 
+  // `is_pro` is the backend's "has a licence" flag and predates Max, so the
+  // badge takes its wording from the tier rather than repeating "PRO" at a
+  // subscriber.
+  const license = useMaxStore((s) => s.license);
+  const badgeLabel = isMaxLicense(license)
+    ? t("usage.max.badge")
+    : t("usage.pro.badge");
+
   const barColor = stats.is_over_limit
     ? "bg-danger"
     : stats.is_at_warning
@@ -127,7 +136,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
             </p>
             {stats.is_pro && (
               <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-logo-primary/15 text-logo-primary">
-                {t("usage.pro.badge")}
+                {badgeLabel}
               </span>
             )}
           </div>

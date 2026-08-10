@@ -230,9 +230,18 @@ fn is_builtin_model_id(id: &str) -> bool {
     IDS.contains(&id)
 }
 
+/// Provider ids we ship, and therefore ids that carry no user-chosen text and
+/// are safe to report verbatim. Anything else is a provider the user added,
+/// whose id can contain a company name, and gets bucketed as "custom".
+///
+/// Keep in sync with `default_post_process_providers` in `settings.rs` — a
+/// shipped id missing here isn't a leak, but it does erase the distinction the
+/// report exists to make.
 fn is_builtin_provider_id(id: &str) -> bool {
     const IDS: &[&str] = &[
         "apple-intelligence",
+        "apple_intelligence",
+        "ghostly_max",
         "openai",
         "anthropic",
         "groq",

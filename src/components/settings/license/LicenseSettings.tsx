@@ -12,6 +12,7 @@ import {
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
+import { MAX_TIER, useMaxStore } from "@/stores/maxStore";
 
 function formatRelativeTime(unixSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - unixSeconds;
@@ -76,11 +77,17 @@ export const LicenseSettings: React.FC = () => {
   const [devices, setDevices] = useState<StatusResponse | null>(null);
   const [devicesLoading, setDevicesLoading] = useState(false);
 
+  // Every licence change is also a Max entitlement change: the panes that gate
+  // on tier (AI Refinement, the Account quota) read from the shared store, and
+  // would otherwise keep showing the pre-activation layout until remount.
+  const refreshMax = useMaxStore((s) => s.refresh);
+
   const refreshState = useCallback(async () => {
     const s = await commands.getLicenseState();
     setState(s);
+    void refreshMax(true);
     return s;
-  }, []);
+  }, [refreshMax]);
 
   const refreshDevices = useCallback(async () => {
     setDevicesLoading(true);
@@ -113,6 +120,7 @@ export const LicenseSettings: React.FC = () => {
         setState(res.data);
         setKeyInput("");
         void refreshDevices();
+        void refreshMax(true);
       } else {
         setError(res.error as LicenseError);
         if ((res.error as LicenseError).code === "network_error") {
@@ -120,7 +128,7 @@ export const LicenseSettings: React.FC = () => {
         }
       }
     },
-    [refreshDevices],
+    [refreshDevices, refreshMax],
   );
 
   useEffect(() => {
@@ -134,6 +142,7 @@ export const LicenseSettings: React.FC = () => {
       if (res.status === "ok") {
         setState(res.data);
         void refreshDevices();
+        void refreshMax(true);
       } else {
         setError(res.error as LicenseError);
       }
@@ -141,7 +150,7 @@ export const LicenseSettings: React.FC = () => {
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [refreshDevices]);
+  }, [refreshDevices, refreshMax]);
 
   const handleDeactivateThis = useCallback(async () => {
     setBusy(true);
@@ -229,6 +238,16 @@ export const LicenseSettings: React.FC = () => {
         <>
           <SettingsGroup title={t("license.activeTitle")}>
             <div className="p-4 space-y-3 text-sm">
+              {state.tier !== null && (
+                <Row
+                  label={t("license.planLabel")}
+                  value={
+                    state.tier === MAX_TIER
+                      ? t("license.planMax")
+                      : t("license.planPro")
+                  }
+                />
+              )}
               <Row
                 label={t("license.keyLabel")}
                 value={state.key_masked ?? ""}

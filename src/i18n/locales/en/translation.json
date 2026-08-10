@@ -11,6 +11,11 @@
     "startMeeting": "Start Meeting",
     "endMeeting": "End Meeting"
   },
+  "notification": {
+    "milestoneTitle": "{{count}} words",
+    "milestoneBody": "You've now dictated the length of {{title}}.",
+    "milestoneBodyApprox": "You've now dictated about the length of {{title}}."
+  },
   "sidebar": {
     "general": "Dictation",
     "models": "Models",
@@ -52,7 +57,11 @@
     "app": "General",
     "account": "Account",
     "performance": "Performance",
-    "meeting": "Meetings"
+    "meeting": "Meetings",
+    "milestone": {
+      "label": "You've dictated",
+      "progress": "{{percent}}% to {{title}}"
+    }
   },
   "onboarding": {
     "recommended": "Recommended",
@@ -246,7 +255,8 @@
           "title": "No refinement",
           "body": "Raw transcription only. Fastest, fully offline, every word exactly as spoken."
         }
-      }
+      },
+      "maxNote": "No API key? Ghostly Max runs it hosted, from $12/month. Everything above stays free."
     },
     "highlights": {
       "eyebrow": "Beyond dictation",
@@ -1310,7 +1320,12 @@
       "groups": {
         "startup": "Startup",
         "menusAndDock": "Menu Bar & Dock",
-        "help": "Help"
+        "help": "Help",
+        "notifications": "Notifications"
+      },
+      "milestoneNotifications": {
+        "label": "Milestone notifications",
+        "description": "Get a notification when your lifetime dictation passes the length of a well-known book — The Great Gatsby, Moby-Dick, all seven Harry Potters. Only landmark titles notify; the sidebar tracks every one."
       }
     },
     "performance": {
@@ -1583,6 +1598,9 @@
     "warningToast": {
       "title": "Getting close to your weekly limit",
       "description": "You've used 80% of your free weekly minutes."
+    },
+    "max": {
+      "badge": "Max"
     }
   },
   "paywall": {
@@ -1595,13 +1613,13 @@
     "resetsIn": "Your free minutes reset {{when}}"
   },
   "license": {
-    "title": "Activate Ghostly Pro",
-    "description": "Enter your Ghostly Pro license key to unlock unlimited transcription. Your key works on up to 3 devices.",
+    "title": "Activate your licence",
+    "description": "Enter your Ghostly Max or Ghostly Pro licence key. Max unlocks hosted AI with no API key; a key works on up to 3 devices.",
     "keyLabel": "License key",
     "keyPlaceholder": "GHOSTLY-XXXX-XXXX-XXXX",
     "activate": "Activate",
     "activating": "Activating…",
-    "buy": "Buy a license",
+    "buy": "Get Ghostly Max",
     "activeTitle": "Your license",
     "email": "Email",
     "renewsLabel": "Renews",
@@ -1626,7 +1644,10 @@
       "notActivated": "No license is currently activated on this device.",
       "invalidToken": "The license response was invalid. Try again or contact support.",
       "notReady": "Your purchase is still processing. Try again in a moment."
-    }
+    },
+    "planLabel": "Plan",
+    "planMax": "Ghostly Max",
+    "planPro": "Ghostly Pro"
   },
   "achievements": {
     "loadError": "Unable to load statistics.",
@@ -1925,6 +1946,61 @@
       "merged_other": "Moved {{count}} lines",
       "reassignLine": "Change who said this",
       "editLine": "Click to correct this line"
+    }
+  },
+  "max": {
+    "provider": {
+      "title": "AI runs on Ghostly Max",
+      "description": "No provider to pick, no API key to paste, no model to choose. Your dictation is still transcribed entirely on this Mac — only the text is sent for refinement.",
+      "ready": "Connected and ready.",
+      "manageSubscription": "Manage subscription",
+      "privacyNote": "Ghostly never sends your audio anywhere. Transcription is always on-device, on every plan.",
+      "notActive": "AI refinement is currently routed to {{provider}}, not Ghostly Max.",
+      "useMax": "Use Ghostly Max"
+    },
+    "overflow": {
+      "title": "Personal API key (optional)",
+      "badgeConfigured": "Using {{provider}}",
+      "badgeNone": "Not set",
+      "description": "If you ever reach the monthly fair-use limit, Ghostly can keep going on your own API key instead of stopping. It is only used after Max runs out — nothing is sent to it otherwise.",
+      "providerTitle": "Provider",
+      "apiKeyTitle": "API key",
+      "modelTitle": "Model",
+      "providerDescription": "Which provider Ghostly falls back to when the Max allowance runs out.",
+      "apiKeyDescription": "Stored on this Mac only. Ghostly uses it exclusively as an overflow, never before then.",
+      "modelDescription": "The model to use on that provider. Pick one from the list or type an id.",
+      "baseUrlTitle": "Base URL",
+      "baseUrlDescription": "The OpenAI-compatible endpoint to send overflow requests to."
+    },
+    "account": {
+      "title": "Ghostly Max",
+      "requestsTitle": "AI requests this month",
+      "requestsValue": "{{used}} of {{limit}}",
+      "requestsHelp": "The limit is set far above normal use — it exists to stop runaway scripts, not to meter you. Email support if you need it raised.",
+      "offline": "Couldn't reach Ghostly Max to check your usage. Your subscription is unaffected.",
+      "manage": "Manage billing",
+      "opening": "Opening…",
+      "manageHelp": "Update your card, download invoices, or cancel.",
+      "noSubscription": "This licence has no subscription attached, so there is nothing to manage.",
+      "portalFailed": "Couldn't open the billing portal. Try again in a moment."
+    },
+    "toast": {
+      "title": "Ghostly Max",
+      "action": "Open Account"
+    },
+    "errors": {
+      "notMax": "This licence doesn't include hosted AI. Subscribe to Ghostly Max, or add your own API key.",
+      "expired": "Your Ghostly Max subscription has lapsed. Renew it to turn hosted AI back on.",
+      "unpaid": "Your last Ghostly Max payment didn't go through. Update your billing details to restore hosted AI.",
+      "revoked": "This licence has been revoked. Contact support if this is unexpected.",
+      "fairUseExceeded": "You've used this month's Ghostly Max allowance. It resets next month — add a personal API key to keep going now.",
+      "upstreamError": "The AI service is temporarily unavailable. Your transcription was pasted unrefined.",
+      "invalidKey": "Ghostly Max didn't recognise this licence. Try reactivating it below.",
+      "generic": "Hosted AI is currently unavailable for this licence."
+    },
+    "upsell": {
+      "noKeyHint": "Don't have an API key? Ghostly Max runs AI for you — nothing to set up.",
+      "learnMore": "About Max"
     }
   }
 }

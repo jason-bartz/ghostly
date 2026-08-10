@@ -24,6 +24,9 @@ import { usePostProcessProviderState } from "../PostProcessingSettingsApi/usePos
 import { ShortcutInput } from "../ShortcutInput";
 import { VoiceEditing } from "../VoiceEditing";
 import { useSettings } from "../../../hooks/useSettings";
+import { MaxProviderPanel } from "../max/MaxProviderPanel";
+import { MaxOverflowKey } from "../max/MaxOverflowKey";
+import { isMaxLicense, useMaxStore } from "@/stores/maxStore";
 
 const PostProcessingSettingsApiComponent: React.FC = () => {
   const { t } = useTranslation();
@@ -520,13 +523,32 @@ const ConnectionStatusCard: React.FC = () => {
       ? t("settings.postProcessing.connection.needsKey")
       : t("settings.postProcessing.connection.needsModel");
 
+  // The one honest place to mention Max. This card only appears because the
+  // user has turned refinement on and has no way to run it — they have already
+  // said they want the feature. Anywhere else would be advertising; here it is
+  // the answer to the question on screen.
+  //
+  // Nothing is gated: the API-key field is right below, and it stays.
+  const showMaxHint = status === "needs-key";
+
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-hairline-strong bg-fill-2"
-      role="status"
-    >
-      <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} aria-hidden="true" />
-      <span className="text-sm">{message}</span>
+    <div className="rounded-lg border border-hairline-strong bg-fill-2">
+      <div className="flex items-center gap-3 px-4 py-3" role="status">
+        <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} aria-hidden="true" />
+        <span className="text-sm">{message}</span>
+      </div>
+      {showMaxHint && (
+        <div className="flex items-center justify-between gap-4 border-t border-hairline px-4 py-3">
+          <p className="text-sm text-mid-gray">{t("max.upsell.noKeyHint")}</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void commands.openPaymentLink()}
+          >
+            {t("max.upsell.learnMore")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -569,10 +591,37 @@ const DeterministicCleanupToggle: React.FC = () => {
   );
 };
 
+const MAX_PROVIDER_ID = "ghostly_max";
+
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
-  const { getSetting } = useSettings();
+  const { getSetting, setPostProcessProvider } = useSettings();
   const refinementEnabled = getSetting("refinement_enabled") ?? true;
+
+  // Max replaces the whole provider/model/key block. Gated on the offline
+  // token rather than a `/ai/status` round-trip so the pane never flashes the
+  // configuration UI at a subscriber while a request is in flight.
+  const license = useMaxStore((s) => s.license);
+  const aiStatus = useMaxStore((s) => s.aiStatus);
+  const refresh = useMaxStore((s) => s.refresh);
+  const isMax = isMaxLicense(license);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const goToAccount = () => {
+    window.dispatchEvent(new Event("ghostly-navigate-to-license"));
+  };
+
+  const activeProviderId = (getSetting("post_process_provider_id") ??
+    "") as string;
+  const activeProviderLabel =
+    isMax && activeProviderId !== MAX_PROVIDER_ID
+      ? ((getSetting("post_process_providers") ?? []).find(
+          (p) => p.id === activeProviderId,
+        )?.label ?? activeProviderId)
+      : null;
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
@@ -581,13 +630,27 @@ export const PostProcessingSettings: React.FC = () => {
         {refinementEnabled && <DeterministicCleanupToggle />}
       </SettingsGroup>
 
+      {refinementEnabled && isMax && (
+        <>
+          <MaxProviderPanel
+            status={aiStatus}
+            onOpenAccount={goToAccount}
+            activeProviderLabel={activeProviderLabel}
+            onUseMax={() => void setPostProcessProvider(MAX_PROVIDER_ID)}
+          />
+          <MaxOverflowKey />
+        </>
+      )}
+
       {refinementEnabled && (
         <>
-          <ConnectionStatusCard />
+          {!isMax && <ConnectionStatusCard />}
 
-          <SettingsGroup title={t("settings.postProcessing.api.title")}>
-            <PostProcessingSettingsApi />
-          </SettingsGroup>
+          {!isMax && (
+            <SettingsGroup title={t("settings.postProcessing.api.title")}>
+              <PostProcessingSettingsApi />
+            </SettingsGroup>
+          )}
 
           <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
             <PostProcessingSettingsPrompts />

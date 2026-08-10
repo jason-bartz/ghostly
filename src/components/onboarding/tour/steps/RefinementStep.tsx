@@ -197,6 +197,19 @@ export const RefinementStep: React.FC<TourStepProps> = ({ setFooter }) => {
             );
           })}
       </div>
+
+      {/* Max gets one line, and it is not an option in the list.
+          Making it a fourth button would push a purchase into setup and send
+          the user out to a checkout page before they have dictated a word.
+          A footnote answers "what if I don't have a key?" without asking for
+          anything — and every option above stays free forever. */}
+      <p
+        data-rise
+        style={{ "--i": 5 } as React.CSSProperties}
+        className="text-[11px] leading-snug text-text-faint text-center"
+      >
+        {t("tour.refinement.maxNote")}
+      </p>
     </div>
   );
 };
