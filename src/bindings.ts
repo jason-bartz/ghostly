@@ -1978,9 +1978,31 @@ async openBillingPortal() : Promise<Result<null, LicenseError>> {
  * Errors are already user-facing strings — retrieval and entitlement failures
  * both surface here, and the pane shows them verbatim.
  */
-async askTranscripts(question: string) : Promise<Result<AskAnswer, string>> {
+async askTranscripts(question: string, scope: AskScope) : Promise<Result<AskAnswer, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("ask_transcripts", { question }) };
+    return { status: "ok", data: await TAURI_INVOKE("ask_transcripts", { question, scope }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether Ask can run, so the pane can offer the upgrade instead of a question
+ * box it would refuse to answer.
+ */
+async askAvailability() : Promise<AskBlocker> {
+    return await TAURI_INVOKE("ask_availability");
+},
+/**
+ * Write an answer to disk at a path the user picked in a save dialog.
+ * 
+ * The write happens here rather than in the webview because the frontend has
+ * read-only filesystem capabilities — the same reason meeting exports are a
+ * command.
+ */
+async exportAskAnswer(path: string, contents: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_ask_answer", { path, contents }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2069,6 +2091,17 @@ async activateFromSession(sessionId: string) : Promise<Result<LicenseState, Lice
 async openPaymentLink() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("open_payment_link") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Open Stripe checkout for one of the two Max prices.
+ */
+async openCheckout(cycle: BillingCycle) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_checkout", { cycle }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2370,6 +2403,36 @@ export type AskAnswer = { answer: string; sources: AskSource[];
  */
 no_matches: boolean }
 /**
+ * Why Ask can't run right now, or `Ready` when it can.
+ * 
+ * Returned to the UI *before* a question is typed so the panel can present
+ * itself as a locked feature with a way to unlock it, rather than accepting a
+ * question, spending the user's attention on a spinner, and then refusing.
+ */
+export type AskBlocker = "ready" | 
+/**
+ * The selected provider runs on-device and cannot hold enough history.
+ */
+"on_device" | 
+/**
+ * No provider is configured at all.
+ */
+"no_provider" | 
+/**
+ * A provider is configured but has no key behind it.
+ */
+"no_key"
+/**
+ * Which stores a question is allowed to draw on.
+ * 
+ * The default is both, which is what "ask your transcripts" means. The two
+ * narrow settings exist because the same phrase lives in both stores for
+ * different reasons — "we agreed to ship Friday" is a decision when a meeting
+ * says it and a reminder when a note does, and being able to say which one you
+ * meant is cheaper than wording the question around it.
+ */
+export type AskScope = "notes" | "meetings" | "both"
+/**
  * One passage the answer was drawn from, with enough identity to open it.
  */
 export type AskSource = { kind: AskSourceKind; 
@@ -2394,6 +2457,10 @@ export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devi
  * and giving the compiler an early warning if the two catalogs ever drift.
  */
 export type BadgeId = "first_words" | "getting_started" | "regular" | "devoted" | "paragraph" | "marathon" | "one_hour_club" | "ten_hour_club" | "post_processor" | "collector" | "lexicographer" | "early_bird" | "night_owl" | "lunch_break" | "every_day_of_the_week" | "sprint" | "questioner" | "exclaimer"
+/**
+ * Which Ghostly Max price to send the user to.
+ */
+export type BillingCycle = "monthly" | "yearly"
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type CategoryId = "personal_messages" | "work_messages" | "email" | "coding" | "other"
 /**

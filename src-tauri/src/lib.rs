@@ -780,6 +780,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::license::get_ai_status,
             commands::license::open_billing_portal,
             commands::ask::ask_transcripts,
+            commands::ask::ask_availability,
+            commands::ask::export_ask_answer,
             commands::learning::get_recently_learned,
             commands::learning::run_learning_pass,
             commands::sync::sync_status,
@@ -790,6 +792,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::sync::sync_reset,
             commands::license::activate_from_session,
             commands::license::open_payment_link,
+            commands::license::open_checkout,
             commands::edit_chip::apply_edit_chip,
         ])
         .events(collect_events![

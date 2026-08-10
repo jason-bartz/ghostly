@@ -13,6 +13,7 @@ import { SettingsGroup } from "../../ui/SettingsGroup";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { MAX_TIER, useMaxStore } from "@/stores/maxStore";
+import { showMaxUpgrade } from "@/lib/maxUpgrade";
 
 function formatRelativeTime(unixSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - unixSeconds;
@@ -176,8 +177,10 @@ export const LicenseSettings: React.FC = () => {
     [refreshDevices],
   );
 
-  const handleBuy = useCallback(async () => {
-    await commands.openPaymentLink();
+  // The pitch and the price live on the in-app Max page now; this button opens
+  // it rather than throwing the user at the website to read them.
+  const handleBuy = useCallback(() => {
+    showMaxUpgrade();
   }, []);
 
   if (state === null) {

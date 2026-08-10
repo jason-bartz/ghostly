@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { commands } from "@/bindings";
 import { Button } from "@/components/ui/Button";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { MarkdownLite } from "@/components/ui/MarkdownLite";
 
 type Props = {
   onAccepted: () => void;
@@ -97,11 +98,6 @@ export function EulaGate({ onAccepted }: Props) {
     window.setTimeout(() => setShake(false), 450);
   };
 
-  const rendered = useMemo(
-    () => (text ? renderMarkdownLite(text) : null),
-    [text],
-  );
-
   return (
     <div className="app-canvas fixed inset-0 z-50 flex items-center justify-center modal-scrim p-6">
       <div
@@ -137,12 +133,13 @@ export function EulaGate({ onAccepted }: Props) {
         >
           {error ? (
             <p className="text-danger text-sm">{t("eula.loadError")}</p>
-          ) : rendered === null ? (
+          ) : text === null ? (
             <p className="text-sm text-text-muted">…</p>
           ) : (
-            <div className="prose-eula text-[13.5px] leading-relaxed text-text-muted space-y-3">
-              {rendered}
-            </div>
+            <MarkdownLite
+              source={text}
+              className="prose-eula text-[13.5px] leading-relaxed text-text-muted space-y-3"
+            />
           )}
         </div>
 
@@ -189,112 +186,4 @@ export function EulaGate({ onAccepted }: Props) {
       </div>
     </div>
   );
-}
-
-function renderMarkdownLite(src: string): React.ReactNode[] {
-  const lines = src.replace(/\r\n/g, "\n").split("\n");
-  const out: React.ReactNode[] = [];
-  let paragraph: string[] = [];
-  let list: string[] = [];
-  let key = 0;
-
-  const flushParagraph = () => {
-    if (!paragraph.length) return;
-    out.push(
-      <p key={key++} className="text-text/90">
-        {renderInline(paragraph.join(" "))}
-      </p>,
-    );
-    paragraph = [];
-  };
-
-  const flushList = () => {
-    if (!list.length) return;
-    out.push(
-      <ul key={key++} className="list-disc pl-5 space-y-1 text-text/90">
-        {list.map((item, i) => (
-          <li key={i}>{renderInline(item)}</li>
-        ))}
-      </ul>,
-    );
-    list = [];
-  };
-
-  const flushAll = () => {
-    flushParagraph();
-    flushList();
-  };
-
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) {
-      flushAll();
-      continue;
-    }
-
-    const h1 = line.match(/^#\s+(.*)$/);
-    const h2 = line.match(/^##\s+(.*)$/);
-    const h3 = line.match(/^###\s+(.*)$/);
-    const li = line.match(/^\s*[-*]\s+(.*)$/);
-
-    if (h1) {
-      flushAll();
-      out.push(
-        <h2 key={key++} className="text-lg font-semibold text-text mt-2 mb-1">
-          {renderInline(h1[1])}
-        </h2>,
-      );
-    } else if (h2) {
-      flushAll();
-      out.push(
-        <h3
-          key={key++}
-          className="text-base font-semibold text-text mt-4 mb-0.5"
-        >
-          {renderInline(h2[1])}
-        </h3>,
-      );
-    } else if (h3) {
-      flushAll();
-      out.push(
-        <h4 key={key++} className="text-sm font-semibold text-text mt-3 mb-0.5">
-          {renderInline(h3[1])}
-        </h4>,
-      );
-    } else if (li) {
-      flushParagraph();
-      list.push(li[1]);
-    } else {
-      flushList();
-      paragraph.push(line);
-    }
-  }
-
-  flushAll();
-  return out;
-}
-
-function renderInline(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const regex = /\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let k = 0;
-  while ((m = regex.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    if (m[1]) parts.push(<strong key={k++}>{m[1]}</strong>);
-    else if (m[2]) parts.push(<em key={k++}>{m[2]}</em>);
-    else if (m[3])
-      parts.push(
-        <code
-          key={k++}
-          className="font-mono text-[12.5px] bg-fill-2 px-1 py-px rounded"
-        >
-          {m[3]}
-        </code>,
-      );
-    last = regex.lastIndex;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
 }

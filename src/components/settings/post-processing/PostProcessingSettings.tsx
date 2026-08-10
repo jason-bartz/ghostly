@@ -13,6 +13,7 @@ import {
   ToggleSwitch,
 } from "@/components/ui";
 import { Button } from "../../ui/Button";
+import { showMaxUpgrade } from "@/lib/maxUpgrade";
 import { ResetButton } from "../../ui/ResetButton";
 import { Input } from "../../ui/Input";
 
@@ -540,11 +541,7 @@ const ConnectionStatusCard: React.FC = () => {
       {showMaxHint && (
         <div className="flex items-center justify-between gap-4 border-t border-hairline px-4 py-3">
           <p className="text-sm text-mid-gray">{t("max.upsell.noKeyHint")}</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => void commands.openPaymentLink()}
-          >
+          <Button variant="secondary" size="sm" onClick={showMaxUpgrade}>
             {t("max.upsell.learnMore")}
           </Button>
         </div>

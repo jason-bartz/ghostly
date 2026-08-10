@@ -11,6 +11,24 @@ use crate::settings::{get_settings, write_settings};
 
 pub const PAYMENT_LINK: &str = "https://try-ghostly.com/#pricing";
 
+/// Stripe payment links for Ghostly Max.
+///
+/// Reached from the in-app upgrade page, which is where the pitch and the price
+/// now live — so the CTA goes to checkout rather than bouncing the user through
+/// the website's pricing section to read the same thing again. {@link
+/// PAYMENT_LINK} stays as the "see the full comparison" escape hatch, and as
+/// the thing to fall back on if these ever rot.
+pub const CHECKOUT_MONTHLY: &str = "https://buy.stripe.com/8x26oGcuSdAi6oS9DoeME02";
+pub const CHECKOUT_YEARLY: &str = "https://buy.stripe.com/14A3cu3Ym1RA6oS3f0eME03";
+
+/// Which Ghostly Max price to send the user to.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BillingCycle {
+    Monthly,
+    Yearly,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LicenseState {
     pub is_licensed: bool,
@@ -246,4 +264,17 @@ pub fn open_payment_link(app: AppHandle) -> Result<(), String> {
     app.opener()
         .open_url(PAYMENT_LINK, None::<String>)
         .map_err(|e| format!("Failed to open payment link: {}", e))
+}
+
+/// Open Stripe checkout for one of the two Max prices.
+#[tauri::command]
+#[specta::specta]
+pub fn open_checkout(app: AppHandle, cycle: BillingCycle) -> Result<(), String> {
+    let url = match cycle {
+        BillingCycle::Monthly => CHECKOUT_MONTHLY,
+        BillingCycle::Yearly => CHECKOUT_YEARLY,
+    };
+    app.opener()
+        .open_url(url, None::<String>)
+        .map_err(|e| format!("Failed to open checkout: {}", e))
 }

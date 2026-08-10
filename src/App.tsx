@@ -15,6 +15,8 @@ import Footer from "./components/footer";
 import { Tour, type TourMode } from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
 import { UpdateModal } from "./components/update-checker";
+import { MaxUpgradePage } from "./components/max/MaxUpgradePage";
+import { onShowMaxUpgrade } from "@/lib/maxUpgrade";
 import { useSettings } from "./hooks/useSettings";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useUpdaterStore } from "./stores/updaterStore";
@@ -46,6 +48,9 @@ function App() {
   const [eulaRequired, setEulaRequired] = useState<boolean | null>(null);
   const [currentSection, setCurrentSection] =
     useState<SidebarSection>("history");
+  // Reached from every "subscribe" affordance in the app, so it lives here
+  // rather than inside any one pane — several of them unmount on navigation.
+  const [maxUpgradeOpen, setMaxUpgradeOpen] = useState(false);
   const { settings, updateSetting } = useSettings();
   // Keeps <html data-theme> in step with the saved preference (and the OS,
   // when the preference is "system"). Every colour token keys off it.
@@ -76,6 +81,8 @@ function App() {
     window.addEventListener("ghostly:navigate", onNavigate);
     return () => window.removeEventListener("ghostly:navigate", onNavigate);
   }, []);
+
+  useEffect(() => onShowMaxUpgrade(() => setMaxUpgradeOpen(true)), []);
 
   // Resolve EULA gate state on mount. Show the gate if the accepted version
   // on disk doesn't match the current EULA version shipped in this build.
@@ -410,6 +417,10 @@ function App() {
       {/* Fixed footer at bottom */}
       <Footer />
       <UpdateModal />
+      <MaxUpgradePage
+        open={maxUpgradeOpen}
+        onClose={() => setMaxUpgradeOpen(false)}
+      />
     </div>
   );
 }
