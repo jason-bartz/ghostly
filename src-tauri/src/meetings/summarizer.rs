@@ -72,6 +72,38 @@ including its heading. Never write \"none\", \"nothing\", \"not mentioned\", \
 - If the transcript is too short to summarise, reply with only that one \
 sentence and nothing else.";
 
+/// Instructions for the end-of-meeting wrap-up.
+///
+/// Deliberately a different document from [`CATCH_UP_INSTRUCTIONS`]. Catch-up
+/// answers "how do I rejoin this conversation right now", so it opens on what is
+/// being said *this second* and closes with a line to say next. Both are
+/// meaningless once the call is over — and sharing the prompt meant the wrap-up
+/// opened with "Now:" and ended by suggesting something to say into a meeting
+/// nobody was still in. A wrap-up is a record: what it was about, what was
+/// settled, who owes what.
+const FINAL_INSTRUCTIONS: &str = "\
+The meeting has ended. Write the record of it using these sections, in this \
+order:
+
+Summary: two or three sentences on what the meeting was about and where it \
+landed.
+Key points: 3-6 short bullets covering the substance of the discussion.
+Decisions: decisions that were made.
+Action items: one bullet each, written as the owner's name, an em dash, then \
+what they agreed to do, and a due date if one was given.
+Open questions: anything left unresolved or deferred.
+
+Rules you must follow:
+- Write in the past tense, about a meeting that is over.
+- If a section has nothing to report, leave the section out completely, \
+including its heading. Never write \"none\", \"nothing\", \"not mentioned\", \
+\"no information\", or any sentence about what the transcript does not contain.
+- Never describe or refer to the transcript itself. Report only what was said.
+- Do not suggest anything for the user to say — the meeting is over.
+- Plain text only. No asterisks, no bold, no markdown headings.
+- If the transcript is too short to summarise, reply with only that one \
+sentence and nothing else.";
+
 const ROLLING_INSTRUCTIONS: &str = "\
 Summarise this portion of a meeting transcript in 2-4 short plain-text bullets. \
 Capture decisions, commitments, and open questions. No preamble, no markdown.";
@@ -129,10 +161,13 @@ pub async fn summarize(
     }
 
     let settings = get_settings(app);
-    let backend = settings.meeting.summary_backend;
+    // `Auto` means "whatever AI the user already chose for dictation", so it is
+    // turned into a concrete backend here rather than inside `run_backend`.
+    let backend = settings.meeting.summary_backend.resolve(&settings);
     let instructions = match kind {
         SummaryKind::Rolling => ROLLING_INSTRUCTIONS,
-        _ => CATCH_UP_INSTRUCTIONS,
+        SummaryKind::Final => FINAL_INSTRUCTIONS,
+        SummaryKind::CatchUp => CATCH_UP_INSTRUCTIONS,
     };
 
     let chunks = chunk_transcript(transcript, CHUNK_CHARS);
@@ -244,7 +279,23 @@ fn section_heading(line: &str) -> Option<String> {
     if !rest.trim().is_empty() || head.split_whitespace().count() > 3 {
         return None;
     }
-    const HEADINGS: &[&str] = &["now", "missed", "decisions", "asked of you", "say next"];
+    // Both prompts' section names. `clean_summary` uses this to drop a heading
+    // whose whole body turned out to be filler, so a wrap-up heading missing
+    // from here would survive with nothing under it.
+    const HEADINGS: &[&str] = &[
+        // Catch-up.
+        "now",
+        "missed",
+        "asked of you",
+        "say next",
+        // Wrap-up.
+        "summary",
+        "key points",
+        "action items",
+        "open questions",
+        // Shared.
+        "decisions",
+    ];
     let lowered = head.trim().to_lowercase();
     HEADINGS
         .iter()
@@ -335,14 +386,19 @@ async fn run_backend_raw(
 ) -> Result<String, String> {
     match backend {
         MeetingSummaryBackend::Extractive => Ok(extractive_summary(transcript)),
-        MeetingSummaryBackend::OnDevice => match on_device(instructions, transcript) {
-            Ok(text) => Ok(text),
-            Err(e) => {
-                // The ladder: never leave the button dead.
-                warn!("Meeting summary: on-device unavailable ({e}), using extractive");
-                Ok(extractive_summary(transcript))
+        // `Auto` is resolved in `summarize`; grouped with on-device so an
+        // unresolved value degrades privately rather than unexpectedly
+        // reaching the network.
+        MeetingSummaryBackend::Auto | MeetingSummaryBackend::OnDevice => {
+            match on_device(instructions, transcript) {
+                Ok(text) => Ok(text),
+                Err(e) => {
+                    // The ladder: never leave the button dead.
+                    warn!("Meeting summary: on-device unavailable ({e}), using extractive");
+                    Ok(extractive_summary(transcript))
+                }
             }
-        },
+        }
         MeetingSummaryBackend::Cloud => match cloud(app, instructions, transcript).await {
             Ok(text) => Ok(text),
             Err(e) => {
@@ -597,6 +653,38 @@ None were asked of you.
             "sections with real content stay"
         );
         assert!(cleaned.contains("Where did we land"));
+    }
+
+    #[test]
+    fn clean_summary_handles_wrap_up_sections() {
+        let raw = "\
+**Summary:**
+The team reviewed the migration plan and agreed a date.
+
+**Action items:**
+- Alex — draft the runbook by Friday.
+
+**Open questions:**
+
+None.";
+        let cleaned = clean_summary(raw);
+        assert!(cleaned.contains("Summary:"));
+        assert!(cleaned.contains("Alex — draft the runbook"));
+        assert!(
+            !cleaned.contains("Open questions:"),
+            "an empty wrap-up section must be removed, not just its body"
+        );
+    }
+
+    #[test]
+    fn the_wrap_up_prompt_is_not_the_catch_up_prompt() {
+        // Sharing one prompt is what made "End meeting" produce a summary that
+        // opened on "Now:" and closed by suggesting a line to say into a
+        // meeting that was already over.
+        assert_ne!(FINAL_INSTRUCTIONS, CATCH_UP_INSTRUCTIONS);
+        assert!(!FINAL_INSTRUCTIONS.contains("Now:"));
+        assert!(!FINAL_INSTRUCTIONS.contains("Say next:"));
+        assert!(FINAL_INSTRUCTIONS.contains("Action items:"));
     }
 
     #[test]

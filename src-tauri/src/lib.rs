@@ -707,6 +707,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::meetings::list_running_apps,
             commands::meetings::detect_frontmost_bundle_id,
             commands::meetings::get_meeting_settings,
+            commands::meetings::get_meeting_ai_resolution,
             commands::meetings::update_meeting_settings,
             commands::meetings::start_meeting,
             commands::meetings::stop_meeting,

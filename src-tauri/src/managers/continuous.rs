@@ -136,6 +136,21 @@ impl ContinuousDictationManager {
 
         info!("Opening the mic (continuous dictation)");
 
+        // Load the ASR model before any audio arrives.
+        //
+        // Every other capture path does this — the dictation shortcut
+        // (`actions.rs`), Meeting Mode (`meetings::session`), and re-transcribe
+        // (`commands::history`) — and `transcribe()` deliberately does *not*
+        // load on demand: it returns "Model is not loaded for transcription."
+        // and gives up. Open Mic was the one path that never asked for the
+        // model, so arming it more than `model_unload_timeout` after the last
+        // transcription meant every single utterance was captured, segmented,
+        // transcribed against nothing, and dropped — with the failure visible
+        // only in the log file.
+        if let Some(tm) = self.app.try_state::<Arc<TranscriptionManager>>() {
+            tm.initiate_model_load();
+        }
+
         // Spin up the transcribe worker.
         let (tx, rx) = mpsc::sync_channel::<Job>(2);
         let app = self.app.clone();
@@ -382,6 +397,12 @@ fn transcribe_worker(app: AppHandle, rx: mpsc::Receiver<Job>) {
             Ok(t) => t,
             Err(e) => {
                 warn!("Continuous transcription failed: {}", e);
+                // Say so. This used to be a log line and a `continue`, which is
+                // why a broken Open Mic presented as the app doing nothing at
+                // all: audio feedback played, the tray said Recording, and
+                // every utterance vanished without a word anywhere the user
+                // would look.
+                let _ = app.emit("continuous-dictation-error", e.to_string());
                 continue;
             }
         };

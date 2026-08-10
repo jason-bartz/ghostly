@@ -1289,6 +1289,9 @@ async listRunningApps() : Promise<RunningAppInfo[]> {
 async detectFrontmostBundleId() : Promise<string | null> {
     return await TAURI_INVOKE("detect_frontmost_bundle_id");
 },
+async getMeetingAiResolution() : Promise<MeetingAiResolution> {
+    return await TAURI_INVOKE("get_meeting_ai_resolution");
+},
 async getMeetingSettings() : Promise<MeetingSettings> {
     return await TAURI_INVOKE("get_meeting_settings");
 },
@@ -2186,7 +2189,7 @@ meeting_default_enabled_migrated?: boolean;
  * `default_binding` fields to the new code defaults and upgrades any
  * `current_binding` that was still sitting on the old default.
  */
-binding_defaults_v2_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; 
+binding_defaults_v2_migrated?: boolean; trailing_space_default_migrated?: boolean; meeting_ai_auto_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; 
 /**
  * Position for the staged screenshot + dictation preview overlay.
  * Defaults to match `overlay_position` on first run via the default fn,
@@ -2686,6 +2689,18 @@ capturedSystemAudio: boolean }
 /**
  * Per-application override for [`MeetingAutoConnect`].
  */
+/**
+ * What the "Automatic" AI choice currently resolves to.
+ */
+export type MeetingAiResolution = { 
+/**
+ * True when Automatic routes to the configured cloud provider.
+ */
+usesCloud: boolean; 
+/**
+ * Display name of the provider it resolves to, for the UI to name.
+ */
+providerName: string | null }
 export type MeetingAppPolicy = { 
 /**
  * Genuine bundle identifier, e.g. `us.zoom.xos`.
@@ -2730,6 +2745,12 @@ export type MeetingMentionEvent = { meetingId: string; text: string; speakerName
  * demand.
  */
 export type MeetingRefinementBackend = 
+/**
+ * Follow the AI already chosen for dictation refinement: the configured
+ * cloud provider when there is a usable one, on-device otherwise. See
+ * [`AppSettings::has_usable_cloud_ai`].
+ */
+"auto" | 
 /**
  * Verbatim ASR. Nothing is post-processed.
  */
@@ -2802,7 +2823,23 @@ excludedTitlePatterns: string[];
  * Sustained seconds with no conferencing app before capture auto-stops.
  * Generous because apps briefly release audio on mute/unmute.
  */
-autoStopGraceSecs: number; 
+autoStopGraceSecs: number;
+/**
+ * Sustained seconds with nothing said before capture ends itself. 0 turns
+ * it off.
+ *
+ * Distinct from [`Self::auto_stop_grace_secs`], which watches the
+ * *conferencing app* and therefore only ever ends a capture detection
+ * started. This watches the *audio*, applies to manual captures too, and
+ * exists for the meeting you walked away from without ending.
+ */
+autoEndSilenceSecs: number;
+/**
+ * Hide the live panel when a meeting ends through
+ * [`Self::auto_end_silence_secs`]. Off by default, so the wrap-up summary
+ * is waiting on screen when you come back.
+ */
+autoClosePanelOnAutoEnd: boolean;
 /**
  * Where summaries run.
  */
@@ -2896,6 +2933,12 @@ export type MeetingSummary = { id: number; meetingId: string; createdAt: number;
  * Where "Catch me up" summaries are generated.
  */
 export type MeetingSummaryBackend = 
+/**
+ * Follow the AI already chosen for dictation refinement: the configured
+ * cloud provider when there is a usable one, on-device otherwise. See
+ * [`AppSettings::has_usable_cloud_ai`].
+ */
+"auto" | 
 /**
  * Apple Intelligence when available, otherwise the local extractive
  * fallback. Never leaves the device.

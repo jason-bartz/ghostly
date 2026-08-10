@@ -80,6 +80,34 @@ pub fn detect_frontmost_bundle_id() -> Option<String> {
 
 // ---- Settings ------------------------------------------------------------
 
+/// What the "Automatic" AI choice currently resolves to.
+///
+/// "Automatic" that will not say what it picked is not a setting, it is a
+/// shrug — and here the answer decides whether meeting text leaves the Mac, so
+/// it has to be on screen rather than inferred.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingAiResolution {
+    /// True when Automatic routes to the configured cloud provider.
+    pub uses_cloud: bool,
+    /// Display name of the provider it resolves to, for the UI to name.
+    pub provider_name: Option<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_meeting_ai_resolution(app: AppHandle) -> MeetingAiResolution {
+    let settings = get_settings(&app);
+    let uses_cloud = settings.has_usable_cloud_ai();
+    MeetingAiResolution {
+        uses_cloud,
+        provider_name: uses_cloud
+            .then(|| settings.active_post_process_provider())
+            .flatten()
+            .map(|provider| provider.label.clone()),
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_meeting_settings(app: AppHandle) -> MeetingSettings {

@@ -51,6 +51,10 @@ use super::types::{
 /// model is far behind real time and dropping is the only sane response.
 const JOB_QUEUE_CAPACITY: usize = 64;
 
+/// How often the silence watchdog checks in. The threshold it enforces is
+/// measured in minutes, so this only bounds how late an auto-end can be.
+const SILENCE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+
 enum Job {
     Segment {
         lane: Lane,
@@ -98,6 +102,14 @@ pub struct MeetingManager {
     /// show a duration that agrees with the timestamps beside it.
     paused_total_ms: Arc<std::sync::atomic::AtomicI64>,
     paused_since: Mutex<Option<std::time::Instant>>,
+    /// When either lane last closed an utterance — the freshest evidence that
+    /// somebody is still in the room. Drives silence auto-end.
+    ///
+    /// Recorded at segment boundaries rather than per voiced frame: the lanes
+    /// hand back a segment on every trailing pause *and* every 8 s of unbroken
+    /// speech, so even a monologue keeps this moving, and the frame callback
+    /// stays a queue push.
+    last_voice_at: Arc<Mutex<std::time::Instant>>,
     /// Serialises start/stop so two shortcut presses cannot interleave.
     transition: Mutex<()>,
     /// Capture has ended but the transcription worker is still chewing through
@@ -121,6 +133,7 @@ impl MeetingManager {
             paused: Arc::new(AtomicBool::new(false)),
             paused_total_ms: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             paused_since: Mutex::new(None),
+            last_voice_at: Arc::new(Mutex::new(std::time::Instant::now())),
             transition: Mutex::new(()),
             draining: Arc::new(AtomicBool::new(false)),
             generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -360,6 +373,7 @@ impl MeetingManager {
         let paused_mic = Arc::clone(&self.paused);
         let mic_tx = job_tx.clone();
         let mic_seg_for_cb = Arc::clone(&mic_segmenter);
+        let mic_last_voice = Arc::clone(&self.last_voice_at);
         recording_manager.add_raw_frame_listener(
             RAW_FRAME_LISTENER_MEETING,
             Arc::new(move |frame: &[f32]| {
@@ -370,6 +384,7 @@ impl MeetingManager {
                     return;
                 };
                 if let Some(segment) = segmenter.push_frame(frame) {
+                    note_voice(&mic_last_voice);
                     let _ = mic_tx.try_send(Job::Segment {
                         lane: Lane::Mic,
                         segment,
@@ -387,6 +402,7 @@ impl MeetingManager {
             let capturing = Arc::clone(&self.capturing);
             let paused_system = Arc::clone(&self.paused);
             let system_tx = job_tx.clone();
+            let system_last_voice = Arc::clone(&self.last_voice_at);
             let result = crate::system_audio::start(Arc::new(move |frame: &[f32]| {
                 if !capturing.load(Ordering::SeqCst) || paused_system.load(Ordering::SeqCst) {
                     return;
@@ -395,6 +411,7 @@ impl MeetingManager {
                     return;
                 };
                 if let Some(segment) = segmenter.push_frame(frame) {
+                    note_voice(&system_last_voice);
                     let _ = system_tx.try_send(Job::Segment {
                         lane: Lane::System,
                         segment,
@@ -423,6 +440,9 @@ impl MeetingManager {
         // duration.
         self.paused_total_ms.store(0, Ordering::SeqCst);
         *self.paused_since.lock().unwrap() = None;
+        // Silence is measured from *this* moment, not from whenever the last
+        // meeting happened to fall quiet.
+        *self.last_voice_at.lock().unwrap() = std::time::Instant::now();
         self.capturing.store(true, Ordering::SeqCst);
         *self.active.lock().unwrap() = Some(ActiveSession {
             meeting_id: meeting_id.clone(),
@@ -491,6 +511,68 @@ impl MeetingManager {
                     {
                         debug!("Meeting: rolling summary skipped: {e}");
                     }
+                }
+            });
+        }
+
+        // Silence auto-end. For the meeting you walked away from: the call is
+        // over, nobody hung up Ghostly, and without this it captures an empty
+        // room until the laptop sleeps.
+        //
+        // Deliberately independent of the detector's auto-stop, which watches
+        // whether a conferencing app still holds the microphone and therefore
+        // only ever ends a capture it started itself.
+        if meeting_config.auto_end_silence_secs > 0 {
+            let app = self.app.clone();
+            let manager = Arc::clone(self);
+            let capturing = Arc::clone(&self.capturing);
+            let paused = Arc::clone(&self.paused);
+            let last_voice = Arc::clone(&self.last_voice_at);
+            let generation = Arc::clone(&self.generation);
+            let my_generation = self.generation.load(Ordering::SeqCst);
+            let threshold = Duration::from_secs(meeting_config.auto_end_silence_secs as u64);
+            let close_panel = meeting_config.auto_close_panel_on_auto_end;
+
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(SILENCE_POLL_INTERVAL).await;
+                    // Same generation guard as the rolling summaries: a task
+                    // left over from a finished meeting must never end the next
+                    // one.
+                    if !capturing.load(Ordering::SeqCst)
+                        || generation.load(Ordering::SeqCst) != my_generation
+                    {
+                        return;
+                    }
+                    // Pausing is an explicit "stop listening for a bit". Ending
+                    // the meeting because the user did what they asked for
+                    // would be the wrong reading of it, so the clock is held at
+                    // the current moment rather than allowed to run.
+                    if paused.load(Ordering::SeqCst) {
+                        note_voice(&last_voice);
+                        continue;
+                    }
+                    // A poisoned lock must not take the watchdog down with it,
+                    // and must not be read as "silent forever" either — treat
+                    // it as activity and try again next tick.
+                    let quiet = last_voice
+                        .lock()
+                        .map(|since| since.elapsed())
+                        .unwrap_or_default();
+                    if quiet >= threshold {
+                        break;
+                    }
+                }
+
+                info!("Meeting: no speech for {threshold:?}, ending capture");
+                let _ = app.emit("meeting-auto-ended", ());
+                // `stop` blocks briefly and rebuilds the tray menu, so it does
+                // not belong on the async runtime.
+                std::thread::spawn(move || {
+                    manager.stop();
+                });
+                if close_panel {
+                    super::panel::hide(&app);
                 }
             });
         }
@@ -727,6 +809,17 @@ impl MeetingManager {
     }
 }
 
+/// Marks "somebody just said something", for the silence watchdog.
+///
+/// Called from the frame callbacks, so a poisoned lock is ignored rather than
+/// panicking the recorder thread — the worst case is an auto-end that fires
+/// early, and the lock is only ever held for a single assignment.
+fn note_voice(last_voice_at: &Mutex<std::time::Instant>) {
+    if let Ok(mut guard) = last_voice_at.lock() {
+        *guard = std::time::Instant::now();
+    }
+}
+
 /// Builds a VAD-backed segmenter. Each lane gets its own Silero instance
 /// because the model carries streaming state that cannot be shared.
 fn build_segmenter(app: &AppHandle, config: &MeetingSettings) -> Result<LaneSegmenter, String> {
@@ -775,7 +868,9 @@ fn transcribe_worker(
         app.clone(),
         store.clone(),
         meeting_id.clone(),
-        config.live_refinement,
+        // Resolved once for the whole session: `Auto` follows the AI already
+        // chosen for dictation refinement.
+        config.live_refinement.resolve(&get_settings(&app)),
     );
 
     while let Ok(job) = rx.recv() {

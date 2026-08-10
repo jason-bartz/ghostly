@@ -35,6 +35,23 @@ export const ContinuousDictation: React.FC<Props> = ({
 
   const [armed, setArmed] = useState(false);
 
+  // The phrase is edited locally and committed on blur or Enter.
+  //
+  // It used to call `updateSetting` on every keystroke, and each of those is a
+  // backend read-modify-write of the whole settings blob — so typing "send"
+  // fired four racing `get_settings → mutate → write_settings` round trips and
+  // a shorter earlier value could land after a longer later one. The field
+  // appeared to save, then silently reverted to something truncated or stale.
+  // `null` means "show the saved value".
+  const [phraseDraft, setPhraseDraft] = useState<string | null>(null);
+
+  const commitPhrase = () => {
+    if (phraseDraft === null) return;
+    const next = phraseDraft.trim();
+    setPhraseDraft(null);
+    if (next !== submitPhrase) updateSetting("continuous_submit_phrase", next);
+  };
+
   useEffect(() => {
     let active = true;
     commands.isContinuousDictationArmed().then((v) => {
@@ -167,14 +184,16 @@ export const ContinuousDictation: React.FC<Props> = ({
               <Input
                 type="text"
                 className="flex-1 min-w-0"
-                value={submitPhrase}
-                onChange={(e) =>
-                  updateSetting("continuous_submit_phrase", e.target.value)
-                }
+                value={phraseDraft ?? submitPhrase}
+                onChange={(e) => setPhraseDraft(e.target.value)}
+                onBlur={commitPhrase}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitPhrase();
+                  if (e.key === "Escape") setPhraseDraft(null);
+                }}
                 placeholder={t(
                   "settings.advanced.continuousDictation.submitPhrasePlaceholder",
                 )}
-                disabled={isUpdating("continuous_submit_phrase")}
               />
               <Dropdown
                 className="shrink-0"

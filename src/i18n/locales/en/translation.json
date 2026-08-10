@@ -1521,7 +1521,9 @@
     "pasteFailedTitle": "Failed to Paste Text",
     "pasteFailed": "Text could not be pasted into the active application.",
     "postProcessFailedTitle": "AI Refinement Failed",
-    "screenshotQaFailedTitle": "Screenshot Q&A Failed"
+    "screenshotQaFailedTitle": "Screenshot Q&A Failed",
+    "openMicFailedTitle": "Open Mic couldn't transcribe that",
+    "openMicFailed": "The utterance was captured but not transcribed. Check Settings for details."
   },
   "appLanguage": {
     "title": "Application Language",
@@ -1790,8 +1792,6 @@
       "micOnly": "Your side only — the other participants aren't being captured.",
       "renameHint": "Click to name this speaker",
       "namePlaceholder": "Name…",
-      "lineCount_one": "{{count}} line",
-      "lineCount_other": "{{count}} lines",
       "mentionHeading": "You were just addressed",
       "endMeeting": "End meeting",
       "pause": "Pause",
@@ -1805,7 +1805,18 @@
       "titlePlaceholder": "Meeting name…",
       "renameMeetingHint": "Rename this meeting",
       "durationHint": "Time since the meeting started",
-      "finishing": "Finishing transcription…"
+      "finishing": "Finishing transcription…",
+      "brand": "Ghostly",
+      "startNewMeeting": "Start new meeting",
+      "export": "Export",
+      "exporting": "Exporting…",
+      "exported": "Saved to {{name}}",
+      "exportFilter": "Markdown",
+      "closeHint": "Hide the panel",
+      "autoEnded": "Ended automatically — nobody had spoken for a while.",
+      "liveLabel": "Live",
+      "pausedBadge": "Paused",
+      "micOnlyBadge": "Mic only"
     },
     "settings": {
       "loading": "Loading meeting settings…",
@@ -1830,6 +1841,15 @@
       "countdownDescription": "How long you get to cancel before capture begins.",
       "autoStopLabel": "Stop after the call ends",
       "autoStopDescription": "How long to wait once no call is detected. Generous by default, because apps briefly release audio when you mute.",
+      "autoEndSilenceLabel": "End when nobody's talking",
+      "autoEndSilenceDescription": "Ends the meeting on its own after this much silence, and writes the wrap-up. For the call you walked away from without pressing End.",
+      "autoEndSilenceOff": "Never",
+      "silenceSeconds_one": "{{count}}s",
+      "silenceSeconds_other": "{{count}}s",
+      "silenceMinutes_one": "{{count}} min",
+      "silenceMinutes_other": "{{count}} min",
+      "autoClosePanelLabel": "Close the panel too",
+      "autoClosePanelDescription": "Hides the live transcript when a meeting ends this way. Leave it off to find the wrap-up waiting for you.",
       "exclusionsLabel": "Never auto-connect for",
       "exclusionsDescription": "Comma-separated words. If a meeting's name contains one, Ghostly won't offer to capture it.",
       "exclusionsPlaceholder": "1:1, therapy, interview",
@@ -1858,7 +1878,10 @@
       "liveRefinementOnDevice": "On this Mac (Apple Intelligence)",
       "liveRefinementCloud": "Your AI provider",
       "liveRefinementCloudWarning": "Every transcript line will be sent to your configured AI provider as the meeting runs.",
-      "groupTranscript": "Live transcript"
+      "groupTranscript": "Live transcript",
+      "aiAutomatic": "Automatic (match my AI settings)",
+      "autoUsingCloud": "Using {{provider}} — the AI you chose for dictation. Meeting text is sent to it.",
+      "autoUsingOnDevice": "Running on this Mac with Apple Intelligence. Choose a cloud provider in Refinement and meetings will follow it automatically."
     },
     "detected": {
       "title": "{{app}} call detected",
