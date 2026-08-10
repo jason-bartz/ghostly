@@ -2008,6 +2008,56 @@ async runLearningPass() : Promise<Result<LearnedTerm[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async syncStatus() : Promise<SyncStatus> {
+    return await TAURI_INVOKE("sync_status");
+},
+/**
+ * Turn sync on for an account that has never had it.
+ */
+async syncSetup(passphrase: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_setup", { passphrase }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Join an account that already syncs, from another Mac.
+ */
+async syncUnlock(passphrase: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_unlock", { passphrase }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncNow() : Promise<Result<SyncOutcome, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_now") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stop syncing this Mac. Local data is untouched.
+ */
+async syncDisable() : Promise<void> {
+    await TAURI_INVOKE("sync_disable");
+},
+/**
+ * Erase the account's synced copy everywhere. Local data is untouched.
+ */
+async syncReset() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_reset") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async activateFromSession(sessionId: string) : Promise<Result<LicenseState, LicenseError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("activate_from_session", { sessionId }) };
@@ -2136,7 +2186,32 @@ refinement_enabled?: boolean;
  * 
  * Turn off to send AI-app dictation through the configured LLM anyway.
  */
-deterministic_cleanup_in_ai_apps?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; 
+deterministic_cleanup_in_ai_apps?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; 
+/**
+ * Sync is on for this Mac. Per-device, not per-account: turning it off
+ * here must not disturb the user's other Macs.
+ */
+sync_enabled?: boolean; 
+/**
+ * The account's Argon2id salt, cached from the server so an offline
+ * launch can still tell the pane that sync is set up.
+ */
+sync_salt?: string | null; 
+/**
+ * Server clock at the last successful pull, used as the next `since`.
+ * The server's, never ours — two clocks always disagree a little, and a
+ * local watermark silently drops records in the gap.
+ */
+sync_watermark_ms?: number; 
+/**
+ * When a syncable collection last changed on this Mac. One timestamp for
+ * all of them; see the note in `sync::bridge`.
+ */
+sync_touched_ms?: number; 
+/**
+ * For the "last synced" line in the UI.
+ */
+sync_last_synced_ms?: number; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; 
 /**
  * Whether crossing a notable dictation milestone posts a system
  * notification. Defaults on: the banners are rare by construction (see
@@ -2882,6 +2957,27 @@ export type SummaryKind =
  * End-of-meeting wrap-up.
  */
 "final"
+export type SyncOutcome = { pulled: number; pushed: number; applied: number }
+/**
+ * What the UI needs to render the sync pane.
+ */
+export type SyncStatus = { 
+/**
+ * The user turned sync on for this Mac.
+ */
+enabled: boolean; 
+/**
+ * The account has key material on the server.
+ */
+set_up: boolean; 
+/**
+ * This Mac holds the derived key, so it can actually sync.
+ */
+unlocked: boolean; 
+/**
+ * Unix ms of the last successful sync, 0 if never.
+ */
+last_synced_at: number }
 /**
  * Whether this machine can capture the far side of a meeting, and why not.
  */

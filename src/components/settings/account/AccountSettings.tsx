@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { UsageSettings } from "../usage/UsageSettings";
 import { LicenseSettings } from "../license/LicenseSettings";
 import { MaxAccountSection } from "../max/MaxAccountSection";
+import { SyncSection } from "../max/SyncSection";
 import { PageHeader } from "../../ui/PageHeader";
 
 /**
@@ -22,6 +23,7 @@ export const AccountSettings: React.FC = () => {
       />
       <UsageSettings />
       <MaxAccountSection />
+      <SyncSection />
       <LicenseSettings />
     </div>
   );

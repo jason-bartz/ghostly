@@ -5,9 +5,10 @@
 //!
 //! - [`crypto`] holds the passphrase-derived key and the sealed envelope.
 //! - [`records`] holds what a syncable item is and how two devices agree.
-//!
-//! Transport and the settings-store bridge are not built yet; see
-//! `docs/GHOSTLY-MAX.md` for what remains.
+//! - [`bridge`] maps `AppSettings` collections to records and back.
 
+pub mod bridge;
 pub mod crypto;
+pub mod engine;
 pub mod records;
+pub mod transport;

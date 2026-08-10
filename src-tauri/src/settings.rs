@@ -480,6 +480,28 @@ pub struct AppSettings {
     pub post_process_providers: Vec<PostProcessProvider>,
     #[serde(default = "default_post_process_api_keys")]
     pub post_process_api_keys: SecretMap,
+
+    // ---- Encrypted sync ----------------------------------------------------
+    /// Sync is on for this Mac. Per-device, not per-account: turning it off
+    /// here must not disturb the user's other Macs.
+    #[serde(default)]
+    pub sync_enabled: bool,
+    /// The account's Argon2id salt, cached from the server so an offline
+    /// launch can still tell the pane that sync is set up.
+    #[serde(default)]
+    pub sync_salt: Option<String>,
+    /// Server clock at the last successful pull, used as the next `since`.
+    /// The server's, never ours — two clocks always disagree a little, and a
+    /// local watermark silently drops records in the gap.
+    #[serde(default)]
+    pub sync_watermark_ms: i64,
+    /// When a syncable collection last changed on this Mac. One timestamp for
+    /// all of them; see the note in `sync::bridge`.
+    #[serde(default)]
+    pub sync_touched_ms: i64,
+    /// For the "last synced" line in the UI.
+    #[serde(default)]
+    pub sync_last_synced_ms: i64,
     #[serde(default = "default_post_process_models")]
     pub post_process_models: HashMap<String, String>,
     #[serde(default = "default_post_process_prompts")]
@@ -1522,6 +1544,11 @@ pub fn get_default_settings() -> AppSettings {
         post_process_provider_id: default_post_process_provider_id(),
         post_process_providers: default_post_process_providers(),
         post_process_api_keys: default_post_process_api_keys(),
+        sync_enabled: false,
+        sync_salt: None,
+        sync_watermark_ms: 0,
+        sync_touched_ms: 0,
+        sync_last_synced_ms: 0,
         post_process_models: default_post_process_models(),
         post_process_prompts: default_post_process_prompts(),
         post_process_selected_prompt_id: None,
@@ -2008,6 +2035,18 @@ pub fn sync_max_provider_key(app: &AppHandle) {
     // local event that can invalidate what we think we know about it (a
     // support-raised cap, a different key, a fresh subscription).
     crate::max_gateway::clear_fair_use_flag();
+}
+
+/// Mark the syncable collections as changed on this Mac, now.
+///
+/// Called by the setters that touch vocabulary, correction phrases, prompts or
+/// profiles — never by the sync engine itself. If applying a merge bumped this,
+/// every sync would make the local side the newest and two Macs would ping-pong
+/// their edits at each other forever.
+pub fn touch_sync(app: &AppHandle) {
+    let mut settings = get_settings(app);
+    settings.sync_touched_ms = chrono::Utc::now().timestamp_millis();
+    write_settings(app, settings);
 }
 
 pub fn write_settings(app: &AppHandle, settings: AppSettings) {

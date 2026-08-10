@@ -7,6 +7,7 @@ pub mod license;
 pub mod meetings;
 pub mod models;
 pub mod profiles;
+pub mod sync;
 pub mod transcription;
 pub mod usage;
 

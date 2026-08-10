@@ -29,6 +29,7 @@ pub fn add_profile(app: AppHandle, profile: Profile) -> Result<Vec<Profile>, Str
     settings.profiles.push(profile);
     let updated = settings.profiles.clone();
     write_settings(&app, settings);
+    crate::settings::touch_sync(&app);
     Ok(updated)
 }
 
@@ -42,6 +43,7 @@ pub fn update_profile(app: AppHandle, profile: Profile) -> Result<Vec<Profile>, 
     }
     let updated = settings.profiles.clone();
     write_settings(&app, settings);
+    crate::settings::touch_sync(&app);
     Ok(updated)
 }
 
@@ -56,6 +58,7 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<Vec<Profile>, String
     }
     let updated = settings.profiles.clone();
     write_settings(&app, settings);
+    crate::settings::touch_sync(&app);
     Ok(updated)
 }
 
