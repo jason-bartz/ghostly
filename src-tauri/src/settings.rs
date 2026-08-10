@@ -1037,6 +1037,20 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             supports_structured_output: true,
             supports_vision: true,
         },
+        // Ghostly Max — hosted AI. The credential is the licence key, synced
+        // into `post_process_api_keys` by `sync_max_provider_key` rather than
+        // typed by the user, and the Worker speaks the OpenAI dialect so the
+        // whole existing request path (streaming, cancellation, structured
+        // output) works unchanged.
+        PostProcessProvider {
+            id: MAX_PROVIDER_ID.to_string(),
+            label: "Ghostly Max".to_string(),
+            base_url: format!("{}/v1", crate::license::base_url()),
+            allow_base_url_edit: false,
+            models_endpoint: None,
+            supports_structured_output: false,
+            supports_vision: true,
+        },
         PostProcessProvider {
             id: "anthropic".to_string(),
             label: "Anthropic".to_string(),
@@ -1105,9 +1119,20 @@ fn default_post_process_api_keys() -> SecretMap {
     SecretMap(map)
 }
 
+/// Provider id for Ghostly Max's hosted AI.
+pub const MAX_PROVIDER_ID: &str = "ghostly_max";
+
+/// Default job alias for Max. The gateway maps aliases to concrete Anthropic
+/// models server-side, so this never needs to name one — which is how model
+/// routing can be retuned without shipping an app update.
+pub const MAX_DEFAULT_MODEL: &str = "ghostly-fast";
+
 fn default_model_for_provider(provider_id: &str) -> String {
     if provider_id == APPLE_INTELLIGENCE_PROVIDER_ID {
         return APPLE_INTELLIGENCE_DEFAULT_MODEL_ID.to_string();
+    }
+    if provider_id == MAX_PROVIDER_ID {
+        return MAX_DEFAULT_MODEL.to_string();
     }
     String::new()
 }
@@ -1896,6 +1921,50 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     }
 
     settings
+}
+
+/// Mirror the licence key into the Max provider's API-key slot.
+///
+/// Every existing caller reads a provider credential out of
+/// `post_process_api_keys`, so putting the licence key there means the hosted
+/// provider works through the untouched request path — no special-casing in
+/// `actions.rs`, `ai_metadata.rs`, or the meeting summariser.
+///
+/// Called whenever licence state changes. Clearing on a non-Max licence
+/// matters as much as setting: a lapsed subscriber must stop sending requests
+/// the gateway would only reject.
+pub fn sync_max_provider_key(app: &AppHandle) {
+    let entitled_key = crate::license::load_key_and_token().and_then(|(key, token)| {
+        let payload = crate::license::verify_token(&token).ok()?;
+        if payload.tier.as_deref() == Some("max") {
+            Some(key)
+        } else {
+            None
+        }
+    });
+
+    let mut settings = get_settings(app);
+    let changed = match entitled_key {
+        Some(key) => {
+            let existing = settings.post_process_api_keys.get(MAX_PROVIDER_ID);
+            if existing.map(String::as_str) == Some(key.as_str()) {
+                false
+            } else {
+                settings
+                    .post_process_api_keys
+                    .insert(MAX_PROVIDER_ID.to_string(), key);
+                true
+            }
+        }
+        None => settings
+            .post_process_api_keys
+            .remove(MAX_PROVIDER_ID)
+            .is_some(),
+    };
+
+    if changed {
+        write_settings(app, settings);
+    }
 }
 
 pub fn write_settings(app: &AppHandle, settings: AppSettings) {
