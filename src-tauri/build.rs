@@ -157,11 +157,29 @@ fn build_meeting_bridges() {
     println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
 }
 
-/// Generate tray menu translations from frontend locale files.
+/// Generate Rust-side translations from the frontend locale files.
 ///
-/// Source of truth: src/i18n/locales/*/translation.json
-/// The English "tray" section defines the struct fields.
+/// Rust surfaces text in two places the frontend can't reach — the tray menu
+/// and system notifications — both of which can appear while no window is
+/// open. Each gets a struct generated from one flat section of
+/// `src/i18n/locales/*/translation.json`, so the English file stays the single
+/// source of truth for every string in the product.
 fn generate_tray_translations() {
+    generate_section_translations("tray", "TrayStrings", "tray_translations.rs");
+    generate_section_translations(
+        "notification",
+        "NotificationStrings",
+        "notification_translations.rs",
+    );
+}
+
+/// Emit `<struct_name>` plus a `TRANSLATIONS` map for one flat section of the
+/// locale files. The English section defines the fields; a locale missing a
+/// key gets an empty string, which the lookup in `*_i18n.rs` falls back from.
+///
+/// Keys must be flat strings — nested objects are not represented in the
+/// generated struct and would silently vanish.
+fn generate_section_translations(section: &str, struct_name: &str, out_file: &str) {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
@@ -188,13 +206,17 @@ fn generate_tray_translations() {
         let content = fs::read_to_string(&json_path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-        if let Some(tray) = parsed.get("tray").cloned() {
-            translations.insert(lang, tray);
+        if let Some(found) = parsed.get(section).cloned() {
+            translations.insert(lang, found);
         }
     }
 
     // English defines the schema
-    let english = translations.get("en").unwrap().as_object().unwrap();
+    let english = translations
+        .get("en")
+        .unwrap_or_else(|| panic!("en/translation.json has no \"{section}\" section"))
+        .as_object()
+        .unwrap();
     let fields: Vec<_> = english
         .keys()
         .map(|k| (camel_to_snake(k), k.clone()))
@@ -206,22 +228,24 @@ fn generate_tray_translations() {
     );
 
     // Struct
-    out.push_str("#[derive(Debug, Clone)]\npub struct TrayStrings {\n");
+    out.push_str(&format!(
+        "#[derive(Debug, Clone)]\npub struct {struct_name} {{\n"
+    ));
     for (rust_field, _) in &fields {
         out.push_str(&format!("    pub {rust_field}: String,\n"));
     }
     out.push_str("}\n\n");
 
     // Static map
-    out.push_str(
-        "pub static TRANSLATIONS: Lazy<HashMap<&'static str, TrayStrings>> = Lazy::new(|| {\n",
-    );
+    out.push_str(&format!(
+        "pub static TRANSLATIONS: Lazy<HashMap<&'static str, {struct_name}>> = Lazy::new(|| {{\n"
+    ));
     out.push_str("    let mut m = HashMap::new();\n");
 
-    for (lang, tray) in &translations {
-        out.push_str(&format!("    m.insert(\"{lang}\", TrayStrings {{\n"));
+    for (lang, values) in &translations {
+        out.push_str(&format!("    m.insert(\"{lang}\", {struct_name} {{\n"));
         for (rust_field, json_key) in &fields {
-            let val = tray.get(json_key).and_then(|v| v.as_str()).unwrap_or("");
+            let val = values.get(json_key).and_then(|v| v.as_str()).unwrap_or("");
             out.push_str(&format!(
                 "        {rust_field}: \"{}\".to_string(),\n",
                 escape_string(val)
@@ -232,10 +256,10 @@ fn generate_tray_translations() {
 
     out.push_str("    m\n});\n");
 
-    fs::write(Path::new(&out_dir).join("tray_translations.rs"), out).unwrap();
+    fs::write(Path::new(&out_dir).join(out_file), out).unwrap();
 
     println!(
-        "cargo:warning=Generated tray translations: {} languages, {} fields",
+        "cargo:warning=Generated {section} translations: {} languages, {} fields",
         translations.len(),
         fields.len()
     );

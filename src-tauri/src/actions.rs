@@ -1673,7 +1673,9 @@ impl ShortcutAction for TranscribeAction {
                                 let duration_secs = (sample_count as u64)
                                     / (crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE as u64);
                                 let word_count = transcription.split_whitespace().count() as u64;
-                                um.record(duration_secs, word_count);
+                                if let Some(milestone) = um.record(duration_secs, word_count) {
+                                    crate::milestones::announce(&ah, milestone);
+                                }
                             }
 
                             // Show the transcription text in the overlay immediately so the user

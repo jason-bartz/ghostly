@@ -24,6 +24,11 @@ import GhostlyLogo from "./icons/GhostwriterLogo";
 import { useSettings } from "../hooks/useSettings";
 import { commands, type UsageStats } from "@/bindings";
 import {
+  currentMilestone,
+  milestoneProgress,
+  nextMilestone,
+} from "@/lib/constants/milestones";
+import {
   GeneralSettings,
   AdvancedSettings,
   HistorySettings,
@@ -206,6 +211,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { t } = useTranslation();
   const { settings } = useSettings();
+  const stats = useUsageStats();
 
   const [view, setView] = useState<"primary" | "settings">(() =>
     isPrimary(activeSection) ? "primary" : "settings",
@@ -253,7 +259,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Week's stats belong to the day-to-day surfaces. In the settings view
           the nav is long enough to squeeze the card flat, and a half-height
           stat block reads as a rendering bug — so it steps aside entirely. */}
-      {view === "primary" && <SidebarMetrics />}
+      {view === "primary" && stats && (
+        <>
+          <SidebarMetrics stats={stats} />
+          <SidebarMilestone lifetimeWords={stats.lifetime_words} />
+        </>
+      )}
 
       {view === "primary" ? (
         <div className="flex flex-col w-full gap-0.5 pt-3 pb-2 border-t border-hairline flex-1 min-h-0">
@@ -415,23 +426,41 @@ const AdvancedDisclosure: React.FC<AdvancedDisclosureProps> = ({
 
 type MetricsRange = "week" | "lifetime";
 
-const SidebarMetrics: React.FC = () => {
-  const { t } = useTranslation();
+/**
+ * Polls the usage snapshot that backs both sidebar cards.
+ *
+ * Shared rather than called twice so the metrics card and the milestone card
+ * can never disagree — two independent 30s timers would drift, and a card
+ * reading "48,196 words" above one reading "next: The Great Gatsby (48,196)"
+ * looks broken.
+ */
+function useUsageStats(): UsageStats | null {
   const [stats, setStats] = useState<UsageStats | null>(null);
-  const [range, setRange] = useState<MetricsRange>("week");
-
-  const load = async () => {
-    const res = await commands.getUsageStats();
-    if (res.status === "ok") setStats(res.data);
-  };
 
   useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const res = await commands.getUsageStats();
+      if (!cancelled && res.status === "ok") setStats(res.data);
+    };
     load();
     const id = setInterval(load, 30_000);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
-  if (!stats) return null;
+  return stats;
+}
+
+interface SidebarMetricsProps {
+  stats: UsageStats;
+}
+
+const SidebarMetrics: React.FC<SidebarMetricsProps> = ({ stats }) => {
+  const { t } = useTranslation();
+  const [range, setRange] = useState<MetricsRange>("week");
 
   const isLifetime = range === "lifetime";
   const words = isLifetime ? stats.lifetime_words : stats.words_this_week;
@@ -492,6 +521,74 @@ const SidebarMetrics: React.FC = () => {
         )}
       </div>
     </button>
+  );
+};
+
+interface SidebarMilestoneProps {
+  lifetimeWords: number;
+}
+
+/**
+ * "You've dictated the length of ___", with a bar filling toward the next
+ * comparison.
+ *
+ * Its own card rather than a row inside the metrics card above, because that
+ * card toggles between this week and all time while a milestone is always a
+ * lifetime figure — a row that stayed put while the numbers above it flipped
+ * would read as a bug.
+ *
+ * Renders nothing until the first milestone (107 words, one or two
+ * dictations). An empty card promising a reward the user hasn't earned is
+ * worse than no card, and the gap is measured in minutes.
+ */
+const SidebarMilestone: React.FC<SidebarMilestoneProps> = ({
+  lifetimeWords,
+}) => {
+  const { t } = useTranslation();
+
+  const reached = currentMilestone(lifetimeWords);
+  if (!reached) return null;
+
+  const next = nextMilestone(lifetimeWords);
+  const fraction = milestoneProgress(lifetimeWords);
+  const percent = Math.round(fraction * 100);
+
+  return (
+    <div
+      className="glass shrink-0 mx-1 mb-3 rounded-xl px-3 py-2.5 text-[11px] leading-tight"
+      title={
+        next
+          ? t("sidebar.milestone.progress", { percent, title: next.title })
+          : undefined
+      }
+    >
+      <p className="uppercase tracking-[0.08em] text-[9px] font-semibold text-text-faint mb-1.5">
+        {t("sidebar.milestone.label")}
+      </p>
+      <p className="font-medium text-text truncate" title={reached.title}>
+        {reached.title}
+      </p>
+      {/* Always rendered, even for the ~19 author-less entries (the King James
+          Bible, the Encyclopædia Britannica, "an average TED talk"). The row
+          keeps its height either way so the card doesn't change size — it sits
+          directly above the nav, and a card that shrank on crossing into an
+          author-less milestone would jog every nav item up 14px. */}
+      <p className="text-[10px] text-text-muted truncate mt-0.5 min-h-[13px]">
+        {reached.author}
+      </p>
+      {/* Hidden from the accessibility tree: the title attribute above already
+          announces the same "N% to X", and a bare progressbar node with no
+          label would just add noise to a screen reader. */}
+      <div
+        aria-hidden
+        className="mt-2 h-1 w-full rounded-full bg-fill-2 overflow-hidden"
+      >
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+          style={{ width: `${Math.max(percent, 2)}%` }}
+        />
+      </div>
+    </div>
   );
 };
 
