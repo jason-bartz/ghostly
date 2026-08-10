@@ -14,6 +14,7 @@ import { useSettings } from "../../../hooks/useSettings";
 import { Input } from "../../ui/Input";
 import { Button } from "../../ui/Button";
 import { SettingContainer, SettingsGroup } from "../../ui";
+import { LearnedTermsCard } from "./LearnedTermsCard";
 import { CorrectionPhrases } from "../CorrectionPhrases";
 import { styleCommands } from "@/lib/styleBindings";
 import type { CategoryId } from "../profiles/types";
@@ -382,6 +383,10 @@ export const DictionarySettings: React.FC = () => {
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
+      {/* Above the manual lists on purpose: it is the answer to "do I have to
+          type all of this myself?", and it only appears once it can be. */}
+      <LearnedTermsCard />
+
       <SettingsGroup
         title={t("settings.dictionary.vocabulary.title", "Vocabulary")}
       >

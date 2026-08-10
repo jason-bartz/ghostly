@@ -19,6 +19,7 @@ mod frontmost;
 mod helpers;
 mod input;
 mod keychain;
+mod learning;
 mod license;
 mod llm_client;
 mod local_cleanup;
@@ -776,6 +777,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::license::get_ai_status,
             commands::license::open_billing_portal,
             commands::ask::ask_transcripts,
+            commands::learning::get_recently_learned,
+            commands::learning::run_learning_pass,
             commands::license::activate_from_session,
             commands::license::open_payment_link,
             commands::edit_chip::apply_edit_chip,
@@ -958,6 +961,36 @@ pub fn run(cli_args: CliArgs) {
                 tauri::async_runtime::spawn(async move {
                     if crate::license::load_key_and_token().is_some() {
                         let _ = crate::commands::license::revalidate_license(bg_app).await;
+                    }
+                });
+            }
+
+            // Vocabulary learning: one pass a day, well after launch.
+            //
+            // The delay is not politeness. A pass that ran at startup would
+            // compete with model loading for the first minute of every launch,
+            // and the work is never urgent — the candidates it reads have been
+            // accumulating for days and will keep until the app has settled.
+            {
+                let bg_app = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    const STARTUP_DELAY: std::time::Duration =
+                        std::time::Duration::from_secs(10 * 60);
+                    const INTERVAL: std::time::Duration =
+                        std::time::Duration::from_secs(24 * 60 * 60);
+                    tokio::time::sleep(STARTUP_DELAY).await;
+                    loop {
+                        // Failures are expected and uninteresting: no provider
+                        // configured, offline, nothing pending. The next pass
+                        // picks up whatever this one left.
+                        match crate::learning::run_pass(&bg_app).await {
+                            Ok(terms) if !terms.is_empty() => {
+                                let _ = bg_app.emit("vocabulary-learned", terms);
+                            }
+                            Ok(_) => {}
+                            Err(e) => log::debug!("Learning pass skipped: {}", e),
+                        }
+                        tokio::time::sleep(INTERVAL).await;
                     }
                 });
             }

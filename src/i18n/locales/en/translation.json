@@ -2014,5 +2014,14 @@
     "meeting": "Meeting",
     "untitled": "Untitled",
     "askAnother": "Ask another"
+  },
+  "dictionary": {
+    "learned": {
+      "title": "Ghostly learned {{count}} new term this week",
+      "title_other": "Ghostly learned {{count}} new terms this week",
+      "description": "Picked up from corrections you made more than once. These are applied automatically from now on.",
+      "pair": "“{{wrong}}” is corrected to “{{correct}}”",
+      "editHint": "Each one is an ordinary entry in Word corrections below — edit or remove any of them there."
+    }
   }
 }
