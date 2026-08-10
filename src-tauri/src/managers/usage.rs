@@ -1,17 +1,20 @@
-//! Weekly usage tracking for the free-tier cap.
+//! Weekly usage tracking.
 //!
-//! Free users get 60 minutes of successful transcription per ISO calendar
-//! week (Monday 00:00 local time → next Monday 00:00 local). Pro users are
-//! not capped but their totals are still recorded for the vanity stats shown
-//! in the Usage settings pane.
+//! Dictation is uncapped on every tier. Totals are still accumulated per ISO
+//! calendar week (Monday 00:00 local → next Monday 00:00 local) purely to
+//! drive the stats shown in the Usage settings pane — words, time saved,
+//! and the twelve-week history.
+//!
+//! This used to enforce a 60-minute weekly cap on the free tier. That cap was
+//! removed when Pro was retired: the free tier is now unlimited and the paid
+//! tier (Max) sells hosted AI rather than transcription volume. `check_limit`
+//! is retained as an always-allow shim so the call sites in `actions.rs` and
+//! `meetings/session.rs` keep a single obvious place to reintroduce metering
+//! if that ever changes.
 //!
 //! Persistence lives in the OS keychain (macOS Keychain via `keyring`) as a
-//! single HMAC-signed JSON blob. Keychain survives app reinstall and deletes
-//! of application support data, which raises the bar on trivial reset
-//! exploits. An attacker can still patch the binary or write a fresh blob
-//! with a valid HMAC (the secret is compiled in) — the goal is to make
-//! honest purchase easier than a workaround, not to prevent a determined
-//! cracker.
+//! single HMAC-signed JSON blob, which survives app reinstall and deletion of
+//! application support data.
 
 use chrono::{Datelike, Duration as ChronoDuration, Local, NaiveDate, TimeZone, Weekday};
 use log::{debug, warn};
@@ -19,13 +22,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use specta::Type;
 use std::sync::Mutex;
-
-/// Free-tier weekly limit: 60 minutes = 3600 seconds.
-pub const FREE_WEEKLY_LIMIT_SECS: u64 = 60 * 60;
-
-/// Fraction of the limit at which we emit a warning event (first crossing
-/// per week). 0.8 = 80%.
-pub const WARNING_THRESHOLD: f64 = 0.80;
 
 /// Number of prior completed weeks to retain for the stats view.
 const HISTORY_RETENTION_WEEKS: usize = 12;
@@ -150,13 +146,18 @@ pub struct LifetimeAchievementCounters {
 /// Returned by [`UsageManager::check_limit`] so callers can decide what to do
 /// before starting a recording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// `FirstWarning` and `OverLimit` are never constructed while dictation is
+// uncapped. They are kept — along with the match arms that handle them in
+// `actions.rs` and `meetings/session.rs` — so that reintroducing metering is a
+// one-function change in `check_limit` rather than a re-plumbing exercise.
+#[allow(dead_code)]
 pub enum LimitCheck {
-    /// Under the limit; proceed normally.
+    /// Under the limit; proceed normally. Currently the only variant returned.
     Allowed,
-    /// At or above 80% and have not warned yet this week; caller should emit
-    /// a one-time warning event.
+    /// At or above the warning threshold and not yet warned this week; caller
+    /// should emit a one-time warning event.
     FirstWarning,
-    /// At or above 100% of the weekly limit; free-tier callers should block.
+    /// At or above 100% of a weekly limit; callers should block.
     OverLimit,
 }
 
@@ -185,13 +186,14 @@ impl UsageManager {
         if blob.current_week_start == this_week {
             return;
         }
-        // Archive the completed week.
-        let hit_limit = blob.current_week_seconds >= FREE_WEEKLY_LIMIT_SECS;
+        // Archive the completed week. `hit_limit` is always false now that
+        // dictation is uncapped; the field stays for blob compatibility with
+        // history written by builds that still enforced the cap.
         let completed = CompletedWeek {
             week_start: blob.current_week_start.clone(),
             seconds: blob.current_week_seconds,
             words: blob.current_week_words,
-            hit_limit,
+            hit_limit: false,
         };
         blob.history.insert(0, completed);
         if blob.history.len() > HISTORY_RETENTION_WEEKS {
@@ -203,29 +205,15 @@ impl UsageManager {
         blob.warned_this_week = false;
     }
 
-    /// Check whether a new recording should be allowed, and whether we owe
-    /// the caller a first-crossing warning. Does not mutate usage counters
-    /// (those only move on successful transcriptions via `record`).
-    pub fn check_limit(&self, is_pro: bool) -> LimitCheck {
+    /// Always allows the recording. Dictation is uncapped on every tier.
+    ///
+    /// Kept (rather than deleted along with its call sites) so that the two
+    /// places which gate recording — `actions.rs` and `meetings/session.rs` —
+    /// still route through one function if metering is ever reintroduced.
+    /// Still rolls the week forward so the stats pane stays accurate.
+    pub fn check_limit(&self, _is_pro: bool) -> LimitCheck {
         let mut blob = self.state.lock().expect("usage mutex poisoned");
         self.rotate_if_needed(&mut blob);
-        if is_pro {
-            return LimitCheck::Allowed;
-        }
-        if blob.current_week_seconds >= FREE_WEEKLY_LIMIT_SECS {
-            return LimitCheck::OverLimit;
-        }
-        let threshold = (FREE_WEEKLY_LIMIT_SECS as f64 * WARNING_THRESHOLD) as u64;
-        if blob.current_week_seconds >= threshold && !blob.warned_this_week {
-            // Mark warned so the next check doesn't re-emit. Persist so the
-            // flag survives restarts — this is the "first time this week"
-            // event, not "first time this session."
-            blob.warned_this_week = true;
-            let snapshot = blob.clone();
-            drop(blob);
-            save_blob(&snapshot);
-            return LimitCheck::FirstWarning;
-        }
         LimitCheck::Allowed
     }
 
@@ -266,22 +254,20 @@ impl UsageManager {
         }
     }
 
-    /// Snapshot for the Usage settings pane. Always recomputes `is_over_limit`
-    /// against the current value so the UI reflects reality even if `is_pro`
-    /// changes at runtime.
+    /// Snapshot for the Usage settings pane.
+    ///
+    /// `weekly_limit_secs` is 0, which the frontend reads as "uncapped" and
+    /// uses to hide the quota meter.
     pub fn stats(&self, is_pro: bool) -> UsageStats {
         let mut blob = self.state.lock().expect("usage mutex poisoned");
         self.rotate_if_needed(&mut blob);
-        let is_over_limit = !is_pro && blob.current_week_seconds >= FREE_WEEKLY_LIMIT_SECS;
-        let warn_threshold = (FREE_WEEKLY_LIMIT_SECS as f64 * WARNING_THRESHOLD) as u64;
-        let is_at_warning = !is_pro && blob.current_week_seconds >= warn_threshold;
         UsageStats {
             week_start_iso: blob.current_week_start.clone(),
             seconds_used: blob.current_week_seconds,
-            weekly_limit_secs: FREE_WEEKLY_LIMIT_SECS,
+            weekly_limit_secs: 0,
             is_pro,
-            is_over_limit,
-            is_at_warning,
+            is_over_limit: false,
+            is_at_warning: false,
             resets_at_unix: next_week_start_unix(),
             lifetime_seconds: blob.lifetime_seconds,
             words_this_week: blob.current_week_words,

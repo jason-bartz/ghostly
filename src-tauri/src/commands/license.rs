@@ -9,7 +9,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::license::{self, BySession, LicenseError, StatusResponse};
 use crate::settings::{get_settings, write_settings};
 
-pub const PAYMENT_LINK: &str = "https://buy.stripe.com/bJeaEW52q3ZI14y4j4eME01";
+pub const PAYMENT_LINK: &str = "https://try-ghostly.com/#pricing";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LicenseState {

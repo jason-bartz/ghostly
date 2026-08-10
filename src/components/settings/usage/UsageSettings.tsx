@@ -57,6 +57,7 @@ interface UsageContentProps {
 const UsageContent: React.FC<UsageContentProps> = ({ stats }) => {
   const { t } = useTranslation();
 
+  // weekly_limit_secs === 0 is the backend's "uncapped" signal.
   const pct = useMemo(() => {
     if (stats.weekly_limit_secs === 0) return 0;
     const raw = stats.seconds_used / stats.weekly_limit_secs;
@@ -108,6 +109,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
   const { t } = useTranslation();
   const usedLabel = formatDurationShort(stats.seconds_used);
   const limitLabel = formatDurationShort(stats.weekly_limit_secs);
+  const uncapped = stats.weekly_limit_secs === 0;
 
   const barColor = stats.is_over_limit
     ? "bg-danger"
@@ -130,7 +132,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
             )}
           </div>
           <p className="text-3xl font-semibold tabular-nums mt-1">
-            {stats.is_pro
+            {uncapped || stats.is_pro
               ? usedLabel
               : t("usage.thisWeek.usedOfLimit", {
                   used: usedLabel,
@@ -143,7 +145,7 @@ const CurrentWeekCard: React.FC<CurrentWeekCardProps> = ({
         </p>
       </div>
 
-      {!stats.is_pro && (
+      {!uncapped && !stats.is_pro && (
         <div>
           <div className="h-2 w-full rounded-full bg-fill-2 overflow-hidden">
             <div
