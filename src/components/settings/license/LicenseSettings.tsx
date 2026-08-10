@@ -77,6 +77,8 @@ export const LicenseSettings: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [devices, setDevices] = useState<StatusResponse | null>(null);
   const [devicesLoading, setDevicesLoading] = useState(false);
+  /** Whether the "use a different key" field is open on an already-licensed install. */
+  const [replacing, setReplacing] = useState(false);
 
   // Every licence change is also a Max entitlement change: the panes that gate
   // on tier (AI Refinement, the Account quota) read from the shared store, and
@@ -120,6 +122,7 @@ export const LicenseSettings: React.FC = () => {
       if (res.status === "ok") {
         setState(res.data);
         setKeyInput("");
+        setReplacing(false);
         void refreshDevices();
         void refreshMax(true);
       } else {
@@ -266,6 +269,87 @@ export const LicenseSettings: React.FC = () => {
                 />
               )}
             </div>
+          </SettingsGroup>
+
+          {/* Swapping one key for another used to be impossible from here: the
+              activation field rendered only while unlicensed, so anyone holding
+              a Pro key who then subscribed to Max had nowhere to put the new
+              one. The only route was Deactivate this device — which reads like
+              "give up your licence", and is a frightening thing to ask someone
+              to do on the strength of a guess.
+
+              Collapsed rather than a second always-open field, because the
+              common case is having exactly one key and not wanting to look at a
+              box asking for another. `activate_license` overwrites the stored
+              key and token outright, so this is a genuine swap, not a merge. */}
+          <SettingsGroup title={t("license.replaceTitle")}>
+            {!replacing ? (
+              <div className="p-4 flex items-center justify-between gap-4">
+                <p className="text-sm text-mid-gray">
+                  {t("license.replaceHelp")}
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setError(null);
+                    setErrorMessage(null);
+                    setReplacing(true);
+                  }}
+                >
+                  {t("license.replaceAction")}
+                </Button>
+              </div>
+            ) : (
+              <div className="p-4 space-y-3">
+                <label className="text-xs font-medium text-mid-gray uppercase tracking-wide block">
+                  {t("license.keyLabel")}
+                </label>
+                <Input
+                  autoFocus
+                  type="text"
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  placeholder={t("license.keyPlaceholder")}
+                  className="w-full font-mono"
+                  disabled={busy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleActivate(keyInput);
+                    if (e.key === "Escape") setReplacing(false);
+                  }}
+                />
+                {error !== null && (
+                  <ErrorBlock
+                    error={error}
+                    errorMessage={errorMessage}
+                    onDeactivateRemote={handleDeactivateRemote}
+                  />
+                )}
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    variant="primary"
+                    onClick={() => void handleActivate(keyInput)}
+                    disabled={busy || keyInput.trim().length === 0}
+                  >
+                    {busy ? t("license.activating") : t("license.activate")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setReplacing(false);
+                      setKeyInput("");
+                      setError(null);
+                    }}
+                    disabled={busy}
+                  >
+                    {t("common.cancel", "Cancel")}
+                  </Button>
+                </div>
+                <p className="text-xs text-mid-gray/70 leading-relaxed">
+                  {t("license.replaceNote")}
+                </p>
+              </div>
+            )}
           </SettingsGroup>
 
           <SettingsGroup title={t("license.deviceList")}>

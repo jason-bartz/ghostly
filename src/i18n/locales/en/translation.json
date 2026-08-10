@@ -1628,7 +1628,11 @@
     },
     "planLabel": "Plan",
     "planMax": "Ghostly Max",
-    "planPro": "Ghostly Pro"
+    "planPro": "Ghostly Pro",
+    "replaceTitle": "Another key",
+    "replaceHelp": "Upgraded to Max, or moving to a different licence?",
+    "replaceAction": "Use a different key",
+    "replaceNote": "Activating replaces the key on this Mac. Your old key stays valid and keeps its other devices."
   },
   "achievements": {
     "loadError": "Unable to load statistics.",
