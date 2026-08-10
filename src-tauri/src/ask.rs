@@ -28,7 +28,7 @@
 use crate::managers::history::HistoryManager;
 use crate::max_gateway::{Job, Target};
 use crate::meetings::session::MeetingManager;
-use crate::settings::get_settings;
+use crate::settings::{get_settings, APPLE_INTELLIGENCE_PROVIDER_ID};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -277,6 +277,20 @@ pub async fn ask(app: &AppHandle, question: &str) -> Result<AskAnswer, String> {
 
     let settings = get_settings(app);
     let provider_id = settings.post_process_provider_id.clone();
+
+    // Apple Intelligence is on-device and keyless, so it never reaches the
+    // empty-key check below — it would instead be handed twenty thousand
+    // characters of context through an HTTP client it has no endpoint for.
+    // Say what is actually needed rather than sending them to look for an API
+    // key field that would not help.
+    if provider_id == APPLE_INTELLIGENCE_PROVIDER_ID {
+        return Err(
+            "Asking your transcripts needs a cloud model — the on-device one can't hold enough of your history at once. \
+             Pick another provider in Settings → Refinement, or subscribe to Ghostly Max."
+                .to_string(),
+        );
+    }
+
     let target = Target::resolve(&settings, &provider_id)
         .ok_or("No AI provider is configured. Set one up in Settings → Refinement.")?
         .for_job(Job::Balanced);
