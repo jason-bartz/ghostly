@@ -253,6 +253,17 @@ static MIGRATIONS: &[M] = &[
     // week" card can show them without claiming credit for the ones the user
     // typed in by hand.
     M::up("ALTER TABLE word_corrections ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';"),
+    // The AI-enhanced pass over the user's own meeting notes.
+    //
+    // Kept in its own column rather than replacing `meetings.notes`: the whole
+    // point of enhancement is that it *builds on* what the user typed, and a
+    // user who dislikes the result has to be able to get their own words back.
+    // `enhanced_notes_at` records when it last ran, which is what tells the UI
+    // whether the enhancement predates edits made to the notes since.
+    M::up(
+        "ALTER TABLE meetings ADD COLUMN enhanced_notes TEXT;
+         ALTER TABLE meetings ADD COLUMN enhanced_notes_at INTEGER;",
+    ),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -2164,12 +2175,29 @@ mod tests {
     #[test]
     fn meeting_search_index_backfills_existing_rows() {
         let mut conn = Connection::open_in_memory().expect("open in-memory db");
-        // Apply everything except the FTS migration, so the segment row exists
+        // Apply everything up to the FTS migration, so the segment row exists
         // before the index does — exactly the upgrade path.
-        let before_fts: Vec<M> = MIGRATIONS[..MIGRATIONS.len() - 1].to_vec();
-        Migrations::new(before_fts)
+        //
+        // A fixed index rather than `len() - 1`: FTS stopped being the last
+        // migration the moment another was appended, and the version that
+        // counted backwards from the end kept passing while testing nothing.
+        const MIGRATIONS_BEFORE_FTS: usize = 15;
+        Migrations::new(MIGRATIONS[..MIGRATIONS_BEFORE_FTS].to_vec())
             .to_latest(&mut conn)
             .expect("pre-FTS migrations apply");
+
+        let index_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'meeting_segments_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            index_exists, 0,
+            "MIGRATIONS_BEFORE_FTS is stale — the prefix already builds the \
+             index, so this test is no longer exercising the backfill"
+        );
 
         conn.execute(
             "INSERT INTO meetings (id, started_at, detection_source) VALUES ('m1', 0, 'manual')",

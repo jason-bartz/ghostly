@@ -239,6 +239,33 @@ pub struct MeetingSummary {
     pub body: String,
 }
 
+/// The user's notepad for a meeting, and the AI pass over it.
+///
+/// Both are kept. The enhanced version is a *derivative* of what the user
+/// typed, not a replacement for it, and someone who dislikes the result has to
+/// be able to get their own words back untouched.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingNotes {
+    pub meeting_id: String,
+    /// Exactly what the user typed, never rewritten by anything.
+    pub notes: Option<String>,
+    /// The enhanced pass, when one has been run.
+    pub enhanced: Option<String>,
+    /// Unix seconds the enhancement was produced, so the UI can say when the
+    /// notes have moved on since.
+    pub enhanced_at: Option<i64>,
+}
+
+/// Emitted when an enhancement finishes, so the panel and the library agree
+/// even though they are separate windows.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingNotesEnhancedEvent {
+    pub meeting_id: String,
+    pub body: String,
+}
+
 /// Snapshot of the live capture session, polled by the panel on mount and
 /// pushed on every change.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

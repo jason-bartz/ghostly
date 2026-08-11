@@ -16,6 +16,7 @@ export type TourStepId =
   | "shortcut"
   | "practice"
   | "refinement"
+  | "meetings"
   | "features"
   | "finish";
 

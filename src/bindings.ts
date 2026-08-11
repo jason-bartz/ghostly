@@ -1289,11 +1289,11 @@ async listRunningApps() : Promise<RunningAppInfo[]> {
 async detectFrontmostBundleId() : Promise<string | null> {
     return await TAURI_INVOKE("detect_frontmost_bundle_id");
 },
-async getMeetingAiResolution() : Promise<MeetingAiResolution> {
-    return await TAURI_INVOKE("get_meeting_ai_resolution");
-},
 async getMeetingSettings() : Promise<MeetingSettings> {
     return await TAURI_INVOKE("get_meeting_settings");
+},
+async getMeetingAiResolution() : Promise<MeetingAiResolution> {
+    return await TAURI_INVOKE("get_meeting_ai_resolution");
 },
 async updateMeetingSettings(settings: MeetingSettings) : Promise<Result<null, string>> {
     try {
@@ -1524,6 +1524,71 @@ async getMeetingSummaries(meetingId: string) : Promise<Result<MeetingSummary[], 
 async summarizeMeeting(meetingId: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("summarize_meeting", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMeetingNotes(meetingId: string) : Promise<Result<MeetingNotes, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_meeting_notes", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Saves the notepad. Called on a debounce while the user types, so it is
+ * deliberately a plain overwrite with no merge and no history.
+ */
+async setMeetingNotes(meetingId: string, notes: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_meeting_notes", { meetingId, notes }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Saves an edited enhancement.
+ * 
+ * The enhanced version is a document the user owns once it exists — they will
+ * fix the one line the model got wrong — so it is editable and re-runnable
+ * rather than a read-only artefact.
+ */
+async setMeetingEnhancedNotes(meetingId: string, notes: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_meeting_enhanced_notes", { meetingId, notes }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Completes the user's notes from the transcript, storing both versions.
+ * 
+ * Runs on the async runtime and can take a while on a long meeting: the
+ * transcript is condensed first when it will not fit in one request.
+ */
+async enhanceMeetingNotes(meetingId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("enhance_meeting_notes", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Remembers how the panel is split between transcript and notepad.
+ * 
+ * Its own command rather than a write through [`update_meeting_settings`]:
+ * that one takes the whole settings block, and the panel would have to read
+ * it back on every drag just to avoid clobbering a preference changed in the
+ * main window meanwhile.
+ */
+async setMeetingNotesLayout(split: number, collapsed: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_meeting_notes_layout", { split, collapsed }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2127,12 +2192,14 @@ export const events = __makeEvents__<{
 historyUpdatePayload: HistoryUpdatePayload,
 meetingDetectedEvent: MeetingDetectedEvent,
 meetingMentionEvent: MeetingMentionEvent,
+meetingNotesEnhancedEvent: MeetingNotesEnhancedEvent,
 meetingSegmentEvent: MeetingSegmentEvent,
 meetingStatusEvent: MeetingStatusEvent
 }>({
 historyUpdatePayload: "history-update-payload",
 meetingDetectedEvent: "meeting-detected-event",
 meetingMentionEvent: "meeting-mention-event",
+meetingNotesEnhancedEvent: "meeting-notes-enhanced-event",
 meetingSegmentEvent: "meeting-segment-event",
 meetingStatusEvent: "meeting-status-event"
 })
@@ -2189,7 +2256,22 @@ meeting_default_enabled_migrated?: boolean;
  * `default_binding` fields to the new code defaults and upgrades any
  * `current_binding` that was still sitting on the old default.
  */
-binding_defaults_v2_migrated?: boolean; trailing_space_default_migrated?: boolean; meeting_ai_auto_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; 
+binding_defaults_v2_migrated?: boolean; 
+/**
+ * Marker for the `append_trailing_space` default flip. When false,
+ * `migrate_trailing_space_default` switches it on once so existing
+ * installs pick up the new default, then sets this true so a user who
+ * turns it back off is left alone.
+ */
+trailing_space_default_migrated?: boolean; 
+/**
+ * Marker for the meeting-AI "Automatic" default. When false, meeting
+ * summaries and live refinement still sitting on the old `on_device`
+ * default are moved to `auto` once, so a user who already pays for Max or
+ * configured a provider stops having to pick it a second and third time.
+ * An explicit `off`, `cloud` or `extractive` choice is left alone.
+ */
+meeting_ai_auto_migrated?: boolean; autostart_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; 
 /**
  * Position for the staged screenshot + dictation preview overlay.
  * Defaults to match `overlay_position` on first run via the default fn,
@@ -2247,7 +2329,13 @@ sync_touched_ms?: number;
 /**
  * For the "last synced" line in the UI.
  */
-sync_last_synced_ms?: number; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; 
+sync_last_synced_ms?: number; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; 
+/**
+ * Adds a single space after every pasted transcription, so dictating two
+ * sentences in a row does not run them together and the caret is left
+ * ready for the next one.
+ */
+append_trailing_space?: boolean; app_language?: string; 
 /**
  * Whether crossing a notable dictation milestone posts a system
  * notification. Defaults on: the banners are rare by construction (see
@@ -2687,10 +2775,11 @@ startedAt: number; endedAt: number | null; appBundleId: string | null; appDispla
  */
 capturedSystemAudio: boolean }
 /**
- * Per-application override for [`MeetingAutoConnect`].
- */
-/**
  * What the "Automatic" AI choice currently resolves to.
+ * 
+ * "Automatic" that will not say what it picked is not a setting, it is a
+ * shrug — and here the answer decides whether meeting text leaves the Mac, so
+ * it has to be on screen rather than inferred.
  */
 export type MeetingAiResolution = { 
 /**
@@ -2701,6 +2790,9 @@ usesCloud: boolean;
  * Display name of the provider it resolves to, for the UI to name.
  */
 providerName: string | null }
+/**
+ * Per-application override for [`MeetingAutoConnect`].
+ */
 export type MeetingAppPolicy = { 
 /**
  * Genuine bundle identifier, e.g. `us.zoom.xos`.
@@ -2736,6 +2828,32 @@ countdownSecs: number | null }
  * Emitted when a remote speaker appears to address the user by name.
  */
 export type MeetingMentionEvent = { meetingId: string; text: string; speakerName: string | null }
+/**
+ * The user's notepad for a meeting, and the AI pass over it.
+ * 
+ * Both are kept. The enhanced version is a *derivative* of what the user
+ * typed, not a replacement for it, and someone who dislikes the result has to
+ * be able to get their own words back untouched.
+ */
+export type MeetingNotes = { meetingId: string; 
+/**
+ * Exactly what the user typed, never rewritten by anything.
+ */
+notes: string | null; 
+/**
+ * The enhanced pass, when one has been run.
+ */
+enhanced: string | null; 
+/**
+ * Unix seconds the enhancement was produced, so the UI can say when the
+ * notes have moved on since.
+ */
+enhancedAt: number | null }
+/**
+ * Emitted when an enhancement finishes, so the panel and the library agree
+ * even though they are separate windows.
+ */
+export type MeetingNotesEnhancedEvent = { meetingId: string; body: string }
 /**
  * Where live transcript lines are cleaned up as a meeting runs.
  * 
@@ -2823,23 +2941,23 @@ excludedTitlePatterns: string[];
  * Sustained seconds with no conferencing app before capture auto-stops.
  * Generous because apps briefly release audio on mute/unmute.
  */
-autoStopGraceSecs: number;
+autoStopGraceSecs: number; 
 /**
  * Sustained seconds with nothing said before capture ends itself. 0 turns
  * it off.
- *
+ * 
  * Distinct from [`Self::auto_stop_grace_secs`], which watches the
  * *conferencing app* and therefore only ever ends a capture detection
  * started. This watches the *audio*, applies to manual captures too, and
  * exists for the meeting you walked away from without ending.
  */
-autoEndSilenceSecs: number;
+autoEndSilenceSecs: number; 
 /**
  * Hide the live panel when a meeting ends through
  * [`Self::auto_end_silence_secs`]. Off by default, so the wrap-up summary
  * is waiting on screen when you come back.
  */
-autoClosePanelOnAutoEnd: boolean;
+autoClosePanelOnAutoEnd: boolean; 
 /**
  * Where summaries run.
  */
@@ -2877,7 +2995,18 @@ retentionDays: number;
  * Last geometry the user left the live panel at, in logical points.
  * `None` means the default size in the top-right corner.
  */
-panelX: number | null; panelY: number | null; panelWidth: number | null; panelHeight: number | null }
+panelX: number | null; panelY: number | null; panelWidth: number | null; panelHeight: number | null; 
+/**
+ * Share of the panel's height given to the live transcript, with the
+ * notepad taking the rest. Clamped when applied, so a corrupt value
+ * cannot collapse either pane to nothing.
+ */
+notesSplit: number; 
+/**
+ * Notepad folded away to a single bar. Someone who never takes notes
+ * should not pay half their panel for one.
+ */
+notesCollapsed: boolean }
 export type MeetingSpeaker = { id: string; meetingId: string; displayName: string | null; kind: SpeakerKind; lane: Lane; 
 /**
  * Index of the embedding cluster this speaker corresponds to, when
@@ -2961,7 +3090,12 @@ export type MeetingSummaryRow = { meeting: Meeting; segmentCount: number;
 /**
  * Most recent summary body, when one exists.
  */
-summary: string | null; tags: string[] }
+summary: string | null; tags: string[]; 
+/**
+ * Both versions of the notepad, so a row can show which it has without a
+ * query per row.
+ */
+notes: MeetingNotes }
 export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; sha256: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; 
 /**
  * Set for the three models surfaced in the primary picker; `None` for the

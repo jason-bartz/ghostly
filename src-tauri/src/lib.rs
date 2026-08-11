@@ -732,6 +732,11 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::meetings::summarize_meeting_window,
             commands::meetings::get_meeting_summaries,
             commands::meetings::summarize_meeting,
+            commands::meetings::get_meeting_notes,
+            commands::meetings::set_meeting_notes,
+            commands::meetings::set_meeting_enhanced_notes,
+            commands::meetings::enhance_meeting_notes,
+            commands::meetings::set_meeting_notes_layout,
             commands::meetings::set_meeting_paused,
             commands::meetings::hide_meeting_panel,
             commands::meetings::show_meeting_panel,
@@ -802,6 +807,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             meetings::types::MeetingStatusEvent,
             meetings::types::MeetingDetectedEvent,
             meetings::types::MeetingMentionEvent,
+            meetings::types::MeetingNotesEnhancedEvent,
         ])
 }
 

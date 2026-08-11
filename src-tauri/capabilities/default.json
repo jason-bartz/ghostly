@@ -21,6 +21,11 @@
     "fs:read-files",
     "fs:allow-resource-read-recursive",
     {
+      "comment": "Deep links into the System Settings privacy panes. macOS only prompts for a permission once, so a denied microphone can be fixed nowhere else — and the opener default scope covers http/mailto/tel only.",
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "x-apple.systempreferences:*" }]
+    },
+    {
       "identifier": "fs:scope",
       "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**/*" }]
     }

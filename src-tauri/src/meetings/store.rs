@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use super::types::{
-    DetectionSource, LabelSource, Lane, Meeting, MeetingSegment, MeetingSpeaker, MeetingSummary,
-    NewSegment, SpeakerKind, SummaryKind,
+    DetectionSource, LabelSource, Lane, Meeting, MeetingNotes, MeetingSegment, MeetingSpeaker,
+    MeetingSummary, NewSegment, SpeakerKind, SummaryKind,
 };
 
 /// Turns a user's search box into an FTS5 query.
@@ -197,6 +197,53 @@ impl MeetingStore {
             params![cutoff],
         )?;
         Ok(removed)
+    }
+
+    // ---- Notes -----------------------------------------------------------
+
+    /// Replaces the user's notepad. Called on every autosave, so it is a single
+    /// UPDATE rather than a read-modify-write.
+    pub fn set_notes(&self, id: &str, notes: &str) -> Result<()> {
+        // Empty is stored as NULL, so "has notes" is one check rather than two.
+        let value: Option<&str> = (!notes.trim().is_empty()).then_some(notes);
+        self.conn()?.execute(
+            "UPDATE meetings SET notes = ?2 WHERE id = ?1",
+            params![id, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_enhanced_notes(&self, id: &str, body: &str, at: i64) -> Result<()> {
+        let value: Option<&str> = (!body.trim().is_empty()).then_some(body);
+        // The timestamp goes with the body: clearing one and leaving the other
+        // would leave the UI claiming an enhancement exists that does not.
+        let stamp: Option<i64> = value.is_some().then_some(at);
+        self.conn()?.execute(
+            "UPDATE meetings SET enhanced_notes = ?2, enhanced_notes_at = ?3 WHERE id = ?1",
+            params![id, value, stamp],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_notes(&self, id: &str) -> Result<MeetingNotes> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT notes, enhanced_notes, enhanced_notes_at FROM meetings WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(MeetingNotes {
+                meeting_id: id.to_string(),
+                notes: row.get(0)?,
+                enhanced: row.get(1)?,
+                enhanced_at: row.get(2)?,
+            })
+        })?;
+        // A meeting that no longer exists reads as "no notes" rather than an
+        // error: the caller is a UI that has just deleted it.
+        Ok(rows.next().transpose()?.unwrap_or(MeetingNotes {
+            meeting_id: id.to_string(),
+            ..Default::default()
+        }))
     }
 
     fn map_meeting(row: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
@@ -429,7 +476,7 @@ impl MeetingStore {
         })
     }
 
-    /// Search across meeting titles, app names, tags and transcript content.
+    /// Search across meeting titles, app names, tags, notes and transcripts.
     ///
     /// Transcript matching goes through the `meeting_segments_fts` index rather
     /// than a `LIKE '%needle%'` scan, which no index can serve and which grows
@@ -451,6 +498,8 @@ impl MeetingStore {
              FROM meetings m
              WHERE m.title LIKE ?1 ESCAPE '\\'
                 OR m.app_display_name LIKE ?1 ESCAPE '\\'
+                OR m.notes LIKE ?1 ESCAPE '\\'
+                OR m.enhanced_notes LIKE ?1 ESCAPE '\\'
                 OR EXISTS (
                      SELECT 1 FROM meeting_tags mt
                      WHERE mt.meeting_id = m.id AND mt.name LIKE ?1 ESCAPE '\\'
