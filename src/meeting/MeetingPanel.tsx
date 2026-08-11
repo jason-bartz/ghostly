@@ -135,7 +135,7 @@ const IDLE_ACTIVITY: ActivityPayload = {
  */
 const TypingDots: React.FC = () => (
   <span
-    className="inline-flex items-center gap-[3px] rounded-full border border-hairline bg-fill-2 px-2 py-[6px]"
+    className="inline-flex items-center gap-[3px] rounded-full bg-fill-2 px-2 py-[6px]"
     aria-hidden
   >
     <span className="typing-dot" />
@@ -165,9 +165,12 @@ type Pending = {
 /**
  * The panel's buttons.
  *
- * Shared so every control in the footer lands on the same height, radius and
- * press feedback — the difference between a window that feels built and one
- * that feels assembled.
+ * Flat by design: no borders, no fills at rest, no shadows. A footer of three
+ * outlined pills reads as three competing decisions. Exactly one control per
+ * state carries a fill — the thing you most likely came to press — and the rest
+ * are quiet text that only take a background under the cursor.
+ *
+ * Shared so every control lands on the same height, radius and press feedback.
  */
 const PanelButton: React.FC<
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -176,16 +179,14 @@ const PanelButton: React.FC<
 > = ({ variant = "ghost", className = "", ...props }) => {
   const base =
     "select-none rounded-lg px-3 py-1.5 text-[12px] font-medium " +
-    "transition-[background-color,color,border-color,opacity,transform] duration-150 " +
+    "transition-[background-color,color,opacity,transform] duration-150 " +
     "active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50";
   const variants = {
     primary:
-      "bg-accent text-canvas shadow-sm hover:bg-accent-bright active:bg-accent-deep",
-    ghost:
-      "border border-hairline-strong bg-fill-1 text-text-muted hover:bg-fill-3 hover:text-text",
-    danger:
-      "border border-danger/30 bg-danger/5 text-danger hover:bg-danger/15 hover:border-danger/50",
+      "bg-accent text-canvas hover:bg-accent-bright active:bg-accent-deep",
+    ghost: "text-text-muted hover:bg-fill-2 hover:text-text active:bg-fill-3",
+    danger: "text-danger hover:bg-danger/10 active:bg-danger/15",
   };
   return (
     <button
@@ -259,6 +260,30 @@ const MeetingPanel: React.FC = () => {
     for (const speaker of speakers) map.set(speaker.id, speaker);
     return map;
   }, [speakers]);
+
+  /**
+   * Consecutive lines from one person, folded into a single turn.
+   *
+   * A transcript is not a chat log. Attributing and time-stamping every
+   * utterance means a stretch where one person is talking renders as a column
+   * of their own name repeated down the page, which is noise in exactly the
+   * place someone is trying to read. The name is what changes between turns, so
+   * it is printed when it changes and not otherwise.
+   *
+   * Identity is the speaker row where there is one and the lane where there is
+   * not — two unattributed remote lines are the same "Participant" and belong
+   * in one turn.
+   */
+  const turns = useMemo(() => {
+    const grouped: { key: string; segments: MeetingSegment[] }[] = [];
+    for (const segment of segments) {
+      const key = segment.speakerId ?? `lane:${segment.lane}`;
+      const last = grouped[grouped.length - 1];
+      if (last && last.key === key) last.segments.push(segment);
+      else grouped.push({ key, segments: [segment] });
+    }
+    return grouped;
+  }, [segments]);
 
   const clearTranscript = useCallback(() => {
     setSegments([]);
@@ -763,6 +788,13 @@ const MeetingPanel: React.FC = () => {
           ? t("meeting.panel.you")
           : t("meeting.panel.participant")
     : null;
+  // Who the last rendered turn belongs to, so the live indicator can stay
+  // unlabelled while that same person keeps talking.
+  const continuingName = (() => {
+    const lastTurn = turns[turns.length - 1];
+    return lastTurn ? displayNameFor(lastTurn.segments[0]) : null;
+  })();
+
   const activityColor = speakerColor(
     Number(
       (activitySegment?.speakerId
@@ -775,7 +807,11 @@ const MeetingPanel: React.FC = () => {
   const showDuration = startedAt !== null || elapsed > 0;
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-hairline-strong bg-surface-1/95 text-text shadow-2xl backdrop-blur-2xl">
+    // Opaque, with no `backdrop-blur`. WebKit does not clip a backdrop filter
+    // to its element's `border-radius`, so the blurred layer painted as a
+    // square and the panel's corners read as square no matter what radius the
+    // container carried. At 95% opacity the blur was buying nothing anyway.
+    <div className="flex h-full w-full flex-col overflow-hidden rounded-[14px] bg-surface-1 text-text shadow-2xl">
       {/* The title bar. Also the drag handle — the panel is undecorated, so
           this is the only way to move it, and every non-interactive child
           repeats `data-tauri-drag-region` so the whole strip is grabbable
@@ -863,7 +899,7 @@ const MeetingPanel: React.FC = () => {
                   if (e.key === "Escape") setTitleDraft(null);
                 }}
                 placeholder={t("meeting.panel.titlePlaceholder")}
-                className="w-full rounded-md border border-accent/50 bg-surface-2 px-1.5 py-[2px] text-[12px] font-medium outline-none ring-2 ring-accent/20"
+                className="w-full rounded-md bg-surface-2 px-1.5 py-[2px] text-[12px] font-medium outline-none ring-2 ring-accent/30"
               />
             ) : (
               <div className="flex min-w-0 items-center gap-1">
@@ -916,7 +952,7 @@ const MeetingPanel: React.FC = () => {
       )}
 
       {detected && !active && (
-        <div className="animate-rise shrink-0 border-b border-accent/40 bg-accent/10 px-3 py-2">
+        <div className="animate-rise shrink-0 bg-accent/10 px-3 py-2.5">
           <p className="text-[12px] font-medium text-text">
             {t("meeting.detected.title", { app: detected.displayName })}
           </p>
@@ -967,7 +1003,7 @@ const MeetingPanel: React.FC = () => {
       )}
 
       {mention && (
-        <div className="animate-rise flex shrink-0 items-start gap-2 border-b border-accent/40 bg-accent/10 px-3 py-2">
+        <div className="animate-rise flex shrink-0 items-start gap-2 bg-accent/10 px-3 py-2.5">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium text-accent">
               {t("meeting.panel.mentionHeading")}
@@ -1023,21 +1059,16 @@ const MeetingPanel: React.FC = () => {
               </p>
             </div>
           ) : (
-            segments.map((segment) => {
-              const speaker = segment.speakerId
-                ? speakerById.get(segment.speakerId)
+            turns.map((turn) => {
+              const lead = turn.segments[0];
+              const speaker = lead.speakerId
+                ? speakerById.get(lead.speakerId)
                 : undefined;
               const color = speakerColor(Number(speaker?.colorIndex ?? 0));
-              const isEditing = editingSegmentId === segment.id && !!speaker;
+              const isEditing = editingSegmentId === lead.id && !!speaker;
               return (
-                <div
-                  key={segment.id}
-                  className="group -mx-1 mb-1.5 flex gap-2 rounded-md px-1 py-[3px] transition-colors duration-150 hover:bg-fill-1"
-                >
-                  <span className="w-9 shrink-0 pt-[3px] text-right text-[10px] tabular-nums text-text-faint">
-                    {formatClock(Number(segment.startMs))}
-                  </span>
-                  <div className="min-w-0 flex-1">
+                <div key={lead.id} className="group mb-3 last:mb-0">
+                  <div className="mb-[3px] flex items-baseline gap-2">
                     {isEditing && speaker ? (
                       <input
                         autoFocus
@@ -1050,7 +1081,7 @@ const MeetingPanel: React.FC = () => {
                           if (e.key === "Escape") setEditingSegmentId(null);
                         }}
                         placeholder={t("meeting.panel.namePlaceholder")}
-                        className="mb-[2px] w-32 rounded-md border border-accent/50 bg-surface-2 px-1.5 py-[1px] text-[11px] outline-none ring-2 ring-accent/20"
+                        className="w-32 rounded-md bg-surface-2 px-1.5 py-[1px] text-[11px] outline-none ring-2 ring-accent/30"
                       />
                     ) : (
                       <button
@@ -1058,20 +1089,31 @@ const MeetingPanel: React.FC = () => {
                         disabled={!speaker}
                         onClick={() => {
                           if (!speaker) return;
-                          setEditingSegmentId(segment.id);
+                          setEditingSegmentId(lead.id);
                           setDraftName(speaker.displayName ?? "");
                         }}
                         title={t("meeting.panel.renameHint")}
-                        className="mb-[1px] block text-[11px] font-semibold tracking-[0.01em] transition-opacity duration-150 hover:underline disabled:cursor-default disabled:no-underline"
+                        className="text-[11px] font-semibold tracking-[0.01em] transition-opacity duration-150 hover:underline disabled:cursor-default disabled:no-underline"
                         style={{ color }}
                       >
-                        {displayNameFor(segment)}
+                        {displayNameFor(lead)}
                       </button>
                     )}
-                    <p className="break-words text-[13px] leading-[1.45] text-text-muted">
+                    {/* The timestamp is reference material, not something you
+                        read down the page. It stays available on the turn you
+                        are pointing at and is otherwise out of the way. */}
+                    <span className="text-[10px] tabular-nums text-text-faint opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                      {formatClock(Number(lead.startMs))}
+                    </span>
+                  </div>
+                  {turn.segments.map((segment) => (
+                    <p
+                      key={segment.id}
+                      className="mb-1 break-words text-[13px] leading-[1.5] text-text-muted last:mb-0"
+                    >
                       {segment.text}
                     </p>
-                  </div>
+                  ))}
                 </div>
               );
             })
@@ -1079,7 +1121,6 @@ const MeetingPanel: React.FC = () => {
 
           {showActivity && (
             <div
-              className="-mx-1 mb-1.5 flex gap-2 px-1 py-[3px]"
               aria-live="polite"
               aria-label={
                 activityName
@@ -1087,34 +1128,33 @@ const MeetingPanel: React.FC = () => {
                   : t("meeting.panel.transcribing")
               }
             >
-              {/* Empty gutter, so the dots line up under the transcript's text
-                column rather than under its timestamps. */}
-              <span className="w-9 shrink-0" aria-hidden />
-              <div className="min-w-0 flex-1">
-                {activityName ? (
-                  <span
-                    className="mb-[1px] block text-[11px] font-semibold tracking-[0.01em]"
-                    style={{ color: activityColor }}
-                  >
-                    {activityName}
-                  </span>
-                ) : null}
-                <span className="flex items-center gap-2">
-                  <TypingDots />
-                  {!talking && (
-                    <span className="truncate text-[11px] text-text-faint">
-                      {t("meeting.panel.transcribing")}
-                    </span>
-                  )}
+              {/* The name is dropped when the person still speaking is the one
+                  whose turn is already on screen — printing it again would
+                  reintroduce, one line lower, exactly the repetition the turns
+                  above were grouped to remove. */}
+              {activityName && activityName !== continuingName ? (
+                <span
+                  className="mb-[3px] block text-[11px] font-semibold tracking-[0.01em]"
+                  style={{ color: activityColor }}
+                >
+                  {activityName}
                 </span>
-              </div>
+              ) : null}
+              <span className="flex items-center gap-2">
+                <TypingDots />
+                {!talking && (
+                  <span className="truncate text-[11px] text-text-faint">
+                    {t("meeting.panel.transcribing")}
+                  </span>
+                )}
+              </span>
             </div>
           )}
 
           {summary && (
             <div
               ref={summaryRef}
-              className="animate-rise mt-3 rounded-xl border border-accent/25 bg-accent/[0.07] p-2.5 shadow-sm"
+              className="animate-rise mt-3 rounded-xl bg-accent/[0.08] p-3"
             >
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-accent">

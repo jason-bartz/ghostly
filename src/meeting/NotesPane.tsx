@@ -284,7 +284,7 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
                 onClick={() => setTab(option)}
                 className={`rounded px-1.5 py-[1px] text-[10px] font-medium transition-colors duration-150 ${
                   tab === option
-                    ? "bg-surface-1 text-text shadow-sm"
+                    ? "bg-surface-1 text-text"
                     : "text-text-subtle hover:text-text"
                 }`}
               >
@@ -326,7 +326,7 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
       {!collapsed && (
         <>
           {showOffer && (
-            <div className="animate-rise mx-2.5 mb-1.5 shrink-0 rounded-lg border border-accent/30 bg-accent/[0.07] px-2 py-1.5">
+            <div className="animate-rise mx-2.5 mb-1.5 shrink-0 rounded-lg bg-accent/[0.08] px-2.5 py-2">
               <p className="text-[11px] leading-snug text-text-muted">
                 {t("meeting.notes.offerBody")}
               </p>
