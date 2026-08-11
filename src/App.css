@@ -221,6 +221,22 @@
   }
 }
 
+/* The live transcript's "someone is talking" indicator. Deliberately the
+ * messaging-app typing rhythm rather than an audio meter: it is reporting that
+ * a line is on its way, not how loud the room is. */
+@keyframes typing-dot {
+  0%,
+  62%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  31% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
 :root {
   /* Typography */
   font-size: 15px;
@@ -864,6 +880,21 @@ body {
   .animate-pulse-ring {
     animation: pulse-ring 2s ease-out infinite;
   }
+
+  .typing-dot {
+    display: block;
+    width: 4px;
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--color-accent);
+    animation: typing-dot 1.1s ease-in-out infinite;
+  }
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
 }
 
 /* Sonner toast surface tuning */
@@ -917,6 +948,13 @@ input[type="range"]:focus::-webkit-slider-thumb {
   .animate-rise,
   .animate-pulse-ring {
     animation: none !important;
+  }
+
+  /* The dots still have to read as "in progress", so they stay lit rather than
+   * disappearing along with their animation. */
+  .typing-dot {
+    animation: none !important;
+    opacity: 0.75;
   }
 
   .shimmer-text,

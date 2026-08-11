@@ -10,14 +10,19 @@ import { listen } from "@tauri-apps/api/event";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { Pencil, X } from "lucide-react";
 import { usePanelTheme } from "./usePanelTheme";
+import { NotesPane } from "./NotesPane";
 import { GhostlyMark } from "@/components/icons/GhostlyMark";
 import { commands } from "@/bindings";
 import type { MeetingSegment, MeetingSpeaker, MeetingStatus } from "@/bindings";
 
 /**
- * The floating live transcript.
+ * The floating live transcript, over the notepad.
  *
  * Design notes:
+ * - Two panes, split by a draggable divider: the transcript is what the meeting
+ *   is saying, the notepad is what you make of it. The split is remembered
+ *   because it is a working preference, not a per-meeting decision — some
+ *   people watch the transcript, some barely look at it.
  * - Auto-scroll sticks to the bottom but releases the moment the user scrolls
  *   up. Yanking someone back to the live edge while they are reading is the
  *   single most annoying thing a live transcript can do. The one exception is a
@@ -72,6 +77,13 @@ function formatDuration(seconds: number): string {
     : `${minutes}:${paddedSecs}`;
 }
 
+function clampSplit(value: number): number {
+  // A settings file edited by hand, or a stored value from a future version,
+  // must not be able to collapse a pane to zero height.
+  if (!Number.isFinite(value)) return DEFAULT_SPLIT;
+  return Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, value));
+}
+
 /** Turns a meeting name into something safe to hand a save dialog. */
 function suggestedFileName(title: string): string {
   const cleaned = title.replace(/[\\/:*?"<>|]/g, "-").trim();
@@ -94,6 +106,53 @@ interface RefinedPayload {
   segmentId: number;
   text: string;
 }
+
+/**
+ * Live capture activity, sampled by the backend a few times a second.
+ *
+ * A line only reaches the panel once its speaker pauses *and* the model has
+ * finished with it, so a long sentence leaves the transcript looking stalled for
+ * several seconds. This is what fills that gap.
+ */
+interface ActivityPayload {
+  /** The user is mid-utterance. */
+  mic: boolean;
+  /** The far side is mid-utterance. */
+  system: boolean;
+  /** Utterances waiting on the transcription worker. */
+  pending: number;
+}
+
+const IDLE_ACTIVITY: ActivityPayload = {
+  mic: false,
+  system: false,
+  pending: 0,
+};
+
+/**
+ * Three bouncing dots — the same shape every messaging app uses for "someone is
+ * typing", which is exactly the thing being communicated here.
+ */
+const TypingDots: React.FC = () => (
+  <span
+    className="inline-flex items-center gap-[3px] rounded-full border border-hairline bg-fill-2 px-2 py-[6px]"
+    aria-hidden
+  >
+    <span className="typing-dot" />
+    <span className="typing-dot" />
+    <span className="typing-dot" />
+  </span>
+);
+
+/**
+ * Share of the panel given to the transcript before the user says otherwise.
+ * Mirrors `MeetingSettings::default` on the Rust side, which is authoritative;
+ * this is only what the first frame renders with while settings load.
+ */
+const DEFAULT_SPLIT = 0.58;
+/** Neither pane may be squeezed to nothing. */
+const MIN_SPLIT = 0.2;
+const MAX_SPLIT = 0.85;
 
 /** An action applied locally while its command is still in flight. */
 type Pending = {
@@ -150,6 +209,7 @@ const MeetingPanel: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [mention, setMention] = useState<string | null>(null);
   const [detected, setDetected] = useState<DetectedPayload | null>(null);
+  const [activity, setActivity] = useState<ActivityPayload>(IDLE_ACTIVITY);
   const [summaryHeading, setSummaryHeading] = useState("catchUpHeading");
   const [autoEnded, setAutoEnded] = useState(false);
   const [pending, setPending] = useState<Pending>({});
@@ -174,9 +234,17 @@ const MeetingPanel: React.FC = () => {
   // all still need an id. Cleared only when the next meeting begins.
   const [meetingId, setMeetingId] = useState<string | null>(null);
 
+  // Share of the panel's height given to the transcript. The notepad takes the
+  // rest. Loaded from settings on mount and written back when a drag ends —
+  // per-pixel writes during the drag would hammer the settings store.
+  const [split, setSplit] = useState(DEFAULT_SPLIT);
+  const [notesCollapsed, setNotesCollapsed] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const draggingSplit = useRef(false);
   // Mirrors `meetingId` for the event handlers, which capture their closure
   // once on mount and would otherwise read a stale value.
   const meetingIdRef = useRef<string | null>(null);
@@ -201,6 +269,7 @@ const MeetingPanel: React.FC = () => {
     setError(null);
     setNotice(null);
     setAutoEnded(false);
+    setActivity(IDLE_ACTIVITY);
     setEditingSegmentId(null);
     setTitleDraft(null);
     setMeetingTitle(null);
@@ -222,6 +291,12 @@ const MeetingPanel: React.FC = () => {
 
   useEffect(() => {
     let active = true;
+
+    void commands.getMeetingSettings().then((settings) => {
+      if (!active) return;
+      setSplit(clampSplit(settings.notesSplit));
+      setNotesCollapsed(settings.notesCollapsed);
+    });
 
     void commands.getMeetingStatus().then((current) => {
       if (!active) return;
@@ -297,6 +372,16 @@ const MeetingPanel: React.FC = () => {
         );
       }
     });
+
+    // Somebody is mid-sentence, or the model is still working through what they
+    // already said. Edge-triggered on the backend, so this fires once per state
+    // change rather than on a timer.
+    const unlistenActivity = listen<ActivityPayload>(
+      "meeting-activity",
+      (event) => {
+        if (active) setActivity(event.payload);
+      },
+    );
 
     // A line the AI cleaned up. Replaces the verbatim text in place rather than
     // appending, so the transcript never shows the same sentence twice.
@@ -380,6 +465,7 @@ const MeetingPanel: React.FC = () => {
       void unlistenStartFailed.then((fn) => fn());
       void unlistenStatus.then((fn) => fn());
       void unlistenSegment.then((fn) => fn());
+      void unlistenActivity.then((fn) => fn());
       void unlistenRefined.then((fn) => fn());
       void unlistenMention.then((fn) => fn());
       void unlistenCatchUp.then((fn) => fn());
@@ -397,11 +483,13 @@ const MeetingPanel: React.FC = () => {
     if (status?.active) setDetected(null);
   }, [status?.active]);
 
+  // The indicator appearing grows the content too, so it follows the live edge
+  // on the same terms a new line does.
   useEffect(() => {
     if (!stickToBottom.current) return;
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [segments]);
+  }, [segments, activity]);
 
   // A summary is the one thing worth interrupting the live edge for: the user
   // pressed a button and is waiting for the answer, and it renders below a
@@ -440,6 +528,17 @@ const MeetingPanel: React.FC = () => {
   // flag: holding one would need clearing on every path that adopts or drops a
   // meeting, and this is exactly equivalent.
   const finished = !active && !pending.starting && meetingId !== null;
+
+  // The live edge. Someone talking outranks the queue: while a lane is open the
+  // indicator is named, and once everyone has stopped it becomes an unattributed
+  // "still transcribing" while the backlog clears.
+  //
+  // Gated on capture as well as the payload so a dropped final event — the app
+  // quitting mid-meeting, a panel reopened onto a stale state — cannot leave a
+  // transcript with dots pulsing under it forever.
+  const talking = activity.mic || activity.system;
+  const showActivity =
+    (active || draining) && (talking || activity.pending > 0);
 
   // Elapsed *captured* time. Recomputed from the start timestamp on every tick
   // rather than incremented, so it stays correct across a sleep or a missed
@@ -540,6 +639,53 @@ const MeetingPanel: React.FC = () => {
     );
   };
 
+  const persistLayout = useCallback((nextSplit: number, collapsed: boolean) => {
+    void commands.setMeetingNotesLayout(nextSplit, collapsed);
+  }, []);
+
+  const handleToggleNotes = () => {
+    const next = !notesCollapsed;
+    setNotesCollapsed(next);
+    persistLayout(split, next);
+  };
+
+  // Pointer events with capture, rather than mouse events: the divider is a few
+  // pixels tall, and without capture a fast drag leaves the element and drops
+  // the gesture halfway down the panel.
+  const handleDividerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    draggingSplit.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleDividerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingSplit.current) return;
+    const node = splitRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    setSplit(clampSplit((event.clientY - rect.top) / rect.height));
+  };
+
+  const handleDividerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingSplit.current) return;
+    draggingSplit.current = false;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    persistLayout(split, notesCollapsed);
+  };
+
+  // Arrow keys move the divider a line at a time — the panel is a window like
+  // any other, and a control only a mouse can reach is not a control.
+  const handleDividerKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step =
+      event.key === "ArrowUp" ? -0.04 : event.key === "ArrowDown" ? 0.04 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = clampSplit(split + step);
+    setSplit(next);
+    persistLayout(next, notesCollapsed);
+  };
+
   // NSPanel: `getCurrentWindow().hide()` from the webview does not reliably
   // hide a panel, so closing goes through the same main-thread path that
   // created it. Nothing to apply optimistically — the window itself is the
@@ -581,6 +727,49 @@ const MeetingPanel: React.FC = () => {
       ? t("meeting.panel.you")
       : t("meeting.panel.participant");
   };
+
+  /**
+   * Name and colour for the lane that is currently speaking.
+   *
+   * The activity event carries a lane, not a speaker — there is no speaker row
+   * yet, because the line it belongs to has not been transcribed. Borrowing the
+   * lane's most recent identity is what keeps the indicator saying "Priya"
+   * rather than dropping back to "Participant" under three lines that say
+   * Priya. Falls back to the lane's generic label on the first utterance of a
+   * meeting, when there is nothing to borrow.
+   */
+  const lastOnLane = (lane: MeetingSegment["lane"]) => {
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].lane === lane) return segments[i];
+    }
+    return undefined;
+  };
+
+  const activityLane = activity.mic
+    ? activity.system
+      ? null // Both at once: nobody in particular, so it stays unattributed.
+      : ("mic" as const)
+    : activity.system
+      ? ("system" as const)
+      : null;
+
+  const activitySegment = activityLane ? lastOnLane(activityLane) : undefined;
+  const activityName = talking
+    ? activityLane === null
+      ? t("meeting.panel.severalVoices")
+      : activitySegment
+        ? displayNameFor(activitySegment)
+        : activityLane === "mic"
+          ? t("meeting.panel.you")
+          : t("meeting.panel.participant")
+    : null;
+  const activityColor = speakerColor(
+    Number(
+      (activitySegment?.speakerId
+        ? speakerById.get(activitySegment.speakerId)?.colorIndex
+        : undefined) ?? 0,
+    ),
+  );
 
   const title = meetingTitle ?? t("meeting.panel.title");
   const showDuration = startedAt !== null || elapsed > 0;
@@ -795,135 +984,215 @@ const MeetingPanel: React.FC = () => {
         </div>
       )}
 
-      <div
-        ref={scrollRef}
-        onScroll={() => {
-          const node = scrollRef.current;
-          if (!node) return;
-          const distanceFromBottom =
-            node.scrollHeight - node.scrollTop - node.clientHeight;
-          stickToBottom.current = distanceFromBottom < 48;
-        }}
-        className="relative flex-1 overflow-y-auto px-3 py-2.5"
-      >
-        {segments.length === 0 ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 px-6 text-center">
-            <GhostlyMark
-              className={`h-8 w-auto text-text-faint ${
-                pending.starting || (active && !paused) ? "animate-pulse" : ""
-              }`}
-            />
-            <p className="text-[12px] text-text-subtle">
-              {pending.starting
-                ? t("meeting.panel.starting")
-                : active
-                  ? t("meeting.panel.listening")
-                  : t("meeting.panel.notCapturing")}
-            </p>
-          </div>
-        ) : (
-          segments.map((segment) => {
-            const speaker = segment.speakerId
-              ? speakerById.get(segment.speakerId)
-              : undefined;
-            const color = speakerColor(Number(speaker?.colorIndex ?? 0));
-            const isEditing = editingSegmentId === segment.id && !!speaker;
-            return (
-              <div
-                key={segment.id}
-                className="group -mx-1 mb-1.5 flex gap-2 rounded-md px-1 py-[3px] transition-colors duration-150 hover:bg-fill-1"
-              >
-                <span className="w-9 shrink-0 pt-[3px] text-right text-[10px] tabular-nums text-text-faint">
-                  {formatClock(Number(segment.startMs))}
-                </span>
-                <div className="min-w-0 flex-1">
-                  {isEditing && speaker ? (
-                    <input
-                      autoFocus
-                      value={draftName}
-                      onChange={(e) => setDraftName(e.target.value)}
-                      onBlur={() => void commitSpeakerName(speaker.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter")
-                          void commitSpeakerName(speaker.id);
-                        if (e.key === "Escape") setEditingSegmentId(null);
-                      }}
-                      placeholder={t("meeting.panel.namePlaceholder")}
-                      className="mb-[2px] w-32 rounded-md border border-accent/50 bg-surface-2 px-1.5 py-[1px] text-[11px] outline-none ring-2 ring-accent/20"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!speaker}
-                      onClick={() => {
-                        if (!speaker) return;
-                        setEditingSegmentId(segment.id);
-                        setDraftName(speaker.displayName ?? "");
-                      }}
-                      title={t("meeting.panel.renameHint")}
-                      className="mb-[1px] block text-[11px] font-semibold tracking-[0.01em] transition-opacity duration-150 hover:underline disabled:cursor-default disabled:no-underline"
-                      style={{ color }}
-                    >
-                      {displayNameFor(segment)}
-                    </button>
-                  )}
-                  <p className="break-words text-[13px] leading-[1.45] text-text-muted">
-                    {segment.text}
-                  </p>
-                </div>
-              </div>
-            );
-          })
-        )}
-
-        {summary && (
-          <div
-            ref={summaryRef}
-            className="animate-rise mt-3 rounded-xl border border-accent/25 bg-accent/[0.07] p-2.5 shadow-sm"
-          >
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-accent">
-                {t(`meeting.panel.${summaryHeading}`)}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSummary(null)}
-                className="shrink-0 text-[11px] text-text-subtle transition-colors duration-150 hover:text-text"
-              >
-                {t("meeting.panel.dismiss")}
-              </button>
+      {/* The split. `flexGrow` rather than percentage heights: the two panes
+          have to share whatever the window is, and a percentage inside a flex
+          column resolves against a height the divider is itself changing. */}
+      <div ref={splitRef} className="flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scrollRef}
+          style={
+            notesCollapsed
+              ? undefined
+              : { flexGrow: split, flexShrink: 1, flexBasis: 0 }
+          }
+          onScroll={() => {
+            const node = scrollRef.current;
+            if (!node) return;
+            const distanceFromBottom =
+              node.scrollHeight - node.scrollTop - node.clientHeight;
+            stickToBottom.current = distanceFromBottom < 48;
+          }}
+          className="relative min-h-0 flex-1 overflow-y-auto px-3 py-2.5"
+        >
+          {/* The placeholder gives way the moment there is activity to show —
+            it is absolutely positioned, so leaving it up would stack the
+            "listening" copy on top of the indicator. */}
+          {segments.length === 0 && !showActivity ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 px-6 text-center">
+              <GhostlyMark
+                className={`h-8 w-auto text-text-faint ${
+                  pending.starting || (active && !paused) ? "animate-pulse" : ""
+                }`}
+              />
+              <p className="text-[12px] text-text-subtle">
+                {pending.starting
+                  ? t("meeting.panel.starting")
+                  : active
+                    ? t("meeting.panel.listening")
+                    : t("meeting.panel.notCapturing")}
+              </p>
             </div>
-            <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.5] text-text-muted">
-              {summary}
-            </pre>
+          ) : (
+            segments.map((segment) => {
+              const speaker = segment.speakerId
+                ? speakerById.get(segment.speakerId)
+                : undefined;
+              const color = speakerColor(Number(speaker?.colorIndex ?? 0));
+              const isEditing = editingSegmentId === segment.id && !!speaker;
+              return (
+                <div
+                  key={segment.id}
+                  className="group -mx-1 mb-1.5 flex gap-2 rounded-md px-1 py-[3px] transition-colors duration-150 hover:bg-fill-1"
+                >
+                  <span className="w-9 shrink-0 pt-[3px] text-right text-[10px] tabular-nums text-text-faint">
+                    {formatClock(Number(segment.startMs))}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    {isEditing && speaker ? (
+                      <input
+                        autoFocus
+                        value={draftName}
+                        onChange={(e) => setDraftName(e.target.value)}
+                        onBlur={() => void commitSpeakerName(speaker.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            void commitSpeakerName(speaker.id);
+                          if (e.key === "Escape") setEditingSegmentId(null);
+                        }}
+                        placeholder={t("meeting.panel.namePlaceholder")}
+                        className="mb-[2px] w-32 rounded-md border border-accent/50 bg-surface-2 px-1.5 py-[1px] text-[11px] outline-none ring-2 ring-accent/20"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!speaker}
+                        onClick={() => {
+                          if (!speaker) return;
+                          setEditingSegmentId(segment.id);
+                          setDraftName(speaker.displayName ?? "");
+                        }}
+                        title={t("meeting.panel.renameHint")}
+                        className="mb-[1px] block text-[11px] font-semibold tracking-[0.01em] transition-opacity duration-150 hover:underline disabled:cursor-default disabled:no-underline"
+                        style={{ color }}
+                      >
+                        {displayNameFor(segment)}
+                      </button>
+                    )}
+                    <p className="break-words text-[13px] leading-[1.45] text-text-muted">
+                      {segment.text}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {showActivity && (
+            <div
+              className="-mx-1 mb-1.5 flex gap-2 px-1 py-[3px]"
+              aria-live="polite"
+              aria-label={
+                activityName
+                  ? t("meeting.panel.speakingNow", { name: activityName })
+                  : t("meeting.panel.transcribing")
+              }
+            >
+              {/* Empty gutter, so the dots line up under the transcript's text
+                column rather than under its timestamps. */}
+              <span className="w-9 shrink-0" aria-hidden />
+              <div className="min-w-0 flex-1">
+                {activityName ? (
+                  <span
+                    className="mb-[1px] block text-[11px] font-semibold tracking-[0.01em]"
+                    style={{ color: activityColor }}
+                  >
+                    {activityName}
+                  </span>
+                ) : null}
+                <span className="flex items-center gap-2">
+                  <TypingDots />
+                  {!talking && (
+                    <span className="truncate text-[11px] text-text-faint">
+                      {t("meeting.panel.transcribing")}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {summary && (
+            <div
+              ref={summaryRef}
+              className="animate-rise mt-3 rounded-xl border border-accent/25 bg-accent/[0.07] p-2.5 shadow-sm"
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-accent">
+                  {t(`meeting.panel.${summaryHeading}`)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSummary(null)}
+                  className="shrink-0 text-[11px] text-text-subtle transition-colors duration-150 hover:text-text"
+                >
+                  {t("meeting.panel.dismiss")}
+                </button>
+              </div>
+              <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.5] text-text-muted">
+                {summary}
+              </pre>
+            </div>
+          )}
+
+          {summarizing && !summary && (
+            <p className="mt-3 text-center text-[11px] text-text-subtle">
+              <span className="shimmer-text">
+                {t("meeting.panel.wrappingUp")}
+              </span>
+            </p>
+          )}
+
+          {autoEnded && (
+            <p className="animate-rise mt-2 rounded-lg bg-fill-2 px-2 py-1.5 text-[11px] text-text-subtle">
+              {t("meeting.panel.autoEnded")}
+            </p>
+          )}
+
+          {notice && (
+            <p className="animate-rise mt-2 rounded-lg bg-success/10 px-2 py-1.5 text-[11px] text-success">
+              {notice}
+            </p>
+          )}
+
+          {error && (
+            <p className="animate-rise mt-2 rounded-lg bg-danger/10 px-2 py-1.5 text-[11px] text-danger">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {!notesCollapsed && (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t("meeting.notes.resize")}
+            aria-valuenow={Math.round(split * 100)}
+            tabIndex={0}
+            onPointerDown={handleDividerDown}
+            onPointerMove={handleDividerMove}
+            onPointerUp={handleDividerUp}
+            onPointerCancel={handleDividerUp}
+            onKeyDown={handleDividerKey}
+            onDoubleClick={() => {
+              setSplit(DEFAULT_SPLIT);
+              persistLayout(DEFAULT_SPLIT, notesCollapsed);
+            }}
+            title={t("meeting.notes.resizeHint")}
+            className="group flex h-[7px] shrink-0 cursor-row-resize items-center justify-center border-t border-hairline bg-surface-2/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
+          >
+            <span className="h-[2px] w-7 rounded-full bg-hairline-strong transition-colors duration-150 group-hover:bg-accent/60" />
           </div>
         )}
 
-        {summarizing && !summary && (
-          <p className="mt-3 text-center text-[11px] text-text-subtle">
-            <span className="shimmer-text">
-              {t("meeting.panel.wrappingUp")}
-            </span>
-          </p>
-        )}
-
-        {autoEnded && (
-          <p className="animate-rise mt-2 rounded-lg bg-fill-2 px-2 py-1.5 text-[11px] text-text-subtle">
-            {t("meeting.panel.autoEnded")}
-          </p>
-        )}
-
-        {notice && (
-          <p className="animate-rise mt-2 rounded-lg bg-success/10 px-2 py-1.5 text-[11px] text-success">
-            {notice}
-          </p>
-        )}
-
-        {error && (
-          <p className="animate-rise mt-2 rounded-lg bg-danger/10 px-2 py-1.5 text-[11px] text-danger">
-            {error}
-          </p>
-        )}
+        <NotesPane
+          meetingId={meetingId}
+          capturing={active || draining}
+          finished={finished && !draining}
+          hasTranscript={segments.length > 0}
+          collapsed={notesCollapsed}
+          onToggleCollapsed={handleToggleNotes}
+          style={{ flexGrow: 1 - split, flexShrink: 1, flexBasis: 0 }}
+        />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-hairline bg-surface-2/40 px-3 py-2">

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Keyboard, Loader2, Mic } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { openPrivacySettings, type PrivacyPane } from "@/lib/systemSettings";
 import { StepHeader, SuccessCheck } from "../parts";
 import { usePermissions, type PermissionStatus } from "../usePermissions";
 import type { TourStepProps } from "../types";
@@ -16,6 +17,9 @@ interface CardProps {
   waitingLabel: string;
   grantedLabel: string;
   onGrant: () => void;
+  /** Privacy pane to fall back to once macOS has stopped prompting. */
+  pane: PrivacyPane;
+  settingsLabel: string;
   index: number;
 }
 
@@ -29,6 +33,8 @@ const PermissionCard: React.FC<CardProps> = ({
   waitingLabel,
   grantedLabel,
   onGrant,
+  pane,
+  settingsLabel,
   index,
 }) => {
   const granted = status === "granted";
@@ -63,6 +69,20 @@ const PermissionCard: React.FC<CardProps> = ({
           <p className="text-[11.5px] text-text-faint leading-snug mt-1">
             {reassurance}
           </p>
+          {/* macOS prompts once and never again. Someone who has already said
+              no — or who dismissed the dialog and is now watching a spinner
+              that will never resolve — has System Settings as their only
+              remaining route, so the card offers it rather than stranding
+              them. */}
+          {!granted && (
+            <button
+              type="button"
+              onClick={() => void openPrivacySettings(pane)}
+              className="text-[11.5px] text-accent-bright hover:underline mt-1.5 cursor-pointer"
+            >
+              {settingsLabel}
+            </button>
+          )}
         </div>
 
         <div className="shrink-0 self-center">
@@ -174,6 +194,8 @@ export const PermissionsStep: React.FC<TourStepProps> = ({
           waitingLabel={t("tour.permissions.waiting")}
           grantedLabel={t("tour.permissions.granted")}
           onGrant={() => void request("microphone")}
+          pane="microphone"
+          settingsLabel={t("tour.permissions.openSettings")}
         />
         <PermissionCard
           index={2}
@@ -186,6 +208,8 @@ export const PermissionsStep: React.FC<TourStepProps> = ({
           waitingLabel={t("tour.permissions.waiting")}
           grantedLabel={t("tour.permissions.granted")}
           onGrant={() => void request("accessibility")}
+          pane="accessibility"
+          settingsLabel={t("tour.permissions.openSettings")}
         />
       </div>
 

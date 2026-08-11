@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::meetings::detector::MeetingDetector;
 use crate::meetings::summarizer;
 use crate::meetings::types::{
-    DetectionSource, Meeting, MeetingSegment, MeetingSpeaker, MeetingStatus, MeetingSummary,
-    SummaryKind,
+    DetectionSource, Meeting, MeetingNotes, MeetingSegment, MeetingSpeaker, MeetingStatus,
+    MeetingSummary, SummaryKind,
 };
 use crate::meetings::MeetingManager;
 use crate::settings::{get_settings, write_settings, MeetingSettings};
@@ -525,6 +525,67 @@ pub async fn summarize_meeting(app: AppHandle, meeting_id: String) -> Result<Str
     .await
 }
 
+// ---- Notes ---------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_meeting_notes(app: AppHandle, meeting_id: String) -> Result<MeetingNotes, String> {
+    manager(&app)?
+        .store()
+        .get_notes(&meeting_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Saves the notepad. Called on a debounce while the user types, so it is
+/// deliberately a plain overwrite with no merge and no history.
+#[tauri::command]
+#[specta::specta]
+pub fn set_meeting_notes(app: AppHandle, meeting_id: String, notes: String) -> Result<(), String> {
+    manager(&app)?
+        .store()
+        .set_notes(&meeting_id, &notes)
+        .map_err(|e| e.to_string())
+}
+
+/// Saves an edited enhancement.
+///
+/// The enhanced version is a document the user owns once it exists — they will
+/// fix the one line the model got wrong — so it is editable and re-runnable
+/// rather than a read-only artefact.
+#[tauri::command]
+#[specta::specta]
+pub fn set_meeting_enhanced_notes(
+    app: AppHandle,
+    meeting_id: String,
+    notes: String,
+) -> Result<(), String> {
+    manager(&app)?
+        .store()
+        .set_enhanced_notes(&meeting_id, &notes, chrono::Utc::now().timestamp())
+        .map_err(|e| e.to_string())
+}
+
+/// Completes the user's notes from the transcript, storing both versions.
+///
+/// Runs on the async runtime and can take a while on a long meeting: the
+/// transcript is condensed first when it will not fit in one request.
+#[tauri::command]
+#[specta::specta]
+pub async fn enhance_meeting_notes(app: AppHandle, meeting_id: String) -> Result<String, String> {
+    let manager = manager(&app)?;
+    let body = crate::meetings::notes::enhance(&app, manager.store(), &meeting_id).await?;
+    // The panel and the library are separate windows looking at the same row.
+    // Whichever one started this, the other has to hear about it.
+    let _ = app.emit(
+        "meeting-notes-enhanced",
+        crate::meetings::types::MeetingNotesEnhancedEvent {
+            meeting_id,
+            body: body.clone(),
+        },
+    );
+    Ok(body)
+}
+
 // ---- Panel & capture control --------------------------------------------
 
 /// Pauses or resumes capture without ending the meeting.
@@ -535,6 +596,24 @@ pub async fn summarize_meeting(app: AppHandle, meeting_id: String) -> Result<Str
 #[specta::specta]
 pub fn set_meeting_paused(app: AppHandle, paused: bool) -> Result<(), String> {
     manager(&app)?.set_paused(paused);
+    Ok(())
+}
+
+/// Remembers how the panel is split between transcript and notepad.
+///
+/// Its own command rather than a write through [`update_meeting_settings`]:
+/// that one takes the whole settings block, and the panel would have to read
+/// it back on every drag just to avoid clobbering a preference changed in the
+/// main window meanwhile.
+#[tauri::command]
+#[specta::specta]
+pub fn set_meeting_notes_layout(app: AppHandle, split: f64, collapsed: bool) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    // Clamped here as well as in the panel, because settings are also editable
+    // by hand and a ratio of 0 would present as a pane that will not open.
+    settings.meeting.notes_split = split.clamp(0.2, 0.85);
+    settings.meeting.notes_collapsed = collapsed;
+    write_settings(&app, settings);
     Ok(())
 }
 
@@ -567,6 +646,9 @@ pub struct MeetingSummaryRow {
     /// Most recent summary body, when one exists.
     pub summary: Option<String>,
     pub tags: Vec<String>,
+    /// Both versions of the notepad, so a row can show which it has without a
+    /// query per row.
+    pub notes: MeetingNotes,
 }
 
 /// Meetings for the library list, optionally filtered by text and date.
@@ -608,11 +690,13 @@ pub fn browse_meetings(
                 .ok()
                 .and_then(|list| list.into_iter().next_back().map(|s| s.body));
             let tags = store.tags_for(&meeting.id).unwrap_or_default();
+            let notes = store.get_notes(&meeting.id).unwrap_or_default();
             MeetingSummaryRow {
                 meeting,
                 segment_count,
                 summary,
                 tags,
+                notes,
             }
         })
         .collect())
@@ -631,6 +715,7 @@ fn render_meeting_document(
     let segments = store.list_segments(meeting_id).map_err(|e| e.to_string())?;
     let speakers = store.list_speakers(meeting_id).unwrap_or_default();
     let summaries = store.list_summaries(meeting_id).unwrap_or_default();
+    let notes = store.get_notes(meeting_id).unwrap_or_default();
 
     let title = meeting
         .title
@@ -651,6 +736,42 @@ fn render_meeting_document(
         out.push_str(
             "(Your side of the call only — the other participants were not captured.)\n\n",
         );
+    }
+
+    // Notes lead the document. Once someone has enhanced their notes, that is
+    // the thing they are sending on; the summary and the transcript are the
+    // evidence behind it.
+    if let Some(enhanced) = notes
+        .enhanced
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        out.push_str(if markdown {
+            "## Notes\n\n"
+        } else {
+            "NOTES\n\n"
+        });
+        out.push_str(enhanced);
+        out.push_str("\n\n");
+    }
+    if let Some(raw) = notes
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        // Labelled by whether the enhanced version is above it: on its own it
+        // is simply "the notes", and calling it "My notes" there would imply a
+        // second set that does not exist.
+        let heading = if notes.enhanced.is_some() {
+            ("## My notes\n\n", "MY NOTES\n\n")
+        } else {
+            ("## Notes\n\n", "NOTES\n\n")
+        };
+        out.push_str(if markdown { heading.0 } else { heading.1 });
+        out.push_str(raw);
+        out.push_str("\n\n");
     }
 
     if let Some(latest) = summaries.iter().next_back() {
@@ -704,6 +825,7 @@ pub fn export_meeting_to_file(
                 .ok_or_else(|| "That meeting no longer exists.".to_string())?;
             let payload = serde_json::json!({
                 "meeting": meeting,
+                "notes": store.get_notes(&meeting_id).unwrap_or_default(),
                 "speakers": store.list_speakers(&meeting_id).unwrap_or_default(),
                 "segments": store.list_segments(&meeting_id).map_err(|e| e.to_string())?,
                 "summaries": store.list_summaries(&meeting_id).unwrap_or_default(),
@@ -797,6 +919,7 @@ pub fn export_all_meetings(
                 serde_json::json!({
                     "meeting": row.meeting,
                     "tags": row.tags,
+                    "notes": row.notes,
                     "speakers": store.list_speakers(&row.meeting.id).unwrap_or_default(),
                     "segments": store.list_segments(&row.meeting.id).unwrap_or_default(),
                     "summaries": store.list_summaries(&row.meeting.id).unwrap_or_default(),

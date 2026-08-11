@@ -108,6 +108,15 @@ impl LaneSegmenter {
         (frames * 30) as i64
     }
 
+    /// True while an utterance is open — somebody on this lane is mid-sentence.
+    ///
+    /// The live "someone is talking" signal. A segment only reaches the panel
+    /// once it closes, so without this there is nothing to show for the seconds
+    /// between a person starting to speak and their line appearing.
+    pub fn is_open(&self) -> bool {
+        self.in_segment
+    }
+
     fn silence_frames(&self) -> u32 {
         ((self.config.silence_ms as usize) / 30).max(1) as u32
     }

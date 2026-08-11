@@ -39,10 +39,10 @@ use super::types::{Lane, MeetingSegment, MeetingSpeaker, SummaryKind};
 
 /// Characters per chunk when map-reducing. Comfortably inside the on-device
 /// model's context while keeping the number of chunks small.
-const CHUNK_CHARS: usize = 6_000;
+pub(super) const CHUNK_CHARS: usize = 6_000;
 
 /// Ceiling on how much text is ever sent in one request.
-const MAX_PROMPT_CHARS: usize = 12_000;
+pub(super) const MAX_PROMPT_CHARS: usize = 12_000;
 
 const SYSTEM_PROMPT: &str = "\
 You summarise live meeting transcripts for someone who stopped paying attention \
@@ -134,7 +134,7 @@ pub fn render_transcript(segments: &[MeetingSegment], speakers: &[MeetingSpeaker
 }
 
 /// Splits on line boundaries so a speaker turn is never cut in half.
-fn chunk_transcript(transcript: &str, chunk_chars: usize) -> Vec<String> {
+pub(super) fn chunk_transcript(transcript: &str, chunk_chars: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
     for line in transcript.lines() {
@@ -148,6 +148,36 @@ fn chunk_transcript(transcript: &str, chunk_chars: usize) -> Vec<String> {
         chunks.push(current);
     }
     chunks
+}
+
+/// Squeezes an over-long transcript down to chunk summaries.
+///
+/// The same map-reduce [`summarize`] runs internally, stopping one step short:
+/// the per-chunk partials are returned rather than folded again. [`super::notes`]
+/// needs that middle layer — it is filling gaps in someone's notes, and the
+/// detail a second pass throws away ("Friday", "$40k", "Priya") is exactly what
+/// it is looking for.
+pub(super) async fn condense(app: &AppHandle, transcript: &str) -> String {
+    let settings = get_settings(app);
+    let backend = settings.meeting.summary_backend.resolve(&settings);
+    let chunks = chunk_transcript(transcript, CHUNK_CHARS);
+    if chunks.len() <= 1 {
+        return transcript.to_string();
+    }
+
+    let mut partials = Vec::with_capacity(chunks.len());
+    for chunk in &chunks {
+        match run_backend(app, backend, ROLLING_INSTRUCTIONS, chunk).await {
+            Ok(part) => partials.push(part),
+            Err(e) => warn!("Meeting notes: chunk failed ({e}), skipping"),
+        }
+    }
+    if partials.is_empty() {
+        // Every chunk failed. The tail is the best of a bad job — it is at
+        // least real transcript rather than nothing.
+        return truncate_from_end(transcript, MAX_PROMPT_CHARS);
+    }
+    partials.join("\n")
 }
 
 /// Produces a summary of `transcript`.
@@ -250,7 +280,7 @@ pub fn clean_summary(raw: &str) -> String {
 }
 
 /// Removes emphasis and heading markers a model added despite instructions.
-fn strip_markdown(line: &str) -> String {
+pub(super) fn strip_markdown(line: &str) -> String {
     let mut cleaned = line.replace("**", "").replace("__", "");
     let trimmed = cleaned.trim_start();
     // Leading ATX heading markers.
@@ -305,7 +335,7 @@ fn section_heading(line: &str) -> Option<String> {
 
 /// Lines that say nothing — empty-section placeholders and commentary about
 /// the transcript rather than about the meeting.
-fn is_filler(line: &str) -> bool {
+pub(super) fn is_filler(line: &str) -> bool {
     let lowered = line
         .trim_start_matches("- ")
         .trim()
@@ -351,7 +381,7 @@ fn is_filler(line: &str) -> bool {
 
 /// Keeps the *end* of a transcript when trimming — recent conversation is what
 /// "catch me up" is about.
-fn truncate_from_end(text: &str, max_chars: usize) -> String {
+pub(super) fn truncate_from_end(text: &str, max_chars: usize) -> String {
     if text.len() <= max_chars {
         return text.to_string();
     }
@@ -384,13 +414,14 @@ async fn run_backend_raw(
     instructions: &str,
     transcript: &str,
 ) -> Result<String, String> {
+    let prompt = format!("{instructions}\n\nTranscript:\n{transcript}");
     match backend {
         MeetingSummaryBackend::Extractive => Ok(extractive_summary(transcript)),
         // `Auto` is resolved in `summarize`; grouped with on-device so an
         // unresolved value degrades privately rather than unexpectedly
         // reaching the network.
         MeetingSummaryBackend::Auto | MeetingSummaryBackend::OnDevice => {
-            match on_device(instructions, transcript) {
+            match on_device(SYSTEM_PROMPT, &prompt) {
                 Ok(text) => Ok(text),
                 Err(e) => {
                     // The ladder: never leave the button dead.
@@ -399,7 +430,7 @@ async fn run_backend_raw(
                 }
             }
         }
-        MeetingSummaryBackend::Cloud => match cloud(app, instructions, transcript).await {
+        MeetingSummaryBackend::Cloud => match cloud(app, SYSTEM_PROMPT, &prompt).await {
             Ok(text) => Ok(text),
             Err(e) => {
                 warn!("Meeting summary: cloud failed ({e}), using extractive");
@@ -409,26 +440,46 @@ async fn run_backend_raw(
     }
 }
 
+/// Runs a fully composed prompt on the chosen backend, **without** the
+/// extractive fallback.
+///
+/// [`run_backend_raw`] can always answer because keyword extraction over a
+/// transcript is a real, if crude, summary. That is not true of every job:
+/// [`super::notes`] is merging two documents, and running keyword extraction
+/// over a prompt that contains the user's own notes would return their own
+/// sentences back at them as though a model had done something. Callers that
+/// need a genuine model get the error and choose their own fallback.
+pub(super) async fn run_model(
+    app: &AppHandle,
+    backend: MeetingSummaryBackend,
+    system: &str,
+    prompt: &str,
+) -> Result<String, String> {
+    match backend {
+        MeetingSummaryBackend::Extractive => {
+            Err("No AI model is configured for meeting summaries.".to_string())
+        }
+        MeetingSummaryBackend::Auto | MeetingSummaryBackend::OnDevice => on_device(system, prompt),
+        MeetingSummaryBackend::Cloud => cloud(app, system, prompt).await,
+    }
+}
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn on_device(instructions: &str, transcript: &str) -> Result<String, String> {
+fn on_device(system: &str, prompt: &str) -> Result<String, String> {
     if !crate::apple_intelligence::check_apple_intelligence_availability() {
         return Err("Apple Intelligence is not available on this Mac".to_string());
     }
     // `max_tokens` here is a word-count truncation applied to finished output,
     // not a generation limit. 0 means "do not truncate".
-    crate::apple_intelligence::process_text_with_system_prompt(
-        SYSTEM_PROMPT,
-        &format!("{instructions}\n\nTranscript:\n{transcript}"),
-        0,
-    )
+    crate::apple_intelligence::process_text_with_system_prompt(system, prompt, 0)
 }
 
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-fn on_device(_instructions: &str, _transcript: &str) -> Result<String, String> {
+fn on_device(_system: &str, _prompt: &str) -> Result<String, String> {
     Err("On-device summarisation is unavailable on this platform".to_string())
 }
 
-async fn cloud(app: &AppHandle, instructions: &str, transcript: &str) -> Result<String, String> {
+async fn cloud(app: &AppHandle, system: &str, prompt: &str) -> Result<String, String> {
     let settings = get_settings(app);
     let provider_id = settings.post_process_provider_id.as_str();
     let provider = settings
@@ -438,7 +489,7 @@ async fn cloud(app: &AppHandle, instructions: &str, transcript: &str) -> Result<
 
     // Apple Intelligence is not an HTTP provider; route it to the on-device path.
     if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
-        return on_device(instructions, transcript);
+        return on_device(system, prompt);
     }
 
     let model = settings
@@ -457,7 +508,10 @@ async fn cloud(app: &AppHandle, instructions: &str, transcript: &str) -> Result<
 
     // Non-streaming deliberately: the streaming helper is OpenAI-SSE only, has
     // no retries, and its 30 s timeout would cut a long generation short.
-    let prompt = format!("{SYSTEM_PROMPT}\n\n{instructions}\n\nTranscript:\n{transcript}");
+    //
+    // The system prompt is prepended rather than sent separately because
+    // `send_chat_completion` takes a single user message.
+    let prompt = format!("{system}\n\n{prompt}");
     // A summary is one call over an hour of transcript, where the difference
     // between a good and a mediocre model is the whole value of the feature —
     // unlike per-line refinement, which runs hundreds of times a meeting.

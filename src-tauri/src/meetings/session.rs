@@ -24,7 +24,7 @@
 //! * `start()` runs off the main thread because the first system-audio tap can
 //!   take several seconds to build.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -54,6 +54,14 @@ const JOB_QUEUE_CAPACITY: usize = 64;
 /// How often the silence watchdog checks in. The threshold it enforces is
 /// measured in minutes, so this only bounds how late an auto-end can be.
 const SILENCE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+
+/// How often the live-activity ticker samples the lanes.
+///
+/// Fast enough that the "someone is talking" indicator appears within a beat of
+/// speech starting, slow enough that it costs nothing. The event is only emitted
+/// when the sampled state actually changes, so this is a sampling rate, not an
+/// emission rate.
+const ACTIVITY_POLL_INTERVAL: Duration = Duration::from_millis(150);
 
 enum Job {
     Segment {
@@ -120,6 +128,45 @@ pub struct MeetingManager {
     /// when they were spawned and exit as soon as it changes, so work belonging
     /// to a finished meeting can never bleed into the next one.
     generation: Arc<std::sync::atomic::AtomicU64>,
+    /// Whether each lane has an utterance open right now.
+    ///
+    /// Written from the frame callbacks — a single relaxed store per 30 ms
+    /// frame, which is the only thing cheap enough to do on an audio path — and
+    /// sampled by the activity ticker. Together with [`Self::pending_segments`]
+    /// this is what lets the panel say "someone is talking" during the seconds
+    /// between speech starting and the finished line arriving.
+    mic_speaking: Arc<AtomicBool>,
+    system_speaking: Arc<AtomicBool>,
+    /// Closed utterances queued for, or currently undergoing, transcription.
+    pending_segments: Arc<AtomicUsize>,
+}
+
+/// Live capture activity, pushed to the panel as `meeting-activity`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActivitySnapshot {
+    /// The user is mid-utterance.
+    mic: bool,
+    /// The far side is mid-utterance.
+    system: bool,
+    /// Utterances waiting on the transcription worker.
+    pending: usize,
+}
+
+/// Decrements the pending count however the worker leaves a job — including the
+/// several `continue`s that drop a segment on the floor.
+struct PendingGuard(Arc<AtomicUsize>);
+
+impl Drop for PendingGuard {
+    fn drop(&mut self) {
+        // Saturating: a stop that resets the counter to zero mid-job would
+        // otherwise wrap it to `usize::MAX` and pin the indicator on forever.
+        let _ = self
+            .0
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_sub(1))
+            });
+    }
 }
 
 impl MeetingManager {
@@ -137,6 +184,9 @@ impl MeetingManager {
             transition: Mutex::new(()),
             draining: Arc::new(AtomicBool::new(false)),
             generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            mic_speaking: Arc::new(AtomicBool::new(false)),
+            system_speaking: Arc::new(AtomicBool::new(false)),
+            pending_segments: Arc::new(AtomicUsize::new(0)),
         }))
     }
 
@@ -345,10 +395,12 @@ impl MeetingManager {
             let store = self.store.clone();
             let worker_meeting_id = meeting_id.clone();
             let config = meeting_config.clone();
+            let pending = Arc::clone(&self.pending_segments);
             match std::thread::Builder::new()
                 .name("ghostly-meeting-worker".into())
-                .spawn(move || transcribe_worker(app, store, worker_meeting_id, config, job_rx))
-            {
+                .spawn(move || {
+                    transcribe_worker(app, store, worker_meeting_id, config, job_rx, pending)
+                }) {
                 Ok(handle) => handle,
                 Err(e) => {
                     let _ = self.store.delete_meeting(&meeting_id);
@@ -374,6 +426,8 @@ impl MeetingManager {
         let mic_tx = job_tx.clone();
         let mic_seg_for_cb = Arc::clone(&mic_segmenter);
         let mic_last_voice = Arc::clone(&self.last_voice_at);
+        let mic_speaking = Arc::clone(&self.mic_speaking);
+        let mic_pending = Arc::clone(&self.pending_segments);
         recording_manager.add_raw_frame_listener(
             RAW_FRAME_LISTENER_MEETING,
             Arc::new(move |frame: &[f32]| {
@@ -383,12 +437,23 @@ impl MeetingManager {
                 let Ok(mut segmenter) = mic_seg_for_cb.lock() else {
                     return;
                 };
-                if let Some(segment) = segmenter.push_frame(frame) {
+                let closed = segmenter.push_frame(frame);
+                mic_speaking.store(segmenter.is_open(), Ordering::Relaxed);
+                if let Some(segment) = closed {
                     note_voice(&mic_last_voice);
-                    let _ = mic_tx.try_send(Job::Segment {
-                        lane: Lane::Mic,
-                        segment,
-                    });
+                    // Counted before the send so the indicator never blinks off
+                    // in the gap between an utterance closing and the worker
+                    // picking it up.
+                    mic_pending.fetch_add(1, Ordering::Relaxed);
+                    if mic_tx
+                        .try_send(Job::Segment {
+                            lane: Lane::Mic,
+                            segment,
+                        })
+                        .is_err()
+                    {
+                        mic_pending.fetch_sub(1, Ordering::Relaxed);
+                    }
                 }
             }),
         );
@@ -403,6 +468,8 @@ impl MeetingManager {
             let paused_system = Arc::clone(&self.paused);
             let system_tx = job_tx.clone();
             let system_last_voice = Arc::clone(&self.last_voice_at);
+            let system_speaking = Arc::clone(&self.system_speaking);
+            let system_pending = Arc::clone(&self.pending_segments);
             let result = crate::system_audio::start(Arc::new(move |frame: &[f32]| {
                 if !capturing.load(Ordering::SeqCst) || paused_system.load(Ordering::SeqCst) {
                     return;
@@ -410,12 +477,20 @@ impl MeetingManager {
                 let Ok(mut segmenter) = system_segmenter.lock() else {
                     return;
                 };
-                if let Some(segment) = segmenter.push_frame(frame) {
+                let closed = segmenter.push_frame(frame);
+                system_speaking.store(segmenter.is_open(), Ordering::Relaxed);
+                if let Some(segment) = closed {
                     note_voice(&system_last_voice);
-                    let _ = system_tx.try_send(Job::Segment {
-                        lane: Lane::System,
-                        segment,
-                    });
+                    system_pending.fetch_add(1, Ordering::Relaxed);
+                    if system_tx
+                        .try_send(Job::Segment {
+                            lane: Lane::System,
+                            segment,
+                        })
+                        .is_err()
+                    {
+                        system_pending.fetch_sub(1, Ordering::Relaxed);
+                    }
                 }
             }));
 
@@ -443,6 +518,12 @@ impl MeetingManager {
         // Silence is measured from *this* moment, not from whenever the last
         // meeting happened to fall quiet.
         *self.last_voice_at.lock().unwrap() = std::time::Instant::now();
+        // A previous meeting's activity must not be inherited by this one's
+        // indicator — a queue abandoned by a crash would otherwise read as this
+        // meeting transcribing something.
+        self.mic_speaking.store(false, Ordering::Relaxed);
+        self.system_speaking.store(false, Ordering::Relaxed);
+        self.pending_segments.store(0, Ordering::Relaxed);
         self.capturing.store(true, Ordering::SeqCst);
         *self.active.lock().unwrap() = Some(ActiveSession {
             meeting_id: meeting_id.clone(),
@@ -464,6 +545,61 @@ impl MeetingManager {
             "Meeting capture started ({meeting_id}), system audio: {}",
             system_audio_active
         );
+
+        // Live activity. A segment only reaches the panel once the speaker
+        // pauses *and* the model has finished with it, which on a long sentence
+        // is several seconds of a transcript that looks stalled. This ticker is
+        // what fills that gap with "someone is talking".
+        //
+        // It samples rather than pushing from the audio path: the frame
+        // callbacks run 33 times a second per lane and must stay a store and a
+        // queue push. Emission is edge-triggered, so a quiet meeting costs one
+        // event per utterance rather than seven a second.
+        {
+            let app = self.app.clone();
+            let capturing = Arc::clone(&self.capturing);
+            let paused = Arc::clone(&self.paused);
+            let mic_speaking = Arc::clone(&self.mic_speaking);
+            let system_speaking = Arc::clone(&self.system_speaking);
+            let pending = Arc::clone(&self.pending_segments);
+            let generation = Arc::clone(&self.generation);
+            let my_generation = self.generation.load(Ordering::SeqCst);
+
+            tauri::async_runtime::spawn(async move {
+                let mut last = ActivitySnapshot::default();
+                loop {
+                    tokio::time::sleep(ACTIVITY_POLL_INTERVAL).await;
+                    if generation.load(Ordering::SeqCst) != my_generation {
+                        return;
+                    }
+                    let live = capturing.load(Ordering::SeqCst);
+                    let queued = pending.load(Ordering::Relaxed);
+                    // Capture being over does not mean the work is: the drain
+                    // keeps transcribing, and the indicator keeps saying so.
+                    if !live && queued == 0 {
+                        break;
+                    }
+                    // Paused capture ignores frames, so whichever lane happened
+                    // to be mid-utterance would otherwise stay lit for the whole
+                    // pause.
+                    let quiet = !live || paused.load(Ordering::SeqCst);
+                    let next = ActivitySnapshot {
+                        mic: !quiet && mic_speaking.load(Ordering::Relaxed),
+                        system: !quiet && system_speaking.load(Ordering::Relaxed),
+                        pending: queued,
+                    };
+                    if next != last {
+                        last = next;
+                        let _ = app.emit("meeting-activity", next);
+                    }
+                }
+                // The panel keeps the finished transcript on screen, so leaving
+                // without this would leave a typing indicator under it forever.
+                if last != ActivitySnapshot::default() {
+                    let _ = app.emit("meeting-activity", ActivitySnapshot::default());
+                }
+            });
+        }
 
         // Rolling summaries. Without these, "catch me up" on a long call would
         // have to fold the entire raw transcript on the spot; with them it
@@ -618,8 +754,11 @@ impl MeetingManager {
             let Some(segmenter) = segmenter else { continue };
             let flushed = segmenter.lock().ok().and_then(|mut s| s.finish());
             if let Some(segment) = flushed {
+                self.pending_segments.fetch_add(1, Ordering::Relaxed);
                 // Blocking `send`: this must not be dropped by a full queue.
-                let _ = session.job_tx.send(Job::Segment { lane, segment });
+                if session.job_tx.send(Job::Segment { lane, segment }).is_err() {
+                    self.pending_segments.fetch_sub(1, Ordering::Relaxed);
+                }
             }
         }
 
@@ -858,6 +997,7 @@ fn transcribe_worker(
     meeting_id: String,
     config: MeetingSettings,
     rx: mpsc::Receiver<Job>,
+    pending: Arc<AtomicUsize>,
 ) {
     let mut deduper = CrossLaneDeduper::new();
     let mut speakers = SpeakerRegistry::new(&store, &meeting_id);
@@ -878,6 +1018,9 @@ fn transcribe_worker(
             Job::Segment { lane, segment } => (lane, segment),
             Job::Stop => break,
         };
+        // Held for the rest of the iteration, so every `continue` below still
+        // takes this segment back out of the pending count.
+        let _pending = PendingGuard(Arc::clone(&pending));
 
         let Some(tm) = app.try_state::<Arc<TranscriptionManager>>() else {
             error!("Meeting: transcription manager unavailable");
@@ -1010,6 +1153,11 @@ fn transcribe_worker(
         // are already detached, so these are partial flushes with no listener
         // left to display them.
     }
+
+    // Whatever the discard loop above threw away was still counted. Zeroing
+    // here rather than decrementing per item is also the backstop that stops a
+    // wedged queue from pinning the panel's indicator on after the meeting.
+    pending.store(0, Ordering::Relaxed);
 
     if let Some(refiner) = refiner {
         refiner.finish();

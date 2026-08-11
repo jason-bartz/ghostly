@@ -175,6 +175,7 @@
       "granted": "Granted",
       "allSet": "Permissions granted",
       "allSetBody": "Ghostly can hear you and type for you.",
+      "openSettings": "Grant it in System Settings",
       "footnote": "Ghostly only listens while you're holding your shortcut, and only types where your cursor already is.",
       "microphone": {
         "title": "Microphone",
@@ -258,6 +259,26 @@
         }
       },
       "maxNote": "No API key? Ghostly Max runs it hosted, from $12/month. Everything above stays free."
+    },
+    "meetings": {
+      "eyebrow": "Meetings",
+      "title": "Let Ghostly transcribe your meetings",
+      "body": "Ghostly listens to your call the way you do \u2014 through your Mac. No bot joins the meeting, and nobody is told you're taking notes.",
+      "hint": "Both are on. Turn either off now, or later in Settings \u2192 Meetings.",
+      "enabled": "Enabled",
+      "enable": "Enable",
+      "turnOff": "Turn this off",
+      "openSettings": "Open System Settings",
+      "micDenied": "macOS is holding the microphone back.",
+      "footnote": "Nothing is captured until you start a meeting, and no screen recording permission is ever asked for.",
+      "myVoice": {
+        "title": "Transcribe my voice",
+        "body": "Your microphone, so your own side of the call makes it into the transcript."
+      },
+      "theirVoices": {
+        "title": "Transcribe other people's voices",
+        "body": "Your Mac's own audio, so everyone else is transcribed too \u2014 no bot, no screen recording."
+      }
     },
     "features": {
       "eyebrow": "Worth knowing",
@@ -1816,7 +1837,34 @@
       "autoEnded": "Ended automatically — nobody had spoken for a while.",
       "liveLabel": "Live",
       "pausedBadge": "Paused",
-      "micOnlyBadge": "Mic only"
+      "micOnlyBadge": "Mic only",
+      "severalVoices": "Several voices",
+      "speakingNow": "{{name}} is speaking",
+      "transcribing": "Transcribing…"
+    },
+    "notes": {
+      "heading": "Notes",
+      "collapse": "Hide the notepad",
+      "expand": "Show the notepad",
+      "tabMine": "Mine",
+      "tabEnhanced": "Enhanced",
+      "enhance": "Enhance",
+      "reEnhance": "Enhance again",
+      "enhancing": "Enhancing…",
+      "enhanceHint": "Finish these notes from the transcript (⌘↵)",
+      "enhanceDuringMeeting": "Available once the meeting ends",
+      "placeholder": "Take notes here…",
+      "placeholderLive": "Take notes as you go — Ghostly finishes them afterwards.",
+      "placeholderIdle": "Jot anything down. Notes written now join the meeting you start next.",
+      "offerBody": "Ghostly can finish these notes from the transcript — filling in what you missed and keeping what you wrote.",
+      "offerAccept": "Enhance my notes",
+      "offerDismiss": "Not now",
+      "resize": "Split between transcript and notes",
+      "resizeHint": "Drag to resize · double-click to reset",
+      "enhanceHintLibrary": "Finish these notes from the transcript",
+      "enhanceNoTranscript": "There's no transcript to enhance these notes from",
+      "badgeMine": "Notes",
+      "badgeEnhanced": "Enhanced notes"
     },
     "settings": {
       "loading": "Loading meeting settings…",

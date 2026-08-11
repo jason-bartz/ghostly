@@ -31,8 +31,11 @@ use tauri::{AppHandle, Manager};
 
 pub const PANEL_LABEL: &str = "meeting_panel";
 
-const PANEL_WIDTH: f64 = 380.0;
-const PANEL_HEIGHT: f64 = 460.0;
+const PANEL_WIDTH: f64 = 400.0;
+/// Tall enough for two panes. The panel hosts a live transcript *and* a
+/// notepad now, and at the old 460 the notepad was three lines — which reads
+/// as a comment box rather than as somewhere to take notes.
+const PANEL_HEIGHT: f64 = 660.0;
 /// Inset from the working area's top-right corner.
 const PANEL_MARGIN: f64 = 24.0;
 
@@ -70,11 +73,32 @@ tauri_panel! {
 /// The size to open at: whatever the user last resized to, else the default.
 fn panel_size(app: &AppHandle) -> (f64, f64) {
     let settings = crate::settings::get_settings(app);
-    match (settings.meeting.panel_width, settings.meeting.panel_height) {
+    let (width, height) = match (settings.meeting.panel_width, settings.meeting.panel_height) {
         (Some(width), Some(height)) if width >= MIN_PANEL_WIDTH && height >= MIN_PANEL_HEIGHT => {
             (width, height)
         }
         _ => (PANEL_WIDTH, PANEL_HEIGHT),
+    };
+
+    // The two-pane default is tall, and a panel taller than the display cannot
+    // be resized back — its bottom edge is off-screen, and it is undecorated,
+    // so there is no corner left to grab.
+    let available = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| app.available_monitors().ok()?.into_iter().next())
+        .map(|monitor| {
+            monitor
+                .size()
+                .to_logical::<f64>(monitor.scale_factor())
+                .height
+        });
+    match available {
+        Some(screen) if screen > MIN_PANEL_HEIGHT => {
+            (width, height.min(screen - PANEL_MARGIN * 2.0))
+        }
+        _ => (width, height),
     }
 }
 

@@ -15,6 +15,7 @@
 //! | [`session`] | The capture engine |
 //! | [`refine`] | AI cleanup of live transcript lines |
 //! | [`summarizer`] | "Catch me up" |
+//! | [`notes`] | The notepad, and the AI pass that finishes it |
 //! | [`detector`] | Auto-connect |
 //! | [`mentions`] | Direct-address alerts |
 
@@ -22,6 +23,7 @@ pub mod dedup;
 pub mod detector;
 pub mod lane;
 pub mod mentions;
+pub mod notes;
 pub mod panel;
 pub mod refine;
 pub mod session;

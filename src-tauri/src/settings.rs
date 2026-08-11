@@ -865,6 +865,13 @@ pub struct MeetingSettings {
     pub panel_y: Option<f64>,
     pub panel_width: Option<f64>,
     pub panel_height: Option<f64>,
+    /// Share of the panel's height given to the live transcript, with the
+    /// notepad taking the rest. Clamped when applied, so a corrupt value
+    /// cannot collapse either pane to nothing.
+    pub notes_split: f64,
+    /// Notepad folded away to a single bar. Someone who never takes notes
+    /// should not pay half their panel for one.
+    pub notes_collapsed: bool,
 }
 
 impl Default for MeetingSettings {
@@ -907,6 +914,11 @@ impl Default for MeetingSettings {
             panel_y: None,
             panel_width: None,
             panel_height: None,
+            // Slightly more transcript than notepad: the transcript is what
+            // scrolls, and losing the line above the one being read costs more
+            // than one extra line of notes gains.
+            notes_split: 0.58,
+            notes_collapsed: false,
         }
     }
 }

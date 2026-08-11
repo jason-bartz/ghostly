@@ -27,9 +27,11 @@ import { DateRangePicker, type DateRange } from "../../ui/DateRangePicker";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { PageHeader } from "../../ui/PageHeader";
 import { MeetingTranscriptEditor } from "./MeetingTranscriptEditor";
+import { MeetingNotesEditor } from "./MeetingNotesEditor";
 import { commands } from "../../../bindings";
 import { useReveal, type RevealTarget } from "@/lib/reveal";
 import type {
+  MeetingNotes,
   MeetingSegment,
   MeetingSpeaker,
   MeetingSummaryRow,
@@ -171,6 +173,14 @@ export const MeetingsLibrary: React.FC = () => {
       ),
     );
   };
+
+  const updateNotes = useCallback((meetingId: string, notes: MeetingNotes) => {
+    setRows((previous) =>
+      previous.map((row) =>
+        row.meeting.id === meetingId ? { ...row, notes } : row,
+      ),
+    );
+  }, []);
 
   const dropTag = async (meetingId: string, name: string) => {
     const result = await commands.removeMeetingTag(meetingId, name);
@@ -725,6 +735,13 @@ export const MeetingsLibrary: React.FC = () => {
                               {!row.meeting.capturedSystemAudio
                                 ? ` · ${t("meeting.library.micOnly")}`
                                 : ""}
+                              {/* Which meetings you actually wrote something
+                                  about is the fastest way to find one again. */}
+                              {row.notes.enhanced
+                                ? ` · ${t("meeting.notes.badgeEnhanced")}`
+                                : row.notes.notes
+                                  ? ` · ${t("meeting.notes.badgeMine")}`
+                                  : ""}
                             </p>
                           </button>
 
@@ -818,6 +835,18 @@ export const MeetingsLibrary: React.FC = () => {
 
                       {isOpen && (
                         <div className="border-t border-hairline bg-fill-1 px-3 py-3">
+                          {/* Notes lead: once someone has written them, they
+                              are the point of the meeting and the transcript
+                              is the evidence behind them. */}
+                          <MeetingNotesEditor
+                            meetingId={row.meeting.id}
+                            notes={row.notes}
+                            hasTranscript={Number(row.segmentCount) > 0}
+                            onChange={(notes) =>
+                              updateNotes(row.meeting.id, notes)
+                            }
+                          />
+
                           {row.summary && (
                             <div className="mb-3">
                               <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-text-subtle">
