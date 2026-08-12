@@ -529,9 +529,10 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the meeting panel now, hidden, so starting a meeting shows a
     // populated window immediately rather than waiting on a webview to boot.
-    // Only for users who have the feature switched on — `panel::show` still
-    // creates it on demand for anyone who enables it mid-session.
-    if settings.meeting.enabled {
+    // Only for users who have the feature switched on and a licence that covers
+    // it — `panel::show` still creates it on demand for anyone who enables it
+    // or subscribes mid-session.
+    if settings.meeting.enabled && license::is_max_entitled() {
         meetings::panel::create(app_handle);
     }
 }

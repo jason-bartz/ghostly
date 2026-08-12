@@ -302,6 +302,15 @@ impl MeetingManager {
             return Err("Meeting Mode is turned off.".to_string());
         }
 
+        // Meeting Mode is a Ghostly Max feature. Enforced here rather than only
+        // in the UI because capture has four entrances — the panel's own start
+        // button, the tray item, the global shortcut and auto-connect — and a
+        // gate that only exists in the sidebar is not a gate. This is the one
+        // function all four funnel through.
+        if !crate::license::is_max_entitled() {
+            return Err("Meeting Mode is part of Ghostly Max.".to_string());
+        }
+
         // Surface the panel before any of the slow work below. Bringing up the
         // system-audio tap blocks for seconds the first time in a process, and
         // showing the panel only once that finished made pressing start feel

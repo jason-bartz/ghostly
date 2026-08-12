@@ -220,11 +220,12 @@ fn build_tray_menu(
         let _ = mic_submenu.append(&item);
     }
 
-    // Meeting capture. Only offered once the feature is switched on — a menu
-    // item that always errors with "Meeting Mode is turned off" is worse than
-    // no item at all. The label reflects live state so one entry both starts
-    // and ends a meeting.
-    let meeting_enabled = settings.meeting.enabled;
+    // Meeting capture. Only offered once the feature is switched on *and* the
+    // licence covers it — a menu item that always errors with "Meeting Mode is
+    // turned off" is worse than no item at all, and the same goes for one that
+    // answers "that's part of Ghostly Max". The label reflects live state so
+    // one entry both starts and ends a meeting.
+    let meeting_enabled = settings.meeting.enabled && crate::license::is_max_entitled();
     let meeting_capturing = app
         .try_state::<Arc<crate::meetings::MeetingManager>>()
         .map(|m| m.is_capturing())

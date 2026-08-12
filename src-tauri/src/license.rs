@@ -212,6 +212,15 @@ pub fn entitled_max_key() -> Option<String> {
     (payload.tier.as_deref() == Some(TIER_MAX)).then_some(key)
 }
 
+/// Whether this install is entitled to the Max tier.
+///
+/// The same offline token check as [`entitled_max_key`], for the callers that
+/// only need the yes/no — feature gates rather than gateway requests. Local and
+/// synchronous, so it is safe to call from a poll loop or a menu build.
+pub fn is_max_entitled() -> bool {
+    entitled_max_key().is_some()
+}
+
 // ---------------- Token verification ----------------
 
 pub fn verify_token(token: &str) -> Result<TokenPayload, LicenseError> {
