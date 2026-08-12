@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { toast, Toaster } from "sonner";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -13,10 +13,16 @@ import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import { EulaGate } from "./components/EulaGate";
 import Footer from "./components/footer";
 import { Tour, type TourMode } from "./components/onboarding";
-import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
+import {
+  Sidebar,
+  SidebarSection,
+  SECTIONS_CONFIG,
+  sectionRequiresMax,
+} from "./components/Sidebar";
 import { UpdateModal } from "./components/update-checker";
 import { MaxUpgradePage } from "./components/max/MaxUpgradePage";
-import { onShowMaxUpgrade } from "@/lib/maxUpgrade";
+import { onShowMaxUpgrade, showMaxUpgrade } from "@/lib/maxUpgrade";
+import { isMaxLicense, useMaxStore } from "./stores/maxStore";
 import { useSettings } from "./hooks/useSettings";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useUpdaterStore } from "./stores/updaterStore";
@@ -68,6 +74,34 @@ function App() {
     checkOnboardingStatus();
   }, []);
 
+  // The badge on a Max-gated nav item reads from here. Cheap and local — it
+  // verifies the offline token rather than calling the gateway.
+  useEffect(() => {
+    void useMaxStore.getState().refreshLicense();
+  }, []);
+
+  /**
+   * The one door into every pane, so a gated destination can only be reached
+   * through the check.
+   *
+   * The licence is re-read on the way in rather than taken from the store: it
+   * is a local token verification, and it means activating Max in the Account
+   * pane unlocks Meetings on the very next click instead of after a reload.
+   * Blocked navigation opens the upgrade sheet — someone who clicked Meetings
+   * wants to know what Meetings is, and a nav item that silently refuses is
+   * indistinguishable from a broken one.
+   */
+  const navigateToSection = useCallback(async (section: SidebarSection) => {
+    if (sectionRequiresMax(section)) {
+      const license = await useMaxStore.getState().refreshLicense();
+      if (!isMaxLicense(license)) {
+        showMaxUpgrade();
+        return;
+      }
+    }
+    setCurrentSection(section);
+  }, []);
+
   // Cross-component navigation: any settings component can fire
   // `ghostly:navigate` to jump to another sidebar section.
   useEffect(() => {
@@ -75,12 +109,12 @@ function App() {
       const section = (e as CustomEvent<{ section?: string }>).detail?.section;
       if (!section) return;
       if (section in SECTIONS_CONFIG) {
-        setCurrentSection(section as SidebarSection);
+        void navigateToSection(section as SidebarSection);
       }
     };
     window.addEventListener("ghostly:navigate", onNavigate);
     return () => window.removeEventListener("ghostly:navigate", onNavigate);
-  }, []);
+  }, [navigateToSection]);
 
   useEffect(() => onShowMaxUpgrade(() => setMaxUpgradeOpen(true)), []);
 
@@ -421,7 +455,7 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
           activeSection={currentSection}
-          onSectionChange={setCurrentSection}
+          onSectionChange={(section) => void navigateToSection(section)}
         />
         {/* Scrollable content area */}
         <div className="flex-1 flex flex-col overflow-hidden">

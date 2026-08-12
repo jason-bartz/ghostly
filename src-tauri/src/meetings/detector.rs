@@ -305,7 +305,12 @@ impl MeetingDetector {
             std::thread::sleep(interval);
 
             let settings = get_settings(&self.app).meeting;
-            if !settings.enabled {
+            // Unlicensed installs are indistinguishable from the feature being
+            // switched off: no polling for calls, and above all no countdown
+            // toast offering to capture something that would then refuse to
+            // start. Re-read each tick, so activating Max takes effect within
+            // one idle period rather than at the next launch.
+            if !settings.enabled || !crate::license::is_max_entitled() {
                 interval = IDLE_POLL_INTERVAL;
                 continue;
             }

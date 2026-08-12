@@ -45,6 +45,7 @@ import {
   MeetingsSection,
 } from "./settings";
 import { AskSection } from "./ask/AskSection";
+import { isMaxLicense, useMaxStore } from "@/stores/maxStore";
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
 
@@ -61,6 +62,13 @@ interface SectionConfig {
   icon: React.ComponentType<IconProps>;
   component: React.ComponentType;
   enabled: (settings: any) => boolean;
+  /**
+   * Destination that Ghostly Max buys. The nav item stays visible and carries a
+   * badge — hiding it would mean nobody ever discovers the feature — but
+   * selecting it opens the upgrade sheet instead of the pane. See
+   * `requiresMax` in `App.tsx` for where that is enforced.
+   */
+  requiresMax?: boolean;
 }
 
 /**
@@ -105,6 +113,7 @@ export const SECTIONS_CONFIG = {
     icon: Users,
     component: MeetingsSection,
     enabled: () => true,
+    requiresMax: true,
   },
   ask: {
     labelKey: "sidebar.ask",
@@ -208,6 +217,16 @@ const SETTINGS_GROUPS: readonly SettingsGroup[] = [
 
 const isPrimary = (s: SidebarSection) =>
   (PRIMARY_SECTIONS as readonly SidebarSection[]).includes(s);
+
+/**
+ * Whether reaching this destination needs a Ghostly Max licence.
+ *
+ * A function rather than a direct property read: `SECTIONS_CONFIG` is `as
+ * const`, so the entries without the flag have no such property at all and
+ * indexing the union for it doesn't type-check.
+ */
+export const sectionRequiresMax = (s: SidebarSection): boolean =>
+  (SECTIONS_CONFIG[s] as SectionConfig).requiresMax === true;
 
 interface SidebarProps {
   activeSection: SidebarSection;
@@ -613,9 +632,14 @@ interface NavItemProps {
 
 const NavItem: React.FC<NavItemProps> = ({ id, active, onClick }) => {
   const { t } = useTranslation();
+  const isMax = useMaxStore((s) => isMaxLicense(s.license));
   const config = SECTIONS_CONFIG[id];
   const Icon = config.icon;
   const label = t(config.labelKey);
+  // Only while it is actually locked. A subscriber has no use for a badge
+  // telling them what they already bought, and a permanent one would turn the
+  // nav into a price list.
+  const locked = sectionRequiresMax(id) && !isMax;
   return (
     <div
       className={`group relative flex gap-2.5 items-center px-2.5 py-2 w-full rounded-lg cursor-pointer transition-all duration-200 ease-out ${
@@ -640,6 +664,22 @@ const NavItem: React.FC<NavItemProps> = ({ id, active, onClick }) => {
       <p className="text-[13px] font-medium truncate" title={label}>
         {label}
       </p>
+      {locked && (
+        // A word, not a padlock and not a sparkle. A padlock promises a dead
+        // end when the row does in fact still do something — it makes the case
+        // for the feature. A sparkle would sit one row above Ask, whose own
+        // icon is a sparkle, and read as a pointer to it.
+        <span
+          title={t("sidebar.maxBadge")}
+          // Flat, like `.tag` — an outline here does the same job as the fill
+          // and gives a label the visual weight of a button, which is wrong for
+          // something sitting inside a row that is already the control.
+          className="ms-auto shrink-0 rounded-md bg-accent/15 px-1.5 py-px text-[9.5px]
+                     font-semibold uppercase leading-[1.6] tracking-[0.06em] text-accent-bright"
+        >
+          {t("sidebar.maxBadgeShort")}
+        </span>
+      )}
     </div>
   );
 };

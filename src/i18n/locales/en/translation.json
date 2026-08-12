@@ -62,7 +62,9 @@
       "label": "You've dictated",
       "progress": "{{percent}}% to {{title}}"
     },
-    "ask": "Ask"
+    "ask": "Ask",
+    "maxBadge": "Part of Ghostly Max",
+    "maxBadgeShort": "Max"
   },
   "onboarding": {
     "recommended": "Recommended",
@@ -2056,15 +2058,20 @@
     "upgrade": {
       "eyebrow": "Ghostly Max",
       "headline": "The AI, already switched on.",
-      "subhead": "Everything in the free app, with no API key to find, paste or pay for — plus the features that need a server to exist. Your voice still never leaves this Mac.",
+      "subhead": "The latest Anthropic models, already wired in and picked for each job — nothing to install, connect or configure. Your voice still never leaves this Mac.",
+      "benefitsHeading": "Everything in the free app, plus",
       "benefits": {
-        "noKey": {
+        "noSetup": {
           "title": "Nothing to set up",
-          "body": "Cleanup, voice editing and meeting summaries work the moment you activate. No provider to pick, no key to paste, no model to choose."
+          "body": "Cleanup, voice editing, meetings and summaries all work the moment you activate. No accounts to open, nothing to configure, no model to choose."
         },
-        "routing": {
-          "title": "The right model for each job",
-          "body": "A fast one for cleanup, a stronger one for summaries and questions. Tuned and updated server-side, so there is no config screen to keep up with."
+        "models": {
+          "title": "The latest Anthropic models",
+          "body": "Claude does the thinking — a fast model for cleanup, a stronger one for summaries and questions. Updated server-side as better ones ship, so you are never on last year's."
+        },
+        "meetings": {
+          "title": "Meeting Mode",
+          "body": "Transcribe a call live — both sides — with a floating panel, a searchable library and a wrap-up written for you afterwards. Ghostly never joins the call."
         },
         "ask": {
           "title": "Ask your transcripts",

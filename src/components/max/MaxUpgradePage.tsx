@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import {
   BookA,
   BrainCircuit,
-  KeyRound,
   Loader2,
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Users,
+  Wand2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,17 +27,22 @@ interface Benefit {
 }
 
 /**
- * What the subscription buys, in the order it becomes true for a new
- * subscriber: it works immediately, it picks its own models, and then the three
- * things that need a server to exist at all.
+ * What the subscription adds, in the order it becomes true for a new
+ * subscriber: it works immediately, it thinks with the best models available,
+ * and then the four things that need a server to exist at all.
+ *
+ * Framed as additions, not as a feature list — the grid is introduced by
+ * "everything in the free app, plus". A paid tier that restates what the free
+ * one already does invites the reader to work out what they'd be *losing*.
  *
  * Every line is something shipped. Nothing on this page is a roadmap item —
  * a benefits list that quietly includes futures is the fastest way to make the
  * rest of it untrustworthy.
  */
 const BENEFITS: readonly Benefit[] = [
-  { key: "noKey", Icon: KeyRound },
-  { key: "routing", Icon: BrainCircuit },
+  { key: "noSetup", Icon: Wand2 },
+  { key: "models", Icon: BrainCircuit },
+  { key: "meetings", Icon: Users },
   { key: "ask", Icon: Sparkles },
   { key: "vocabulary", Icon: BookA },
   { key: "sync", Icon: RefreshCw },
@@ -123,12 +129,31 @@ export const MaxUpgradePage: React.FC<MaxUpgradePageProps> = ({
         >
           <Hero onClose={onClose} />
 
+          {/* The frame for everything below it. Without this line the grid
+              reads as the definition of Max, which invites the reader to
+              check it for the things the free app already does and find them
+              missing. */}
+          <p className="border-t border-hairline bg-fill-1 px-8 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+            {t("max.upgrade.benefitsHeading")}
+          </p>
+
           {/* Hairline-gapped grid: the 1px background shows through the gaps, so
-            the cards read as panes of one surface rather than six floating
+            the cards read as panes of one surface rather than seven floating
             cards with their own borders. */}
           <div className="grid gap-px bg-hairline sm:grid-cols-2">
-            {BENEFITS.map(({ key, Icon }) => (
-              <div key={key} className="bg-surface-1/60 px-6 py-5">
+            {BENEFITS.map(({ key, Icon }, i) => (
+              <div
+                key={key}
+                // An odd count would otherwise leave the final row half empty,
+                // and the gap is painted in the hairline colour — it reads as a
+                // missing card rather than as whitespace. The last one takes
+                // the full width instead.
+                className={`bg-surface-1/60 px-6 py-5 ${
+                  i === BENEFITS.length - 1 && BENEFITS.length % 2 === 1
+                    ? "sm:col-span-2"
+                    : ""
+                }`}
+              >
                 <div className="flex items-start gap-3">
                   <Icon className="mt-0.5 h-[18px] w-[18px] shrink-0 text-accent-bright" />
                   <div className="space-y-1">
