@@ -2777,7 +2777,7 @@ dependencies = [
 
 [[package]]
 name = "ghostly"
-version = "0.1.31"
+version = "0.1.32"
 dependencies = [
  "active-win-pos-rs",
  "anyhow",
