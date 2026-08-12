@@ -87,7 +87,6 @@ type SortMode = "newest" | "oldest" | "longest";
 
 interface ExpandedState {
   segments: MeetingSegment[];
-  speakers: MeetingSpeaker[];
 }
 
 export const MeetingsLibrary: React.FC = () => {
@@ -203,13 +202,8 @@ export const MeetingsLibrary: React.FC = () => {
     }
     setExpandedId(meetingId);
     setExpanded(null);
-    const [segments, speakers] = await Promise.all([
-      commands.getMeetingSegments(meetingId),
-      commands.getMeetingSpeakers(meetingId),
-    ]);
-    if (segments.status === "ok" && speakers.status === "ok") {
-      setExpanded({ segments: segments.data, speakers: speakers.data });
-    }
+    const segments = await commands.getMeetingSegments(meetingId);
+    if (segments.status === "ok") setExpanded({ segments: segments.data });
   };
 
   // Arriving from a citation in Ask. The library already loads the most recent
@@ -241,13 +235,8 @@ export const MeetingsLibrary: React.FC = () => {
       setRevealedId(id);
       setExpandedId(id);
       setExpanded(null);
-      const [segments, speakers] = await Promise.all([
-        commands.getMeetingSegments(id),
-        commands.getMeetingSpeakers(id),
-      ]);
-      if (segments.status === "ok" && speakers.status === "ok") {
-        setExpanded({ segments: segments.data, speakers: speakers.data });
-      }
+      const segments = await commands.getMeetingSegments(id);
+      if (segments.status === "ok") setExpanded({ segments: segments.data });
 
       // Two frames: one for React to commit the rows, one for layout to settle
       // before we ask the element where it is.
@@ -871,9 +860,7 @@ export const MeetingsLibrary: React.FC = () => {
                             </p>
                           ) : (
                             <MeetingTranscriptEditor
-                              meetingId={row.meeting.id}
                               segments={expanded.segments}
-                              speakers={expanded.speakers}
                               onChange={setExpanded}
                             />
                           )}

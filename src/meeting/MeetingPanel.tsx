@@ -13,7 +13,8 @@ import { usePanelTheme } from "./usePanelTheme";
 import { NotesPane } from "./NotesPane";
 import { GhostlyMark } from "@/components/icons/GhostlyMark";
 import { commands } from "@/bindings";
-import type { MeetingSegment, MeetingSpeaker, MeetingStatus } from "@/bindings";
+import type { MeetingSegment, MeetingStatus } from "@/bindings";
+import { groupIntoBlocks } from "@/lib/meetingBlocks";
 
 /**
  * The floating live transcript, over the notepad.
@@ -28,10 +29,16 @@ import type { MeetingSegment, MeetingSpeaker, MeetingStatus } from "@/bindings";
  *   single most annoying thing a live transcript can do. The one exception is a
  *   summary arriving: the user pressed a button and is waiting for it, so the
  *   panel scrolls it into view and then stops following the live edge.
+ * - The transcript reads as paragraphs, not as a chat log. It used to attribute
+ *   and time-stamp every utterance, but "You" and "Participant" were never more
+ *   than which audio lane the segment arrived on — two people sharing a
+ *   microphone were one speaker, and the user's own voice echoing back off the
+ *   call was a second one. A label that is wrong that often is worse than no
+ *   label, so the transcript now shows the speech and leaves the guessing out.
  * - The transcript is deliberately NOT cleared when capture stops. The panel
- *   stays open afterwards so the user can read it, name speakers and export it;
- *   wiping it on stop would destroy exactly that workflow. It *is* cleared when
- *   the next meeting starts — see `meeting-starting`.
+ *   stays open afterwards so the user can read it and export it; wiping it on
+ *   stop would destroy exactly that workflow. It *is* cleared when the next
+ *   meeting starts — see `meeting-starting`.
  * - Every control applies its effect locally before the command resolves.
  *   Ending a meeting joins a worker thread and pausing rebuilds the tray menu
  *   on the main thread, so waiting for the round trip made the buttons feel
@@ -45,18 +52,6 @@ import type { MeetingSegment, MeetingSpeaker, MeetingStatus } from "@/bindings";
  *   settings store, whose subscription has no selector and would re-render
  *   every consumer on each transcript chunk.
  */
-
-const SPEAKER_COLORS = [
-  "var(--color-accent)",
-  "var(--color-accent-alt)",
-  "var(--color-accent-warm)",
-  "var(--color-success)",
-  "var(--color-warning)",
-];
-
-function speakerColor(index: number): string {
-  return SPEAKER_COLORS[index % SPEAKER_COLORS.length];
-}
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -160,6 +155,7 @@ type Pending = {
   ending?: boolean;
   starting?: boolean;
   exporting?: boolean;
+  copying?: boolean;
 };
 
 /**
@@ -177,8 +173,13 @@ const PanelButton: React.FC<
     variant?: "primary" | "ghost" | "danger";
   }
 > = ({ variant = "ghost", className = "", ...props }) => {
+  // `shrink-0 whitespace-nowrap` is load-bearing, not tidiness. Flex children
+  // shrink below their content by default, and the panel resizes down to 240pt:
+  // the three-button finished state was being squeezed until each label spilled
+  // out of its own padding box and ran across its neighbour. The buttons now
+  // hold their width and the footer wraps instead.
   const base =
-    "select-none rounded-lg px-3 py-1.5 text-[12px] font-medium " +
+    "shrink-0 select-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-medium " +
     "transition-[background-color,color,opacity,transform] duration-150 " +
     "active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50";
@@ -203,7 +204,6 @@ const MeetingPanel: React.FC = () => {
 
   const [status, setStatus] = useState<MeetingStatus | null>(null);
   const [segments, setSegments] = useState<MeetingSegment[]>([]);
-  const [speakers, setSpeakers] = useState<MeetingSpeaker[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,12 +214,6 @@ const MeetingPanel: React.FC = () => {
   const [summaryHeading, setSummaryHeading] = useState("catchUpHeading");
   const [autoEnded, setAutoEnded] = useState(false);
   const [pending, setPending] = useState<Pending>({});
-
-  // Keyed by *segment*, not speaker: keying by speaker renders an autoFocus
-  // input on every line that speaker owns, and the browser hands focus to the
-  // last one while every keystroke is mirrored across all of them.
-  const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
-  const [draftName, setDraftName] = useState("");
 
   // Held separately from `status.title`, which reverts to the default snapshot
   // the moment capture stops — the panel would otherwise forget the meeting's
@@ -255,39 +249,14 @@ const MeetingPanel: React.FC = () => {
     setMeetingId(id);
   }, []);
 
-  const speakerById = useMemo(() => {
-    const map = new Map<string, MeetingSpeaker>();
-    for (const speaker of speakers) map.set(speaker.id, speaker);
-    return map;
-  }, [speakers]);
-
   /**
-   * Consecutive lines from one person, folded into a single turn.
-   *
-   * A transcript is not a chat log. Attributing and time-stamping every
-   * utterance means a stretch where one person is talking renders as a column
-   * of their own name repeated down the page, which is noise in exactly the
-   * place someone is trying to read. The name is what changes between turns, so
-   * it is printed when it changes and not otherwise.
-   *
-   * Identity is the speaker row where there is one and the lane where there is
-   * not — two unattributed remote lines are the same "Participant" and belong
-   * in one turn.
+   * The transcript as paragraphs, broken where the speaker actually stopped.
+   * See `@/lib/meetingBlocks` for the rule and why the speaker names are gone.
    */
-  const turns = useMemo(() => {
-    const grouped: { key: string; segments: MeetingSegment[] }[] = [];
-    for (const segment of segments) {
-      const key = segment.speakerId ?? `lane:${segment.lane}`;
-      const last = grouped[grouped.length - 1];
-      if (last && last.key === key) last.segments.push(segment);
-      else grouped.push({ key, segments: [segment] });
-    }
-    return grouped;
-  }, [segments]);
+  const blocks = useMemo(() => groupIntoBlocks(segments), [segments]);
 
   const clearTranscript = useCallback(() => {
     setSegments([]);
-    setSpeakers([]);
     setSummary(null);
     setSummarizing(false);
     setMention(null);
@@ -295,7 +264,6 @@ const MeetingPanel: React.FC = () => {
     setNotice(null);
     setAutoEnded(false);
     setActivity(IDLE_ACTIVITY);
-    setEditingSegmentId(null);
     setTitleDraft(null);
     setMeetingTitle(null);
     setElapsed(0);
@@ -303,15 +271,11 @@ const MeetingPanel: React.FC = () => {
   }, []);
 
   const refreshTranscript = useCallback(async (meetingId: string) => {
-    const [segmentsResult, speakersResult] = await Promise.all([
-      commands.getMeetingSegments(meetingId),
-      commands.getMeetingSpeakers(meetingId),
-    ]);
-    // A meeting that ended while the queries were in flight must not have the
+    const segmentsResult = await commands.getMeetingSegments(meetingId);
+    // A meeting that ended while the query was in flight must not have the
     // next one's transcript written over it.
     if (meetingIdRef.current !== meetingId) return;
     if (segmentsResult.status === "ok") setSegments(segmentsResult.data);
-    if (speakersResult.status === "ok") setSpeakers(speakersResult.data);
   }, []);
 
   useEffect(() => {
@@ -371,32 +335,26 @@ const MeetingPanel: React.FC = () => {
       },
     );
 
-    const unlistenSegment = listen<{
-      segment: MeetingSegment;
-      speaker: MeetingSpeaker | null;
-    }>("meeting-segment", (event) => {
-      if (!active) return;
-      const incoming = event.payload.segment;
-      // A segment can beat the status event that announces its meeting; when it
-      // does, it is the authority on which meeting the panel is showing.
-      if (meetingIdRef.current === null) adoptMeeting(incoming.meetingId);
-      else if (incoming.meetingId !== meetingIdRef.current) return;
-      setSegments((previous) =>
-        // A refresh racing an event can deliver the same row twice, which would
-        // duplicate the line and the React key.
-        previous.some((s) => s.id === incoming.id)
-          ? previous
-          : [...previous, incoming],
-      );
-      const speaker = event.payload.speaker;
-      if (speaker) {
-        setSpeakers((previous) =>
-          previous.some((s) => s.id === speaker.id)
+    // The event still carries a speaker row — the summariser uses it — but the
+    // transcript no longer renders one, so it is ignored here.
+    const unlistenSegment = listen<{ segment: MeetingSegment }>(
+      "meeting-segment",
+      (event) => {
+        if (!active) return;
+        const incoming = event.payload.segment;
+        // A segment can beat the status event that announces its meeting; when
+        // it does, it is the authority on which meeting the panel is showing.
+        if (meetingIdRef.current === null) adoptMeeting(incoming.meetingId);
+        else if (incoming.meetingId !== meetingIdRef.current) return;
+        setSegments((previous) =>
+          // A refresh racing an event can deliver the same row twice, which
+          // would duplicate the line and the React key.
+          previous.some((s) => s.id === incoming.id)
             ? previous
-            : [...previous, speaker],
+            : [...previous, incoming],
         );
-      }
-    });
+      },
+    );
 
     // Somebody is mid-sentence, or the model is still working through what they
     // already said. Edge-triggered on the backend, so this fires once per state
@@ -664,6 +622,31 @@ const MeetingPanel: React.FC = () => {
     );
   };
 
+  /// Transcript, notes and summary onto the clipboard.
+  ///
+  /// Export writes a file, which is the right shape for keeping a meeting and
+  /// the wrong one for the far more common thing: pasting the wrap-up into the
+  /// thread you were about to send anyway. That needed a save dialog, a folder
+  /// and then a trip to Finder.
+  const handleCopy = async () => {
+    if (!meetingId) return;
+    setError(null);
+    setPending((previous) => ({ ...previous, copying: true }));
+    const result = await commands.exportMeetingText(meetingId, true);
+    setPending((previous) => ({ ...previous, copying: undefined }));
+    if (result.status === "error") {
+      setError(result.error);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(result.data);
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    setNotice(t("meeting.panel.copied"));
+  };
+
   const persistLayout = useCallback((nextSplit: number, collapsed: boolean) => {
     void commands.setMeetingNotesLayout(nextSplit, collapsed);
   }, []);
@@ -719,21 +702,6 @@ const MeetingPanel: React.FC = () => {
     void commands.hideMeetingPanel();
   };
 
-  const commitSpeakerName = async (speakerId: string) => {
-    const name = draftName.trim();
-    setEditingSegmentId(null);
-    if (!name) return;
-    // Applied first: renaming touches SQLite, and a label that lags a keystroke
-    // behind reads as a dropped edit.
-    setSpeakers((previous) =>
-      previous.map((s) =>
-        s.id === speakerId ? { ...s, displayName: name, kind: "named" } : s,
-      ),
-    );
-    const result = await commands.renameMeetingSpeaker(speakerId, name);
-    if (result.status === "error") setError(result.error);
-  };
-
   const commitTitle = async () => {
     const next = (titleDraft ?? "").trim();
     setTitleDraft(null);
@@ -742,66 +710,6 @@ const MeetingPanel: React.FC = () => {
     const result = await commands.setMeetingTitle(meetingId, next);
     if (result.status === "error") setError(result.error);
   };
-
-  const displayNameFor = (segment: MeetingSegment): string => {
-    const speaker = segment.speakerId
-      ? speakerById.get(segment.speakerId)
-      : undefined;
-    if (speaker?.displayName) return speaker.displayName;
-    return segment.lane === "mic"
-      ? t("meeting.panel.you")
-      : t("meeting.panel.participant");
-  };
-
-  /**
-   * Name and colour for the lane that is currently speaking.
-   *
-   * The activity event carries a lane, not a speaker — there is no speaker row
-   * yet, because the line it belongs to has not been transcribed. Borrowing the
-   * lane's most recent identity is what keeps the indicator saying "Priya"
-   * rather than dropping back to "Participant" under three lines that say
-   * Priya. Falls back to the lane's generic label on the first utterance of a
-   * meeting, when there is nothing to borrow.
-   */
-  const lastOnLane = (lane: MeetingSegment["lane"]) => {
-    for (let i = segments.length - 1; i >= 0; i--) {
-      if (segments[i].lane === lane) return segments[i];
-    }
-    return undefined;
-  };
-
-  const activityLane = activity.mic
-    ? activity.system
-      ? null // Both at once: nobody in particular, so it stays unattributed.
-      : ("mic" as const)
-    : activity.system
-      ? ("system" as const)
-      : null;
-
-  const activitySegment = activityLane ? lastOnLane(activityLane) : undefined;
-  const activityName = talking
-    ? activityLane === null
-      ? t("meeting.panel.severalVoices")
-      : activitySegment
-        ? displayNameFor(activitySegment)
-        : activityLane === "mic"
-          ? t("meeting.panel.you")
-          : t("meeting.panel.participant")
-    : null;
-  // Who the last rendered turn belongs to, so the live indicator can stay
-  // unlabelled while that same person keeps talking.
-  const continuingName = (() => {
-    const lastTurn = turns[turns.length - 1];
-    return lastTurn ? displayNameFor(lastTurn.segments[0]) : null;
-  })();
-
-  const activityColor = speakerColor(
-    Number(
-      (activitySegment?.speakerId
-        ? speakerById.get(activitySegment.speakerId)?.colorIndex
-        : undefined) ?? 0,
-    ),
-  );
 
   const title = meetingTitle ?? t("meeting.panel.title");
   const showDuration = startedAt !== null || elapsed > 0;
@@ -813,56 +721,60 @@ const MeetingPanel: React.FC = () => {
     // container carried. At 95% opacity the blur was buying nothing anyway.
     <div className="flex h-full w-full flex-col overflow-hidden rounded-[14px] bg-surface-1 text-text shadow-2xl">
       {/* The title bar. Also the drag handle — the panel is undecorated, so
-          this is the only way to move it, and every non-interactive child
-          repeats `data-tauri-drag-region` so the whole strip is grabbable
-          rather than just the gaps between things.
+          this is the only way to move it.
+
+          Every child except the button is made transparent to the mouse,
+          rather than repeating `data-tauri-drag-region` on each of them.
+          Tauri's drag region is a `mousedown` listener that tests
+          `event.target` for the attribute, and the target is the *deepest*
+          element under the cursor — which over the logo is a `<path>` inside
+          the SVG, not the SVG the attribute was on. So the strip had dead spots
+          exactly where its contents were, which is most of it. With the
+          contents transparent the target is always this div, and the whole bar
+          drags.
+
+          `:not(button)` rather than `pointer-events-auto` on the button: the
+          child selector has the higher specificity, so it would win and leave
+          the close button unclickable.
 
           It carries the brand rather than the meeting: the meeting's own name
           is editable, and a title bar you have to think about before grabbing
-          is not a title bar. The name moved to its own row below. */}
+          is not a title bar. The name moved to its own row below.
+
+          It is surface-coloured, not a saturated accent bar. A solid purple
+          block across the top made the panel read as a different application
+          from the one it belongs to — the rest of Ghostly reserves the accent
+          for the thing you are meant to press, and a title bar is never that.
+          The ghost mark keeps the accent, which is enough to say whose window
+          this is. */}
       <div
         data-tauri-drag-region
-        className="relative flex h-8 shrink-0 cursor-grab items-center gap-2 px-2.5 active:cursor-grabbing"
-        style={{
-          background:
-            "linear-gradient(135deg, var(--color-accent-deep) 0%, var(--color-accent) 100%)",
-        }}
+        className="relative flex h-8 shrink-0 cursor-grab select-none items-center gap-2 border-b border-hairline bg-surface-2 px-2.5 [&>*:not(button)]:pointer-events-none active:cursor-grabbing"
       >
         {/* Height only: the mark's viewBox is taller than it is wide, and a
             square box squashes the hem sweep it is named for. */}
-        <GhostlyMark
-          data-tauri-drag-region
-          className="h-[15px] w-auto shrink-0 text-white/90 drop-shadow-sm"
-        />
-        <span
-          data-tauri-drag-region
-          className="select-none text-[11px] font-semibold tracking-[0.09em] text-white/95"
-        >
+        <GhostlyMark className="h-[15px] w-auto shrink-0 text-accent" />
+        <span className="text-[11px] font-semibold tracking-[0.09em] text-text-subtle">
           {t("meeting.panel.brand")}
         </span>
 
-        <span data-tauri-drag-region className="flex-1 self-stretch" />
+        <span className="flex-1 self-stretch" />
 
         {(active || showDuration) && (
           <div
-            data-tauri-drag-region
             title={t("meeting.panel.durationHint")}
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-black/15 px-2 py-[2px]"
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-fill-2 px-2 py-[2px]"
           >
             <span
-              data-tauri-drag-region
               className={`h-[5px] w-[5px] rounded-full ${
                 active && !paused
-                  ? "animate-pulse bg-white"
+                  ? "animate-pulse bg-danger"
                   : active
-                    ? "bg-white/60"
-                    : "bg-white/35"
+                    ? "bg-text-faint"
+                    : "bg-text-faint/50"
               }`}
             />
-            <span
-              data-tauri-drag-region
-              className="text-[10px] font-medium tabular-nums text-white/90"
-            >
+            <span className="text-[10px] font-medium tabular-nums text-text-muted">
               {showDuration
                 ? formatDuration(elapsed)
                 : t("meeting.panel.liveLabel")}
@@ -870,12 +782,13 @@ const MeetingPanel: React.FC = () => {
           </div>
         )}
 
+        {/* The one child the row's `:not(button)` rule deliberately spares. */}
         <button
           type="button"
           onClick={handleClose}
           title={t("meeting.panel.closeHint")}
           aria-label={t("meeting.panel.close")}
-          className="shrink-0 rounded-md p-1 text-white/70 transition-colors duration-150 hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          className="shrink-0 rounded-md p-1 text-text-subtle transition-colors duration-150 hover:bg-fill-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
           <X className="h-3.5 w-3.5" aria-hidden />
         </button>
@@ -884,9 +797,14 @@ const MeetingPanel: React.FC = () => {
       {/* The meeting's own identity: name, and whatever the capture is doing
           that the user needs to know about. Absent entirely before the first
           meeting, so a panel opened by the detection prompt is just the prompt
-          rather than a stack of empty chrome. */}
+          rather than a stack of empty chrome.
+
+          Untinted, now that the title bar above it is surface-coloured too —
+          two stacked bars of the same fill would read as one confused strip of
+          chrome. This row belongs to the content, so it takes the content's
+          background and only the hairline separates them. */}
       {(meetingId !== null || active) && (
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-hairline bg-surface-2/40 px-3 py-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-hairline px-3 py-1.5">
           <div className="min-w-0 flex-1">
             {titleDraft !== null ? (
               <input
@@ -1038,6 +956,13 @@ const MeetingPanel: React.FC = () => {
               node.scrollHeight - node.scrollTop - node.clientHeight;
             stickToBottom.current = distanceFromBottom < 48;
           }}
+          // `log` rather than a bare live region: it tells a screen reader
+          // this is an append-only stream, so each new card is announced as it
+          // lands instead of the whole transcript being re-read. Polite, since
+          // a meeting transcript must never interrupt the meeting.
+          role="log"
+          aria-live="polite"
+          aria-label={t("meeting.panel.transcriptLabel")}
           className="relative min-h-0 flex-1 overflow-y-auto px-3 py-2.5"
         >
           {/* The placeholder gives way the moment there is activity to show —
@@ -1059,95 +984,58 @@ const MeetingPanel: React.FC = () => {
               </p>
             </div>
           ) : (
-            turns.map((turn) => {
-              const lead = turn.segments[0];
-              const speaker = lead.speakerId
-                ? speakerById.get(lead.speakerId)
-                : undefined;
-              const color = speakerColor(Number(speaker?.colorIndex ?? 0));
-              const isEditing = editingSegmentId === lead.id && !!speaker;
-              return (
-                <div key={lead.id} className="group mb-3 last:mb-0">
-                  <div className="mb-[3px] flex items-baseline gap-2">
-                    {isEditing && speaker ? (
-                      <input
-                        autoFocus
-                        value={draftName}
-                        onChange={(e) => setDraftName(e.target.value)}
-                        onBlur={() => void commitSpeakerName(speaker.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter")
-                            void commitSpeakerName(speaker.id);
-                          if (e.key === "Escape") setEditingSegmentId(null);
-                        }}
-                        placeholder={t("meeting.panel.namePlaceholder")}
-                        className="w-32 rounded-md bg-surface-2 px-1.5 py-[1px] text-[11px] outline-none ring-2 ring-accent/30"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={!speaker}
-                        onClick={() => {
-                          if (!speaker) return;
-                          setEditingSegmentId(lead.id);
-                          setDraftName(speaker.displayName ?? "");
-                        }}
-                        title={t("meeting.panel.renameHint")}
-                        className="text-[11px] font-semibold tracking-[0.01em] transition-opacity duration-150 hover:underline disabled:cursor-default disabled:no-underline"
-                        style={{ color }}
-                      >
-                        {displayNameFor(lead)}
-                      </button>
-                    )}
-                    {/* The timestamp is reference material, not something you
-                        read down the page. It stays available on the turn you
-                        are pointing at and is otherwise out of the way. */}
-                    <span className="text-[10px] tabular-nums text-text-faint opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                      {formatClock(Number(lead.startMs))}
-                    </span>
-                  </div>
-                  {turn.segments.map((segment) => (
-                    <p
-                      key={segment.id}
-                      className="mb-1 break-words text-[13px] leading-[1.5] text-text-muted last:mb-0"
-                    >
-                      {segment.text}
-                    </p>
-                  ))}
+            /* One card per block of continuous speech.
+
+               No name, no permanent timestamp: what is worth reading is what
+               was said, and a column of "You / Participant / You" down the left
+               edge was both noise and, half the time, wrong. But dropping the
+               names left the blocks running together as one slab of prose with
+               nothing to say where a thought ended. The card is what carries
+               that now — it does the job the speaker label used to do, without
+               claiming anything that might be false.
+
+               `w-fit` so a card is only as wide as it needs to be: a three-word
+               aside stays a small pill instead of a wide box with one word in
+               it, which is what makes a page of these scan as a conversation.
+
+               The clock stays available on hover, since finding a moment again
+               is the one thing the metadata was genuinely good for. It is
+               positioned against the row rather than the card, so beside a
+               narrow card it sits in the empty space to its right. */
+            blocks.map((block) => (
+              <div key={block.key} className="group relative mb-1.5 last:mb-0">
+                <div className="w-fit max-w-full rounded-[13px] bg-fill-1 px-3 py-2">
+                  <p className="break-words text-[13px] leading-[1.55] text-text-muted">
+                    {block.segments.map((segment) => segment.text).join(" ")}
+                  </p>
                 </div>
-              );
-            })
+                <span className="pointer-events-none absolute right-1 top-1 rounded bg-surface-3 px-1 text-[10px] tabular-nums text-text-faint opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                  {formatClock(block.startMs)}
+                </span>
+              </div>
+            ))
           )}
 
+          {/* Somebody is mid-sentence, or the model is still catching up. Just
+              the dots: the name that used to sit above them was the same lane
+              guess the transcript has stopped making, and "someone is talking"
+              is the whole of what this indicator knows. */}
           {showActivity && (
             <div
               aria-live="polite"
               aria-label={
-                activityName
-                  ? t("meeting.panel.speakingNow", { name: activityName })
+                talking
+                  ? t("meeting.panel.someoneSpeaking")
                   : t("meeting.panel.transcribing")
               }
+              className="flex items-center gap-2"
             >
-              {/* The name is dropped when the person still speaking is the one
-                  whose turn is already on screen — printing it again would
-                  reintroduce, one line lower, exactly the repetition the turns
-                  above were grouped to remove. */}
-              {activityName && activityName !== continuingName ? (
-                <span
-                  className="mb-[3px] block text-[11px] font-semibold tracking-[0.01em]"
-                  style={{ color: activityColor }}
-                >
-                  {activityName}
+              <TypingDots />
+              {!talking && (
+                <span className="truncate text-[11px] text-text-faint">
+                  {t("meeting.panel.transcribing")}
                 </span>
-              ) : null}
-              <span className="flex items-center gap-2">
-                <TypingDots />
-                {!talking && (
-                  <span className="truncate text-[11px] text-text-faint">
-                    {t("meeting.panel.transcribing")}
-                  </span>
-                )}
-              </span>
+              )}
             </div>
           )}
 
@@ -1235,7 +1123,7 @@ const MeetingPanel: React.FC = () => {
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-hairline bg-surface-2/40 px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-hairline bg-surface-2/40 px-3 py-2">
         {pending.ending ? (
           <PanelButton disabled>{t("meeting.panel.ending")}</PanelButton>
         ) : active ? (
@@ -1271,6 +1159,14 @@ const MeetingPanel: React.FC = () => {
               disabled={pending.starting}
             >
               {t("meeting.panel.startNewMeeting")}
+            </PanelButton>
+            <PanelButton
+              onClick={() => void handleCopy()}
+              disabled={pending.copying || segments.length === 0}
+            >
+              {pending.copying
+                ? t("meeting.panel.copying")
+                : t("meeting.panel.copy")}
             </PanelButton>
             <PanelButton
               onClick={() => void handleExport()}

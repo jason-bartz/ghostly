@@ -302,79 +302,12 @@ impl MeetingStore {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    pub fn get_speaker(&self, id: &str) -> Result<Option<MeetingSpeaker>> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, meeting_id, display_name, kind, lane, cluster_index,
-                    voiceprint_id, pinned, color_index
-             FROM meeting_speakers WHERE id = ?1",
-        )?;
-        let mut rows = stmt.query_map(params![id], Self::map_speaker)?;
-        Ok(rows.next().transpose()?)
-    }
-
-    /// Names a speaker. Naming implies the label is authoritative, so this also
-    /// pins the row against the end-of-meeting re-clustering pass.
-    pub fn rename_speaker(&self, speaker_id: &str, display_name: &str) -> Result<()> {
-        let kind = if display_name.trim().is_empty() {
-            SpeakerKind::Unknown
-        } else {
-            SpeakerKind::Named
-        };
-        let name: Option<&str> = (!display_name.trim().is_empty()).then_some(display_name);
-        self.conn()?.execute(
-            "UPDATE meeting_speakers
-             SET display_name = ?2, kind = ?3, pinned = 1
-             WHERE id = ?1",
-            params![speaker_id, name, kind.as_str()],
-        )?;
-        Ok(())
-    }
-
-    /// Folds `source` into `target`, reassigning every segment. Used when
-    /// diarization split one person across two clusters.
-    pub fn merge_speakers(&self, target_id: &str, source_id: &str) -> Result<usize> {
-        if target_id == source_id {
-            return Ok(0);
-        }
-        let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
-        let moved = tx.execute(
-            "UPDATE meeting_segments
-             SET speaker_id = ?1, label_source = 'manual'
-             WHERE speaker_id = ?2",
-            params![target_id, source_id],
-        )?;
-        tx.execute(
-            "DELETE FROM meeting_speakers WHERE id = ?1",
-            params![source_id],
-        )?;
-        tx.commit()?;
-        Ok(moved)
-    }
-
-    /// Reassigns a single segment, marking it manually labelled.
-    pub fn assign_segment_speaker(&self, segment_id: i64, speaker_id: &str) -> Result<()> {
-        self.conn()?.execute(
-            "UPDATE meeting_segments
-             SET speaker_id = ?2, label_source = 'manual'
-             WHERE id = ?1",
-            params![segment_id, speaker_id],
-        )?;
-        Ok(())
-    }
-
-    /// Reassigns every non-pinned segment currently attributed to `from` — the
-    /// "and all other segments from this speaker" affordance.
-    pub fn reassign_all_segments(&self, meeting_id: &str, from: &str, to: &str) -> Result<usize> {
-        let moved = self.conn()?.execute(
-            "UPDATE meeting_segments
-             SET speaker_id = ?3, label_source = 'manual'
-             WHERE meeting_id = ?1 AND speaker_id = ?2",
-            params![meeting_id, from, to],
-        )?;
-        Ok(moved)
-    }
+    // Renaming, merging, per-segment reassignment and bulk reassignment used to
+    // live here. They backed a speaker-editing UI that has been removed: with no
+    // speaker-embedding model, attribution never amounted to more than which
+    // lane a segment arrived on, and the transcript no longer claims otherwise.
+    // The `meeting_speakers` rows themselves are still written and read — the
+    // summariser uses them to say who committed to what.
 
     fn map_speaker(row: &rusqlite::Row<'_>) -> rusqlite::Result<MeetingSpeaker> {
         Ok(MeetingSpeaker {

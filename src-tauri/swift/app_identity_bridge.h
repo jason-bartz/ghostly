@@ -54,6 +54,21 @@ char *ghostly_bundle_id_for_display_name(const char *display_name);
 // string.
 char *ghostly_window_titles_for_bundle(const char *bundle_id);
 
+// Newline-separated URLs of every web area belonging to `bundle_id`, most
+// recently focused window first. Empty when the app is not a browser, has no
+// open page, or Accessibility is not granted.
+//
+// Read from the Accessibility tree's AXWebArea (attribute AXURL), not
+// AppleScript: scripting Chrome or Safari trips the Automation permission
+// prompt and would put a second scary dialog in front of Meeting Mode, which
+// exists precisely to need no new permissions. Every Chromium- and WebKit-based
+// browser exposes AXURL, so one implementation covers Chrome, Safari, Arc, Dia,
+// Edge, Brave and the rest.
+//
+// This is what lets a meeting in a browser tab be identified as Google Meet or
+// Teams rather than as "Dia". Caller owns the string.
+char *ghostly_web_urls_for_bundle(const char *bundle_id);
+
 // 1 when the process is trusted for Accessibility. Never prompts.
 int32_t ghostly_accessibility_is_trusted(void);
 

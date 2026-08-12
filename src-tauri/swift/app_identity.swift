@@ -151,6 +151,113 @@ public func ghostlyWindowTitlesForBundle(_ bundleID: UnsafePointer<CChar>?)
   return duplicateCString(titles.joined(separator: "\n"))
 }
 
+// MARK: - Browser URLs via the Accessibility API
+//
+// A meeting held in a browser tab is indistinguishable from any other window if
+// all you have is the bundle identifier: it reports "Dia", "Arc" or "Google
+// Chrome" whether the user is in a Google Meet call or reading the news. The
+// page URL is the thing that actually says which platform the call is on.
+//
+// Read through AXWebArea's AXURL rather than by scripting the browser.
+// AppleScript against Chrome or Safari requires Automation permission, and a
+// second consent dialog is exactly what Meeting Mode is designed to avoid;
+// Ghostly already holds Accessibility. Chromium and WebKit both expose AXURL,
+// so this covers every browser worth covering with one implementation.
+
+/// How deep to search a window for its web area.
+///
+/// Browsers bury the content view a few groups down from the window, and the
+/// depth differs between Chromium and WebKit. Six is comfortably past every
+/// layout observed and still bounded — an unbounded walk of a browser's
+/// Accessibility tree can visit every DOM node on the page.
+private let maxWebAreaDepth = 6
+
+/// Children scanned per element. A window has a handful of structural
+/// children; anything with hundreds is page content, not chrome.
+private let maxChildrenPerElement = 24
+
+/// Depth-first search for the first `AXWebArea` under `element`.
+private func findWebArea(_ element: AXUIElement, depth: Int) -> AXUIElement? {
+  var roleValue: CFTypeRef?
+  if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
+    let role = roleValue as? String, role == "AXWebArea"
+  {
+    return element
+  }
+
+  guard depth < maxWebAreaDepth else { return nil }
+
+  var childrenValue: CFTypeRef?
+  guard
+    AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenValue)
+      == .success,
+    let children = childrenValue as? [AXUIElement]
+  else {
+    return nil
+  }
+
+  for child in children.prefix(maxChildrenPerElement) {
+    if let found = findWebArea(child, depth: depth + 1) {
+      return found
+    }
+  }
+  return nil
+}
+
+/// The URL currently loaded in `window`'s web area, if it has one.
+private func webURL(for window: AXUIElement) -> String? {
+  guard let webArea = findWebArea(window, depth: 0) else { return nil }
+
+  var urlValue: CFTypeRef?
+  guard
+    AXUIElementCopyAttributeValue(webArea, kAXURLAttribute as CFString, &urlValue) == .success
+  else {
+    return nil
+  }
+  // Chromium hands back an NSURL; WebKit sometimes hands back a string.
+  if let url = urlValue as? NSURL {
+    return url.absoluteString
+  }
+  return urlValue as? String
+}
+
+@_cdecl("ghostly_web_urls_for_bundle")
+public func ghostlyWebURLsForBundle(_ bundleID: UnsafePointer<CChar>?)
+  -> UnsafeMutablePointer<CChar>?
+{
+  guard let bundleID else { return nil }
+  let target = String(cString: bundleID)
+  guard !target.isEmpty else { return nil }
+
+  let apps = NSWorkspace.shared.runningApplications.filter {
+    $0.bundleIdentifier?.caseInsensitiveCompare(target) == .orderedSame
+  }
+
+  var urls: [String] = []
+  for app in apps {
+    let element = AXUIElementCreateApplication(app.processIdentifier)
+
+    var windowsValue: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windowsValue)
+        == .success,
+      let windows = windowsValue as? [AXUIElement]
+    else {
+      continue
+    }
+
+    // AXWindows is ordered front to back, so the window the user is actually
+    // looking at comes first — which is the one whose URL should win.
+    for window in windows {
+      if let url = webURL(for: window), !url.isEmpty {
+        urls.append(url)
+      }
+    }
+  }
+  // Newline-separated; URLs cannot contain a raw newline.
+  return duplicateCString(urls.joined(separator: "\n"))
+}
+
 @_cdecl("ghostly_accessibility_is_trusted")
 public func ghostlyAccessibilityIsTrusted() -> Int32 {
   // No prompt: this is a read of current state, called from a polling loop.

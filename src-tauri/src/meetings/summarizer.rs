@@ -108,14 +108,30 @@ const ROLLING_INSTRUCTIONS: &str = "\
 Summarise this portion of a meeting transcript in 2-4 short plain-text bullets. \
 Capture decisions, commitments, and open questions. No preamble, no markdown.";
 
-/// Renders segments as speaker-attributed lines.
+/// Silence between two segments that starts a new paragraph.
+///
+/// Mirrors the panel's grouping and the refiner's block boundary, so an
+/// exported transcript is paragraphed exactly the way it was on screen.
+const PARAGRAPH_GAP_MS: i64 = 1_200;
+
+/// Renders segments as speaker-attributed lines, **for the model only**.
 ///
 /// Attribution materially improves the output — "Sarah asked you to own the
 /// migration" is worth far more than "someone asked about the migration" — so
 /// it is worth the extra tokens.
+///
+/// This is deliberately no longer what the user sees. The transcript surfaces
+/// dropped speaker labels, and [`render_transcript_plain`] is what feeds export
+/// and copy; the names survive here because a summary that cannot tell who
+/// committed to what is barely a summary.
 pub fn render_transcript(segments: &[MeetingSegment], speakers: &[MeetingSpeaker]) -> String {
     let mut out = String::new();
     for segment in segments {
+        // Refinement empties a segment whose whole content was filler. An empty
+        // line still costs the model a "You:" prefix to read past.
+        if segment.text.trim().is_empty() {
+            continue;
+        }
         let name = segment
             .speaker_id
             .as_ref()
@@ -128,6 +144,46 @@ pub fn render_transcript(segments: &[MeetingSegment], speakers: &[MeetingSpeaker
         out.push_str(&name);
         out.push_str(": ");
         out.push_str(segment.text.trim());
+        out.push('\n');
+    }
+    out
+}
+
+/// Renders segments as unattributed paragraphs, the way the transcript reads
+/// on screen.
+///
+/// A new paragraph begins when the speaker changes lane or leaves a gap wider
+/// than [`PARAGRAPH_GAP_MS`] — the same rule the panel and the refiner use, so
+/// an exported file matches what was read during the meeting. Segments the
+/// refinement pass emptied are skipped: they were standalone filler.
+pub fn render_transcript_plain(segments: &[MeetingSegment]) -> String {
+    let mut out = String::new();
+    let mut previous: Option<&MeetingSegment> = None;
+
+    for segment in segments {
+        let text = segment.text.trim();
+        if text.is_empty() {
+            continue;
+        }
+
+        match previous {
+            None => {}
+            Some(last)
+                if last.lane == segment.lane
+                    && segment.start_ms - last.end_ms < PARAGRAPH_GAP_MS =>
+            {
+                // Same thought continuing: the panel renders these as one
+                // paragraph, so they are joined rather than broken.
+                out.push(' ');
+            }
+            Some(_) => out.push_str("\n\n"),
+        }
+
+        out.push_str(text);
+        previous = Some(segment);
+    }
+
+    if !out.is_empty() {
         out.push('\n');
     }
     out

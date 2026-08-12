@@ -1425,64 +1425,11 @@ async setMeetingSegmentText(segmentId: number, text: string) : Promise<Result<nu
 }
 },
 /**
- * Transcript as speaker-attributed plain text, for copy/export.
+ * Transcript as plain paragraphs, for copy/export. Matches what is on screen.
  */
 async exportMeetingTranscript(meetingId: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("export_meeting_transcript", { meetingId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async renameMeetingSpeaker(speakerId: string, displayName: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("rename_meeting_speaker", { speakerId, displayName }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Folds one speaker into another, reassigning all their segments.
- */
-async mergeMeetingSpeakers(targetId: string, sourceId: string) : Promise<Result<number, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("merge_meeting_speakers", { targetId, sourceId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Reassigns a single segment to a different speaker.
- */
-async assignMeetingSegmentSpeaker(segmentId: number, speakerId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("assign_meeting_segment_speaker", { segmentId, speakerId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Moves every segment currently attributed to one speaker onto another — the
- * "and all their other lines" affordance after a correction.
- */
-async reassignMeetingSpeakerSegments(meetingId: string, fromSpeakerId: string, toSpeakerId: string) : Promise<Result<number, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("reassign_meeting_speaker_segments", { meetingId, fromSpeakerId, toSpeakerId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Adds a speaker the user names by hand, for assigning segments to.
- */
-async addMeetingSpeaker(meetingId: string, displayName: string) : Promise<Result<MeetingSpeaker, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("add_meeting_speaker", { meetingId, displayName }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

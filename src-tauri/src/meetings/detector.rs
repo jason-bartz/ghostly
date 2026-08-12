@@ -55,6 +55,11 @@ pub struct DetectedMeeting {
     /// permission is missing — the two are distinguished by
     /// [`crate::app_identity::accessibility_is_trusted`].
     pub window_titles: Vec<String>,
+    /// The service the call is actually on. For a native client this is just
+    /// the app's name; for a browser it is resolved from the page URL, so a
+    /// Meet call in Dia reads "Google Meet" rather than "Dia". `None` when the
+    /// app is a browser with no recognisable call open.
+    pub platform: Option<String>,
 }
 
 impl DetectedMeeting {
@@ -67,22 +72,19 @@ impl DetectedMeeting {
         self.bundle_id.eq_ignore_ascii_case(&other.bundle_id)
     }
 
-    /// A human name for the meeting, taken from the window title when the app
-    /// gives us one worth using.
+    /// What to call the meeting, in the user's presence: the platform and the
+    /// date, e.g. "Google Meet meeting - 08/12/26".
     ///
-    /// Falls back to "Zoom call" and friends. Titles that are just the app's
-    /// own name are no better than the fallback, so they are skipped.
+    /// Window titles used to be preferred, on the theory that "Weekly Standup"
+    /// beats anything generated. In practice they are mostly not that: browser
+    /// tabs report "Meet - abc-defg-hij", Slack reports the workspace, and Zoom
+    /// appends a live participant count that is wrong a second later. A
+    /// predictable name the user can see coming — and rename in one click — is
+    /// worth more than an occasionally-good one.
+    ///
+    /// Titles are still read; the exclusion list matches on them.
     pub fn meeting_title(&self) -> String {
-        self.window_titles
-            .iter()
-            .map(|title| title.trim())
-            .find(|title| {
-                !title.is_empty()
-                    && !title.eq_ignore_ascii_case(&self.display_name)
-                    && title.len() > 2
-            })
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("{} call", self.display_name))
+        super::title::default_title(self.platform.as_deref().unwrap_or(&self.display_name))
     }
 }
 
@@ -115,10 +117,38 @@ pub fn detect(settings: &MeetingSettings) -> Option<DetectedMeeting> {
     for (bundle_id, display_name) in known_apps(settings) {
         if crate::system_audio::is_bundle_capturing(&bundle_id, &capturing) {
             let window_titles = crate::app_identity::window_titles_for_bundle(&bundle_id);
+            let platform = super::platform::resolve(&bundle_id, &display_name);
+
+            // A browser holding the microphone with no recognisable call open
+            // is not a meeting. Voice notes, a dictation box and a
+            // speech-to-text field on any web page all capture audio, and
+            // prompting "Dia call detected" over those is noise. Native clients
+            // are exempt: Zoom holding the mic *is* a call.
+            //
+            // Unless we simply could not look. Reading the URL needs
+            // Accessibility, and "no URL" then means "unknown", not "not a
+            // meeting" — suppressing on that would silently stop detecting
+            // browser calls for anyone who has not granted it. The prompt is
+            // the safe side of that: the user still has to say yes.
+            if platform.is_none() {
+                if crate::app_identity::accessibility_is_trusted() {
+                    debug!(
+                        "Meeting detector: {display_name} is capturing but has no recognisable \
+                         meeting open, ignoring"
+                    );
+                    continue;
+                }
+                debug!(
+                    "Meeting detector: cannot read {display_name}'s URL without Accessibility, \
+                     treating it as a call"
+                );
+            }
+
             return Some(DetectedMeeting {
                 bundle_id,
-                display_name,
+                display_name: display_name.clone(),
                 window_titles,
+                platform: platform.or(Some(display_name)),
             });
         }
     }
@@ -503,6 +533,16 @@ mod tests {
             bundle_id: "us.zoom.xos".into(),
             display_name: display_name.into(),
             window_titles: titles.iter().map(|t| t.to_string()).collect(),
+            platform: Some(display_name.into()),
+        }
+    }
+
+    fn detected_in_browser(platform: Option<&str>) -> DetectedMeeting {
+        DetectedMeeting {
+            bundle_id: "company.thebrowser.dia".into(),
+            display_name: "Dia".into(),
+            window_titles: vec!["Meet - abc-defg-hij".into()],
+            platform: platform.map(str::to_string),
         }
     }
 
@@ -541,15 +581,25 @@ mod tests {
     }
 
     #[test]
-    fn meeting_title_prefers_the_window_title() {
-        assert_eq!(
-            detected("Zoom", &["Q3 planning"]).meeting_title(),
-            "Q3 planning"
-        );
-        // A title that is just the app's own name is no better than the
-        // fallback.
-        assert_eq!(detected("Zoom", &["Zoom"]).meeting_title(), "Zoom call");
-        assert_eq!(detected("Zoom", &[]).meeting_title(), "Zoom call");
+    fn meeting_title_names_the_platform_not_the_window() {
+        // Window titles are live, noisy, and often just a room id. The name is
+        // generated instead, and the user renames it in one click if they care.
+        let title = detected("Zoom", &["Q3 planning (4 participants)"]).meeting_title();
+        assert!(title.starts_with("Zoom meeting - "), "got {title}");
+    }
+
+    #[test]
+    fn a_browser_meeting_is_named_after_the_service_not_the_browser() {
+        // The whole point of the URL lookup: "Dia meeting" tells the user
+        // nothing about the call they just recorded.
+        let title = detected_in_browser(Some("Google Meet")).meeting_title();
+        assert!(title.starts_with("Google Meet meeting - "), "got {title}");
+    }
+
+    #[test]
+    fn an_unidentified_browser_falls_back_to_the_browser_name() {
+        let title = detected_in_browser(None).meeting_title();
+        assert!(title.starts_with("Dia meeting - "), "got {title}");
     }
 
     #[test]

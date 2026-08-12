@@ -60,7 +60,6 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
   const [tab, setTab] = useState<Tab>("mine");
   const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [offerDismissed, setOfferDismissed] = useState(false);
 
   const saveTimer = useRef<number | null>(null);
   // The meeting the text on screen belongs to. `null` means it is scratch —
@@ -106,7 +105,6 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
         setMine("");
         setEnhanced(null);
         setTab("mine");
-        setOfferDismissed(false);
       }
       return;
     }
@@ -119,12 +117,10 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
       void commands.setMeetingNotes(meetingId, draft.current.mine);
       setEnhanced(null);
       setTab("mine");
-      setOfferDismissed(false);
       return;
     }
 
     attachedId.current = meetingId;
-    setOfferDismissed(false);
     void commands.getMeetingNotes(meetingId).then((result) => {
       // A meeting swapped underneath the query must not be written over.
       if (!active || attachedId.current !== meetingId) return;
@@ -234,11 +230,21 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
   const canEnhance =
     meetingId !== null && hasTranscript && !capturing && !enhancing;
 
-  // The offer at the close of the meeting. Not a dialog: the wrap-up summary is
-  // already arriving in the pane above, and a modal over it would be the second
-  // thing demanding attention from someone who has just left a call.
-  const showOffer =
-    finished && hasTranscript && enhanced === null && !offerDismissed;
+  // The moment to suggest enhancement — but as *emphasis on the button that
+  // already does it*, not as a second control.
+  //
+  // This used to be a card: body copy, an "Enhance my notes" button and a "Not
+  // now" button, stacked between the notepad and the panel's own footer. At the
+  // end of a meeting that put five buttons into the bottom hundred pixels, and
+  // if the notepad was collapsed or the divider dragged low it read as a heap
+  // of controls piled on each other. It was also redundant — the header has had
+  // an Enhance button the whole time, doing exactly the same thing.
+  //
+  // So the card is gone and the existing button simply becomes prominent: a
+  // filled pill that says what it will do. Nothing new appears, nothing needs
+  // dismissing, and the layout is identical whether the notepad is open or
+  // collapsed.
+  const offering = finished && hasTranscript && enhanced === null && !enhancing;
 
   const placeholder = useMemo(() => {
     if (meetingId === null) return t("meeting.notes.placeholderIdle");
@@ -248,9 +254,13 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
   }, [meetingId, capturing, t]);
 
   return (
+    // `overflow-hidden` is a guarantee, not a tidy-up. The pane's height is a
+    // share of the split, so a user who has dragged the divider most of the way
+    // down leaves it shorter than its own contents — and without this they
+    // simply carried on painting, straight over the button row below.
     <section
       style={collapsed ? undefined : style}
-      className={`flex min-h-0 flex-col bg-surface-2/30 ${
+      className={`flex min-h-0 flex-col overflow-hidden bg-surface-2/30 ${
         collapsed ? "flex-none border-t border-hairline" : ""
       }`}
       aria-label={t("meeting.notes.heading")}
@@ -300,6 +310,8 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
 
         <span className="flex-1" />
 
+        {/* Quiet at rest, filled at the end of a meeting — see `offering`.
+            One control, two weights, rather than two controls. */}
         <button
           type="button"
           onClick={() => void handleEnhance()}
@@ -307,9 +319,15 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
           title={
             capturing
               ? t("meeting.notes.enhanceDuringMeeting")
-              : t("meeting.notes.enhanceHint")
+              : offering
+                ? t("meeting.notes.offerBody")
+                : t("meeting.notes.enhanceHint")
           }
-          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-[2px] text-[11px] font-medium text-accent transition-colors duration-150 hover:bg-accent/10 disabled:pointer-events-none disabled:text-text-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className={`inline-flex shrink-0 items-center gap-1 rounded-md text-[11px] font-medium transition-colors duration-150 disabled:pointer-events-none disabled:text-text-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+            offering
+              ? "animate-rise bg-accent px-2 py-[3px] text-canvas hover:bg-accent-bright disabled:bg-fill-2"
+              : "px-1.5 py-[2px] text-accent hover:bg-accent/10"
+          }`}
         >
           <Sparkles
             className={`h-3 w-3 ${enhancing ? "animate-pulse" : ""}`}
@@ -317,41 +335,16 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
           />
           {enhancing
             ? t("meeting.notes.enhancing")
-            : enhanced !== null
-              ? t("meeting.notes.reEnhance")
-              : t("meeting.notes.enhance")}
+            : offering
+              ? t("meeting.notes.offerAccept")
+              : enhanced !== null
+                ? t("meeting.notes.reEnhance")
+                : t("meeting.notes.enhance")}
         </button>
       </div>
 
       {!collapsed && (
         <>
-          {showOffer && (
-            <div className="animate-rise mx-2.5 mb-1.5 shrink-0 rounded-lg bg-accent/[0.08] px-2.5 py-2">
-              <p className="text-[11px] leading-snug text-text-muted">
-                {t("meeting.notes.offerBody")}
-              </p>
-              <div className="mt-1.5 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleEnhance()}
-                  disabled={!canEnhance}
-                  className="rounded-md bg-accent px-2 py-[3px] text-[11px] font-medium text-canvas transition-colors duration-150 hover:bg-accent-bright disabled:opacity-40"
-                >
-                  {enhancing
-                    ? t("meeting.notes.enhancing")
-                    : t("meeting.notes.offerAccept")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOfferDismissed(true)}
-                  className="text-[10px] text-text-subtle transition-colors duration-150 hover:text-text"
-                >
-                  {t("meeting.notes.offerDismiss")}
-                </button>
-              </div>
-            </div>
-          )}
-
           <textarea
             value={value}
             onChange={(event) => {

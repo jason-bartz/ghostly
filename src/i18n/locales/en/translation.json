@@ -1801,8 +1801,6 @@
   "meeting": {
     "panel": {
       "title": "Meeting",
-      "you": "You",
-      "participant": "Participant",
       "close": "Close",
       "catchMeUp": "Where were we?",
       "catchingUp": "Looking back…",
@@ -1811,8 +1809,6 @@
       "listening": "Listening… transcript will appear here.",
       "notCapturing": "No meeting is being captured.",
       "micOnly": "Your side only — the other participants aren't being captured.",
-      "renameHint": "Click to name this speaker",
-      "namePlaceholder": "Name…",
       "mentionHeading": "You were just addressed",
       "endMeeting": "End meeting",
       "pause": "Pause",
@@ -1832,14 +1828,17 @@
       "export": "Export",
       "exporting": "Exporting…",
       "exported": "Saved to {{name}}",
+      "copy": "Copy",
+      "copying": "Copying…",
+      "copied": "Copied to the clipboard",
+      "transcriptLabel": "Live transcript",
       "exportFilter": "Markdown",
       "closeHint": "Hide the panel",
       "autoEnded": "Ended automatically — nobody had spoken for a while.",
       "liveLabel": "Live",
       "pausedBadge": "Paused",
       "micOnlyBadge": "Mic only",
-      "severalVoices": "Several voices",
-      "speakingNow": "{{name}} is speaking",
+      "someoneSpeaking": "Someone is speaking",
       "transcribing": "Transcribing…"
     },
     "notes": {
@@ -1858,7 +1857,6 @@
       "placeholderIdle": "Jot anything down. Notes written now join the meeting you start next.",
       "offerBody": "Ghostly can finish these notes from the transcript — filling in what you missed and keeping what you wrote.",
       "offerAccept": "Enhance my notes",
-      "offerDismiss": "Not now",
       "resize": "Split between transcript and notes",
       "resizeHint": "Drag to resize · double-click to reset",
       "enhanceHintLibrary": "Finish these notes from the transcript",
@@ -1997,11 +1995,6 @@
       "retention": "Storage & retention",
       "retentionHint": "Meeting transcripts are kept on this Mac only. Change how long they're kept in the Settings tab.",
       "unknownApp": "Other",
-      "addSpeaker": "Add speaker",
-      "mergeInto": "Merge into…",
-      "merged_one": "Moved {{count}} line",
-      "merged_other": "Moved {{count}} lines",
-      "reassignLine": "Change who said this",
       "editLine": "Click to correct this line",
       "revealNotFound": "Couldn't find that meeting — it may have been deleted."
     }
