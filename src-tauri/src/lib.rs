@@ -723,11 +723,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::meetings::set_meeting_title,
             commands::meetings::set_meeting_segment_text,
             commands::meetings::export_meeting_transcript,
-            commands::meetings::rename_meeting_speaker,
-            commands::meetings::merge_meeting_speakers,
-            commands::meetings::assign_meeting_segment_speaker,
-            commands::meetings::reassign_meeting_speaker_segments,
-            commands::meetings::add_meeting_speaker,
             commands::meetings::catch_me_up,
             commands::meetings::summarize_meeting_window,
             commands::meetings::get_meeting_summaries,
@@ -1094,6 +1089,11 @@ pub fn run(cli_args: CliArgs) {
                     let scale = window.scale_factor().unwrap_or(1.0);
                     let logical = size.to_logical::<f64>(scale);
                     crate::meetings::panel::remember_size(logical.width, logical.height);
+                    // The shadow is traced from the window's alpha channel and
+                    // cached. Resizing a transparent window leaves the old
+                    // outline behind, which on a rounded panel reads as square
+                    // corners again.
+                    crate::meetings::panel::refresh_shadow(&window.app_handle());
                 }
             }
             tauri::WindowEvent::ThemeChanged(theme) => {

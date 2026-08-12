@@ -27,6 +27,7 @@ mod ffi {
         pub fn ghostly_is_app_running(bundle_id: *const c_char) -> i32;
         pub fn ghostly_bundle_id_for_display_name(display_name: *const c_char) -> *mut c_char;
         pub fn ghostly_window_titles_for_bundle(bundle_id: *const c_char) -> *mut c_char;
+        pub fn ghostly_web_urls_for_bundle(bundle_id: *const c_char) -> *mut c_char;
         pub fn ghostly_accessibility_is_trusted() -> i32;
         pub fn ghostly_app_identity_free_string(value: *mut c_char);
     }
@@ -184,6 +185,39 @@ pub fn window_titles_for_bundle(bundle_id: &str) -> Vec<String> {
         };
         let Some(blob) =
             consume_string(unsafe { ffi::ghostly_window_titles_for_bundle(c_string.as_ptr()) })
+        else {
+            return Vec::new();
+        };
+        blob.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bundle_id;
+        Vec::new()
+    }
+}
+
+/// URLs of every page open in this app, front window first.
+///
+/// Empty for anything that is not a browser, and empty when Accessibility has
+/// not been granted — the same "unknown, not no" caveat as
+/// [`window_titles_for_bundle`].
+///
+/// Exists so a call held in a browser tab can be identified by the service it
+/// is on rather than by the browser hosting it. Without it a Google Meet call
+/// in Dia is recorded as a meeting in "Dia", which tells the user nothing.
+pub fn web_urls_for_bundle(bundle_id: &str) -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(c_string) = std::ffi::CString::new(bundle_id) else {
+            return Vec::new();
+        };
+        let Some(blob) =
+            consume_string(unsafe { ffi::ghostly_web_urls_for_bundle(c_string.as_ptr()) })
         else {
             return Vec::new();
         };

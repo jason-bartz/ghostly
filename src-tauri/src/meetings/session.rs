@@ -26,7 +26,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -265,6 +265,18 @@ impl MeetingManager {
         app_display_name: Option<String>,
         title: Option<String>,
     ) -> Result<String, String> {
+        // Named here rather than at each call site. The panel button, the tray
+        // item, the global shortcut and the CLI all pass `None`, and every one
+        // of them used to produce a meeting called "Untitled meeting" — which
+        // is not a name so much as the absence of one, repeated once per
+        // meeting down the library. Detection passes its own title through
+        // untouched.
+        let title = title.or_else(|| {
+            Some(super::title::for_frontmost_app(
+                app_bundle_id.as_deref(),
+                app_display_name.as_deref(),
+            ))
+        });
         let result = self.start_inner(detection_source, app_bundle_id, app_display_name, title);
         if let Err(reason) = &result {
             let _ = self.app.emit("meeting-start-failed", reason.clone());
@@ -369,7 +381,13 @@ impl MeetingManager {
         // An early return after switching the microphone mode or installing the
         // frame listener would strand both, leaving the stream open and a dead
         // listener attached with no session to remove it.
-        let mic_segmenter = match build_segmenter(&self.app, &meeting_config) {
+        // The one origin both lanes date their timestamps from. Taken before
+        // either is built, because the whole point is that they start late by
+        // different amounts — the microphone is already open, while the system
+        // lane waits on a process tap that can take seconds to come up.
+        let session_start = Instant::now();
+
+        let mic_segmenter = match build_segmenter(&self.app, &meeting_config, session_start) {
             Ok(segmenter) => Arc::new(Mutex::new(segmenter)),
             Err(e) => {
                 let _ = self.store.delete_meeting(&meeting_id);
@@ -377,7 +395,7 @@ impl MeetingManager {
             }
         };
         let system_segmenter = if meeting_config.capture_system_audio {
-            match build_segmenter(&self.app, &meeting_config) {
+            match build_segmenter(&self.app, &meeting_config, session_start) {
                 Ok(segmenter) => Some(Arc::new(Mutex::new(segmenter))),
                 Err(e) => {
                     let _ = self.store.delete_meeting(&meeting_id);
@@ -961,7 +979,16 @@ fn note_voice(last_voice_at: &Mutex<std::time::Instant>) {
 
 /// Builds a VAD-backed segmenter. Each lane gets its own Silero instance
 /// because the model carries streaming state that cannot be shared.
-fn build_segmenter(app: &AppHandle, config: &MeetingSettings) -> Result<LaneSegmenter, String> {
+/// Builds one lane's segmenter.
+///
+/// `session_start` must be the same instant for every lane in a session: it is
+/// the origin both lanes date their timestamps from, and passing two different
+/// instants puts them back on two clocks. See [`LaneSegmenter::origin_offset_ms`].
+fn build_segmenter(
+    app: &AppHandle,
+    config: &MeetingSettings,
+    session_start: Instant,
+) -> Result<LaneSegmenter, String> {
     let _ = config;
     let vad_path = app
         .path()
@@ -987,6 +1014,7 @@ fn build_segmenter(app: &AppHandle, config: &MeetingSettings) -> Result<LaneSegm
     Ok(LaneSegmenter::new(
         Box::new(smoothed),
         SegmenterConfig::default(),
+        session_start,
     ))
 }
 
@@ -1041,18 +1069,15 @@ fn transcribe_worker(
             continue;
         }
 
-        // Echo suppression. The system lane is the source of truth; a matching
-        // microphone segment within the window is the user's speakers bleeding
-        // back in, not the user talking.
-        match lane {
-            Lane::System => deduper.record_system(&text, segment.start_ms, segment.end_ms),
-            Lane::Mic => {
-                if deduper.is_echo(&text, segment.start_ms, segment.end_ms) {
-                    debug!("Meeting: dropped an echoed microphone segment");
-                    continue;
-                }
-            }
+        // Echo suppression, in both directions: the user's speakers bleeding
+        // into the microphone, and the conferencing app echoing the local mic
+        // back onto the system lane. Whichever lane reported the speech first
+        // keeps it — echo always trails the sound that caused it.
+        if deduper.is_echo(lane, &text, segment.start_ms, segment.end_ms) {
+            debug!("Meeting: dropped a segment echoed from the other lane");
+            continue;
         }
+        deduper.record(lane, &text, segment.start_ms, segment.end_ms);
 
         let speaker = match speakers.speaker_for(lane) {
             Ok(speaker) => speaker,
@@ -1120,14 +1145,19 @@ fn transcribe_worker(
 
         // Queued only after the verbatim line is on screen. A correction, if
         // one comes, arrives as a separate event and replaces it in place.
+        // Lane and timing travel with the job because the refiner groups
+        // consecutive segments into a block before sending anything.
         if let Some(refiner) = &refiner {
             refiner.submit(super::refine::RefineJob {
                 segment_id,
+                lane,
                 speaker: speaker.display_name.clone().unwrap_or_else(|| match lane {
                     Lane::Mic => "You".to_string(),
                     Lane::System => "Participant".to_string(),
                 }),
                 text: text.clone(),
+                start_ms: segment.start_ms,
+                end_ms: segment.end_ms,
             });
         }
 

@@ -242,9 +242,97 @@ pub fn create(app: &AppHandle) {
     {
         Ok(panel) => {
             panel.hide();
+            round_corners(app);
             debug!("Meeting panel created (hidden)");
         }
         Err(e) => log::error!("Failed to create meeting panel: {e}"),
+    }
+}
+
+/// Rounds the *window*, not just what is painted inside it.
+///
+/// The panel is undecorated and transparent, and the webview drew its own
+/// `border-radius` — which looks right until you notice the corners are still
+/// square. Two things gave it away. The webview's layer is opaque where the CSS
+/// rounding cut a corner away, so the pixels behind the arc were the window's
+/// own background rather than the desktop. And `has_shadow` traces the
+/// *window's* rectangle, so a square shadow was drawn behind four rounded
+/// corners, outlining exactly the shape that was supposed to be gone.
+///
+/// Rounding the content view's layer clips the webview to the arc, which fixes
+/// the fill, and `invalidateShadow` makes AppKit re-derive the shadow from the
+/// now-transparent corners rather than reusing the square one it cached at
+/// creation.
+///
+/// Must stay in sync with the `rounded-[14px]` on the panel's root element:
+/// both are drawn, and a mismatch shows as a hairline of the wrong curve.
+#[cfg(target_os = "macos")]
+fn round_corners(app: &AppHandle) {
+    use cocoa::base::{id, NO};
+    use objc::{msg_send, sel, sel_impl};
+
+    /// Points. Matches `rounded-[14px]` in `MeetingPanel.tsx`.
+    const CORNER_RADIUS: f64 = 14.0;
+
+    let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+        return;
+    };
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+
+    unsafe {
+        let ns_window = ns_window as id;
+        let content_view: id = msg_send![ns_window, contentView];
+        if content_view.is_null() {
+            return;
+        }
+
+        let _: () = msg_send![content_view, setWantsLayer: true];
+        let layer: id = msg_send![content_view, layer];
+        if layer.is_null() {
+            return;
+        }
+        let _: () = msg_send![layer, setCornerRadius: CORNER_RADIUS];
+        let _: () = msg_send![layer, setMasksToBounds: true];
+
+        // The window itself must not paint an opaque rectangle underneath, or
+        // the clipped corners are filled back in.
+        let _: () = msg_send![ns_window, setOpaque: NO];
+
+        // Recompute the shadow from the alpha channel. Without this AppKit
+        // keeps the square shadow it derived when the window was created.
+        let _: () = msg_send![ns_window, invalidateShadow];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn round_corners(_app: &AppHandle) {}
+
+/// Re-derives the drop shadow from the window's current shape.
+///
+/// Called on resize: AppKit traces the shadow of a transparent window once and
+/// caches it, so growing the panel leaves the previous outline hanging off the
+/// new corners. Cheap enough to run per resize event.
+pub fn refresh_shadow(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use cocoa::base::id;
+        use objc::{msg_send, sel, sel_impl};
+
+        let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+            return;
+        };
+        let Ok(ns_window) = window.ns_window() else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![ns_window as id, invalidateShadow];
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
     }
 }
 

@@ -332,7 +332,7 @@ pub fn set_meeting_segment_text(
         .map_err(|e| e.to_string())
 }
 
-/// Transcript as speaker-attributed plain text, for copy/export.
+/// Transcript as plain paragraphs, for copy/export. Matches what is on screen.
 #[tauri::command]
 #[specta::specta]
 pub fn export_meeting_transcript(app: AppHandle, meeting_id: String) -> Result<String, String> {
@@ -341,98 +341,21 @@ pub fn export_meeting_transcript(app: AppHandle, meeting_id: String) -> Result<S
     let segments = store
         .list_segments(&meeting_id)
         .map_err(|e| e.to_string())?;
-    let speakers = store.list_speakers(&meeting_id).unwrap_or_default();
-    Ok(summarizer::render_transcript(&segments, &speakers))
+    Ok(summarizer::render_transcript_plain(&segments))
 }
 
 // ---- Speakers ------------------------------------------------------------
-
-#[tauri::command]
-#[specta::specta]
-pub fn rename_meeting_speaker(
-    app: AppHandle,
-    speaker_id: String,
-    display_name: String,
-) -> Result<(), String> {
-    manager(&app)?
-        .store()
-        .rename_speaker(&speaker_id, &display_name)
-        .map_err(|e| e.to_string())
-}
-
-/// Folds one speaker into another, reassigning all their segments.
-#[tauri::command]
-#[specta::specta]
-pub fn merge_meeting_speakers(
-    app: AppHandle,
-    target_id: String,
-    source_id: String,
-) -> Result<usize, String> {
-    manager(&app)?
-        .store()
-        .merge_speakers(&target_id, &source_id)
-        .map_err(|e| e.to_string())
-}
-
-/// Reassigns a single segment to a different speaker.
-#[tauri::command]
-#[specta::specta]
-pub fn assign_meeting_segment_speaker(
-    app: AppHandle,
-    segment_id: i64,
-    speaker_id: String,
-) -> Result<(), String> {
-    manager(&app)?
-        .store()
-        .assign_segment_speaker(segment_id, &speaker_id)
-        .map_err(|e| e.to_string())
-}
-
-/// Moves every segment currently attributed to one speaker onto another — the
-/// "and all their other lines" affordance after a correction.
-#[tauri::command]
-#[specta::specta]
-pub fn reassign_meeting_speaker_segments(
-    app: AppHandle,
-    meeting_id: String,
-    from_speaker_id: String,
-    to_speaker_id: String,
-) -> Result<usize, String> {
-    manager(&app)?
-        .store()
-        .reassign_all_segments(&meeting_id, &from_speaker_id, &to_speaker_id)
-        .map_err(|e| e.to_string())
-}
-
-/// Adds a speaker the user names by hand, for assigning segments to.
-#[tauri::command]
-#[specta::specta]
-pub fn add_meeting_speaker(
-    app: AppHandle,
-    meeting_id: String,
-    display_name: String,
-) -> Result<MeetingSpeaker, String> {
-    let manager = manager(&app)?;
-    let store = manager.store();
-    let existing = store
-        .list_speakers(&meeting_id)
-        .map_err(|e| e.to_string())?;
-    let color_index = existing.iter().map(|s| s.color_index).max().unwrap_or(0) + 1;
-
-    let speaker = MeetingSpeaker {
-        id: format!("spk_{meeting_id}_manual{color_index}"),
-        meeting_id: meeting_id.clone(),
-        display_name: Some(display_name),
-        kind: crate::meetings::types::SpeakerKind::Named,
-        lane: crate::meetings::types::Lane::System,
-        cluster_index: None,
-        voiceprint_id: None,
-        pinned: true,
-        color_index,
-    };
-    store.upsert_speaker(&speaker).map_err(|e| e.to_string())?;
-    Ok(speaker)
-}
+//
+// Naming, merging, adding and reassigning speakers are gone. Ghostly has no
+// speaker-embedding model, so attribution was never better than "which lane did
+// this arrive on" — two rows per meeting, "You" and "Participant" — and the
+// editing UI existed to repair a guess the product could not make well in the
+// first place. A transcript that does not claim to know who spoke needs no
+// controls for correcting the claim.
+//
+// The rows themselves stay. [`summarizer::render_transcript`] still feeds
+// lane-derived names to the summariser, which is where knowing who committed to
+// what genuinely pays off, and `get_meeting_speakers` still reads them back.
 
 // ---- Summaries -----------------------------------------------------------
 
@@ -713,7 +636,6 @@ fn render_meeting_document(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "That meeting no longer exists.".to_string())?;
     let segments = store.list_segments(meeting_id).map_err(|e| e.to_string())?;
-    let speakers = store.list_speakers(meeting_id).unwrap_or_default();
     let summaries = store.list_summaries(meeting_id).unwrap_or_default();
     let notes = store.get_notes(meeting_id).unwrap_or_default();
 
@@ -789,7 +711,7 @@ fn render_meeting_document(
     } else {
         "TRANSCRIPT\n\n"
     });
-    out.push_str(&summarizer::render_transcript(&segments, &speakers));
+    out.push_str(&summarizer::render_transcript_plain(&segments));
     Ok(out)
 }
 
