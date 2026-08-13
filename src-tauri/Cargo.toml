@@ -10,6 +10,14 @@ default-run = "ghostly"
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
 
+# Dependencies are never stepped through in a debugger, so their debug info is
+# pure disk cost — it was the bulk of a 19GB target/debug/deps. Building them at
+# opt-level 1 also makes dev runs (audio resampling, VAD, FFT) noticeably faster.
+# Does not affect our own crates, which keep full debug info.
+[profile.dev.package."*"]
+debug = false
+opt-level = 1
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
