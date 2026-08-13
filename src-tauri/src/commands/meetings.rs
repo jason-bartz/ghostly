@@ -557,6 +557,24 @@ pub fn show_meeting_panel(app: AppHandle) {
     crate::meetings::panel::show(&app);
 }
 
+/// The yellow button: shrink the panel to the mini player, or grow it back.
+///
+/// Geometry lives in Rust because the window is an NSPanel — the same reason
+/// hiding does — and because the size to come back to has to survive the webview
+/// re-rendering itself into a 176pt pill.
+#[tauri::command]
+#[specta::specta]
+pub fn set_meeting_panel_minimized(app: AppHandle, minimized: bool) {
+    crate::meetings::panel::set_minimized(&app, minimized);
+}
+
+/// The green button: fill the screen, or return to the frame before it.
+#[tauri::command]
+#[specta::specta]
+pub fn toggle_meeting_panel_zoom(app: AppHandle) {
+    crate::meetings::panel::toggle_zoom(&app);
+}
+
 // ---- Library -------------------------------------------------------------
 
 /// A meeting plus the counts the list view needs, so the UI does not issue a

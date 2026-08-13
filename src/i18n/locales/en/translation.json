@@ -1804,6 +1804,10 @@
     "panel": {
       "title": "Meeting",
       "close": "Close",
+      "minimize": "Minimize",
+      "zoom": "Zoom",
+      "restore": "Reopen the meeting panel",
+      "restoreHint": "Click to reopen · drag to move",
       "catchMeUp": "Where were we?",
       "catchingUp": "Looking back…",
       "catchUpHeading": "Where were we?",
