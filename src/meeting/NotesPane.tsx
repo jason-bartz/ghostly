@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { commands } from "@/bindings";
-import { continueBullet, NOTES_SAVE_DEBOUNCE_MS } from "@/lib/notes";
+import { noteKeyEdit, NOTES_SAVE_DEBOUNCE_MS } from "@/lib/notes";
 
 /**
  * The notepad half of the meeting panel.
@@ -207,13 +207,10 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
       if (canEnhance) void handleEnhance();
       return;
     }
-    if (event.key !== "Enter" || event.shiftKey) return;
-
     const field = event.currentTarget;
-    // Only with a collapsed caret: extending a selection is a replacement, and
-    // continuing a bullet through one would eat the selected text.
-    if (field.selectionStart !== field.selectionEnd) return;
-    const next = continueBullet(field.value, field.selectionStart);
+    // Bullets, numbering and indentation all live in `@/lib/notes`, so this
+    // notepad and the library's behave identically.
+    const next = noteKeyEdit(event, field);
     if (!next) return;
 
     event.preventDefault();

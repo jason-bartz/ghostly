@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { commands } from "../../../bindings";
-import { continueBullet, NOTES_SAVE_DEBOUNCE_MS } from "@/lib/notes";
+import { noteKeyEdit, NOTES_SAVE_DEBOUNCE_MS } from "@/lib/notes";
 import type { MeetingNotes } from "../../../bindings";
 
 /**
@@ -129,10 +129,9 @@ export const MeetingNotesEditor: React.FC<MeetingNotesEditorProps> = ({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey) return;
     const field = event.currentTarget;
-    if (field.selectionStart !== field.selectionEnd) return;
-    const next = continueBullet(field.value, field.selectionStart);
+    // Shared with the panel's notepad on purpose — see `@/lib/notes`.
+    const next = noteKeyEdit(event, field);
     if (!next) return;
 
     event.preventDefault();
