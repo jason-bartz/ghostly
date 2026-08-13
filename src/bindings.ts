@@ -1569,6 +1569,22 @@ async showMeetingPanel() : Promise<void> {
     await TAURI_INVOKE("show_meeting_panel");
 },
 /**
+ * The yellow button: shrink the panel to the mini player, or grow it back.
+ * 
+ * Geometry lives in Rust because the window is an NSPanel — the same reason
+ * hiding does — and because the size to come back to has to survive the webview
+ * re-rendering itself into a 176pt pill.
+ */
+async setMeetingPanelMinimized(minimized: boolean) : Promise<void> {
+    await TAURI_INVOKE("set_meeting_panel_minimized", { minimized });
+},
+/**
+ * The green button: fill the screen, or return to the frame before it.
+ */
+async toggleMeetingPanelZoom() : Promise<void> {
+    await TAURI_INVOKE("toggle_meeting_panel_zoom");
+},
+/**
  * Meetings for the library list, optionally filtered by text and date.
  */
 async browseMeetings(query: string | null, from: number | null, to: number | null, limit: number | null) : Promise<Result<MeetingSummaryRow[], string>> {

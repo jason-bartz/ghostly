@@ -26,10 +26,23 @@
 //! instant instead of waiting on a webview to boot.
 
 use log::debug;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub const PANEL_LABEL: &str = "meeting_panel";
+
+/// Points. Matches `rounded-[14px]` in `MeetingPanel.tsx`.
+const CORNER_RADIUS: f64 = 14.0;
+
+/// The minimised panel: a pill just wide enough for a waveform and a clock.
+///
+/// Minimising a floating panel to the Dock is the one thing it must not do —
+/// the panel exists to be visible *during* a call, and a meeting that is still
+/// recording with nothing on screen saying so is the worst state this feature
+/// can be in. So the yellow button shrinks the window instead of hiding it.
+const MINI_WIDTH: f64 = 176.0;
+const MINI_HEIGHT: f64 = 40.0;
 
 const PANEL_WIDTH: f64 = 400.0;
 /// Tall enough for two panes. The panel hosts a live transcript *and* a
@@ -46,6 +59,13 @@ const PANEL_MARGIN: f64 = 24.0;
 /// hides and when the app exits.
 static LAST_POSITION: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 static LAST_SIZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+/// The panel is shrunk to the mini player right now.
+static MINIMIZED: AtomicBool = AtomicBool::new(false);
+/// The size to grow back to when the mini player is clicked.
+static RESTORE_SIZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+/// The frame the green button zoomed away from, so a second click undoes it.
+static ZOOM_RESTORE: Mutex<Option<(f64, f64, f64, f64)>> = Mutex::new(None);
 
 /// Smallest usable panel. A saved size below this is treated as corrupt rather
 /// than restored, since a 20pt-tall transcript is indistinguishable from a bug.
@@ -149,6 +169,12 @@ fn saved_position(app: &AppHandle, width: f64) -> Option<(f64, f64)> {
 
 /// Records a drag. Cheap enough to call on every move event.
 pub fn remember_position(x: f64, y: f64) {
+    // Where the user parks the mini player is not where they want a 400×660
+    // panel to open. Restoring re-clamps the panel onto the screen and moves it
+    // itself, and that move is what gets recorded.
+    if MINIMIZED.load(Ordering::SeqCst) {
+        return;
+    }
     if let Ok(mut guard) = LAST_POSITION.lock() {
         *guard = Some((x, y));
     }
@@ -266,13 +292,16 @@ pub fn create(app: &AppHandle) {
 ///
 /// Must stay in sync with the `rounded-[14px]` on the panel's root element:
 /// both are drawn, and a mismatch shows as a hairline of the wrong curve.
-#[cfg(target_os = "macos")]
 fn round_corners(app: &AppHandle) {
+    set_corner_radius(app, CORNER_RADIUS);
+}
+
+/// The window's own rounding. See [`round_corners`] for why this is not left to
+/// CSS; the mini player uses it to become a pill rather than a small rectangle.
+#[cfg(target_os = "macos")]
+fn set_corner_radius(app: &AppHandle, radius: f64) {
     use cocoa::base::{id, NO};
     use objc::{msg_send, sel, sel_impl};
-
-    /// Points. Matches `rounded-[14px]` in `MeetingPanel.tsx`.
-    const CORNER_RADIUS: f64 = 14.0;
 
     let Some(window) = app.get_webview_window(PANEL_LABEL) else {
         return;
@@ -293,7 +322,7 @@ fn round_corners(app: &AppHandle) {
         if layer.is_null() {
             return;
         }
-        let _: () = msg_send![layer, setCornerRadius: CORNER_RADIUS];
+        let _: () = msg_send![layer, setCornerRadius: radius];
         let _: () = msg_send![layer, setMasksToBounds: true];
 
         // The window itself must not paint an opaque rectangle underneath, or
@@ -307,7 +336,7 @@ fn round_corners(app: &AppHandle) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn round_corners(_app: &AppHandle) {}
+fn set_corner_radius(_app: &AppHandle, _radius: f64) {}
 
 /// Re-derives the drop shadow from the window's current shape.
 ///
@@ -338,6 +367,185 @@ pub fn refresh_shadow(app: &AppHandle) {
 
 #[cfg(not(target_os = "macos"))]
 pub fn create(_app: &AppHandle) {}
+
+/// The usable area of the display the panel is on — menu bar and Dock excluded
+/// — in logical points.
+fn work_area(window: &tauri::WebviewWindow) -> Option<(f64, f64, f64, f64)> {
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())?;
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    let origin = area.position.to_logical::<f64>(scale);
+    let size = area.size.to_logical::<f64>(scale);
+    Some((origin.x, origin.y, size.width, size.height))
+}
+
+/// The panel's frame right now, in logical points.
+fn frame(window: &tauri::WebviewWindow) -> Option<(f64, f64, f64, f64)> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let position = window.outer_position().ok()?.to_logical::<f64>(scale);
+    let size = window.outer_size().ok()?.to_logical::<f64>(scale);
+    Some((position.x, position.y, size.width, size.height))
+}
+
+/// Keeps a window that just grew from touching the screen edge it grew past.
+///
+/// Restoring happens at the mini player's corner, and the mini player is small
+/// enough to park anywhere — including the bottom-right, where a 400×660 panel
+/// would open almost entirely off-screen.
+fn clamp_onto_work_area(window: &tauri::WebviewWindow, width: f64, height: f64) {
+    let Some((area_x, area_y, area_width, area_height)) = work_area(window) else {
+        return;
+    };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let Ok(position) = window.outer_position() else {
+        return;
+    };
+    let position = position.to_logical::<f64>(scale);
+
+    let x = position
+        .x
+        .min(area_x + area_width - width - PANEL_MARGIN)
+        .max(area_x + PANEL_MARGIN);
+    let y = position
+        .y
+        .min(area_y + area_height - height - PANEL_MARGIN)
+        .max(area_y + PANEL_MARGIN);
+
+    if (x - position.x).abs() > 1.0 || (y - position.y).abs() > 1.0 {
+        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+    }
+}
+
+/// Shrinks the panel to the mini player, or grows it back.
+///
+/// The window is the same one either way. A second window would mean a second
+/// webview booting, a second copy of the live-transcript subscriptions and two
+/// places for the meeting's state to disagree — for something whose whole job is
+/// to be a smaller view of what is already on screen.
+pub fn set_minimized(app: &AppHandle, minimized: bool) {
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || apply_minimized(&app_handle, minimized));
+}
+
+/// The body of [`set_minimized`], for callers already on the main thread.
+fn apply_minimized(app: &AppHandle, minimized: bool) {
+    let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+        return;
+    };
+    if MINIMIZED.load(Ordering::SeqCst) == minimized {
+        return;
+    }
+
+    let (width, height) = if minimized {
+        // Recorded before the flag goes up, so the restore has something to aim
+        // at even if the user never resized the panel this session.
+        if let Some((_, _, current_width, current_height)) = frame(&window) {
+            if current_width >= MIN_PANEL_WIDTH && current_height >= MIN_PANEL_HEIGHT {
+                if let Ok(mut guard) = RESTORE_SIZE.lock() {
+                    *guard = Some((current_width, current_height));
+                }
+            }
+        }
+        (MINI_WIDTH, MINI_HEIGHT)
+    } else {
+        RESTORE_SIZE
+            .lock()
+            .ok()
+            .and_then(|guard| *guard)
+            .unwrap_or_else(|| panel_size(app))
+    };
+
+    MINIMIZED.store(minimized, Ordering::SeqCst);
+    // The waveform is the only thing that wants audio levels several times a
+    // second, so the stream follows the pill rather than the meeting. Set here
+    // rather than in the command so a panel restored by [`hide`] turns it off
+    // too.
+    super::session::set_level_stream(minimized);
+
+    // A pill the size of a bookmark has no useful resize handles, and dragging
+    // one out of a 40pt-tall window is an accident rather than an intention.
+    let _ = window.set_resizable(!minimized);
+    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+    set_corner_radius(
+        app,
+        if minimized {
+            MINI_HEIGHT / 2.0
+        } else {
+            CORNER_RADIUS
+        },
+    );
+    if !minimized {
+        clamp_onto_work_area(&window, width, height);
+    }
+    refresh_shadow(app);
+
+    // The panel restores itself on hide, so the webview cannot be the only
+    // record of which shape it is in.
+    let _ = app.emit("meeting-panel-minimized", minimized);
+}
+
+/// The green button: fill the screen, or go back to the frame before it.
+///
+/// This is macOS zoom, not full screen. A panel that took over a Space would
+/// take the call with it, and the point of the thing is to sit beside a call.
+pub fn toggle_zoom(app: &AppHandle) {
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = app_handle.get_webview_window(PANEL_LABEL) else {
+            return;
+        };
+        // Zooming a 176pt pill is not a thing anyone means to do.
+        if MINIMIZED.load(Ordering::SeqCst) {
+            return;
+        }
+        let Some((x, y, width, height)) = frame(&window) else {
+            return;
+        };
+        let Some((area_x, area_y, area_width, area_height)) = work_area(&window) else {
+            return;
+        };
+
+        // Already zoomed if the frame is the work area, however it got there —
+        // dragging the panel to fill the screen and then pressing zoom should
+        // give the window back, not do nothing.
+        let zoomed = (width - area_width).abs() < 2.0 && (height - area_height).abs() < 2.0;
+
+        let (next_x, next_y, next_width, next_height) = if zoomed {
+            ZOOM_RESTORE
+                .lock()
+                .ok()
+                .and_then(|guard| *guard)
+                .unwrap_or_else(|| {
+                    let (default_width, default_height) = panel_size(&app_handle);
+                    (
+                        area_x + area_width - default_width - PANEL_MARGIN,
+                        area_y + PANEL_MARGIN,
+                        default_width,
+                        default_height,
+                    )
+                })
+        } else {
+            if let Ok(mut guard) = ZOOM_RESTORE.lock() {
+                *guard = Some((x, y, width, height));
+            }
+            (area_x, area_y, area_width, area_height)
+        };
+
+        let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+            width: next_width,
+            height: next_height,
+        }));
+        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
+            x: next_x,
+            y: next_y,
+        }));
+        refresh_shadow(&app_handle);
+    });
+}
 
 /// Shows the panel, creating it on first use.
 ///
@@ -372,6 +580,11 @@ pub fn show(app: &AppHandle) {
 pub fn hide(app: &AppHandle) {
     let app_handle = app.clone();
     let _ = app.run_on_main_thread(move || {
+        // A hidden panel is never minimised. Reopening it — from the tray, the
+        // shortcut, or the next meeting starting — has to give back the panel,
+        // not the pill the user left behind three calls ago.
+        apply_minimized(&app_handle, false);
+
         #[cfg(target_os = "macos")]
         {
             use tauri_nspanel::ManagerExt;

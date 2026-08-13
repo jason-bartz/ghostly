@@ -736,6 +736,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::meetings::set_meeting_paused,
             commands::meetings::hide_meeting_panel,
             commands::meetings::show_meeting_panel,
+            commands::meetings::set_meeting_panel_minimized,
+            commands::meetings::toggle_meeting_panel_zoom,
             commands::meetings::browse_meetings,
             commands::meetings::export_meeting_text,
             commands::meetings::export_meeting_to_file,

@@ -24,7 +24,7 @@
 //! * `start()` runs off the main thread because the first system-audio tap can
 //!   take several seconds to build.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -62,6 +62,54 @@ const SILENCE_POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// when the sampled state actually changes, so this is a sampling rate, not an
 /// emission rate.
 const ACTIVITY_POLL_INTERVAL: Duration = Duration::from_millis(150);
+
+/// Whether anything is watching the audio levels.
+///
+/// The mini player draws a waveform, which needs a number several times a second
+/// — the one thing the activity ticker was written to avoid emitting. So the
+/// levels only leave the backend while the pill that draws them is on screen,
+/// and a normal meeting still costs one event per utterance.
+static LEVEL_STREAM: AtomicBool = AtomicBool::new(false);
+
+/// Called by the panel when it shrinks to, or grows out of, the mini player.
+pub fn set_level_stream(enabled: bool) {
+    LEVEL_STREAM.store(enabled, Ordering::Relaxed);
+}
+
+/// Loudness of one lane over the last tick, 0..1, pushed as `meeting-level`.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LevelSnapshot {
+    mic: f32,
+    system: f32,
+}
+
+/// Mean absolute amplitude of a frame — enough to drive a meter, and a single
+/// pass over 30 ms of audio on a callback that must not do more than that.
+fn frame_level(frame: &[f32]) -> f32 {
+    if frame.is_empty() {
+        return 0.0;
+    }
+    let sum: f32 = frame.iter().map(|sample| sample.abs()).sum();
+    sum / frame.len() as f32
+}
+
+/// Keeps the loudest frame seen since the last read.
+///
+/// A peak rather than the latest value: the ticker samples five times slower
+/// than frames arrive, and sampling the instant between two syllables would
+/// draw a waveform full of holes that aren't there.
+fn note_level(slot: &AtomicU32, level: f32) {
+    let _ = slot.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+        let current = f32::from_bits(current);
+        (level > current).then(|| level.to_bits())
+    });
+}
+
+/// Reads a peak and arms it for the next interval.
+fn take_level(slot: &AtomicU32) -> f32 {
+    f32::from_bits(slot.swap(0, Ordering::Relaxed))
+}
 
 enum Job {
     Segment {
@@ -137,6 +185,10 @@ pub struct MeetingManager {
     /// between speech starting and the finished line arriving.
     mic_speaking: Arc<AtomicBool>,
     system_speaking: Arc<AtomicBool>,
+    /// Loudest frame each lane has produced since the ticker last looked, as
+    /// `f32` bits. Feeds the mini player's waveform; see [`LEVEL_STREAM`].
+    mic_level: Arc<AtomicU32>,
+    system_level: Arc<AtomicU32>,
     /// Closed utterances queued for, or currently undergoing, transcription.
     pending_segments: Arc<AtomicUsize>,
 }
@@ -186,6 +238,8 @@ impl MeetingManager {
             generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             mic_speaking: Arc::new(AtomicBool::new(false)),
             system_speaking: Arc::new(AtomicBool::new(false)),
+            mic_level: Arc::new(AtomicU32::new(0)),
+            system_level: Arc::new(AtomicU32::new(0)),
             pending_segments: Arc::new(AtomicUsize::new(0)),
         }))
     }
@@ -454,12 +508,16 @@ impl MeetingManager {
         let mic_seg_for_cb = Arc::clone(&mic_segmenter);
         let mic_last_voice = Arc::clone(&self.last_voice_at);
         let mic_speaking = Arc::clone(&self.mic_speaking);
+        let mic_level = Arc::clone(&self.mic_level);
         let mic_pending = Arc::clone(&self.pending_segments);
         recording_manager.add_raw_frame_listener(
             RAW_FRAME_LISTENER_MEETING,
             Arc::new(move |frame: &[f32]| {
                 if !capturing.load(Ordering::SeqCst) || paused_mic.load(Ordering::SeqCst) {
                     return;
+                }
+                if LEVEL_STREAM.load(Ordering::Relaxed) {
+                    note_level(&mic_level, frame_level(frame));
                 }
                 let Ok(mut segmenter) = mic_seg_for_cb.lock() else {
                     return;
@@ -496,10 +554,14 @@ impl MeetingManager {
             let system_tx = job_tx.clone();
             let system_last_voice = Arc::clone(&self.last_voice_at);
             let system_speaking = Arc::clone(&self.system_speaking);
+            let system_level = Arc::clone(&self.system_level);
             let system_pending = Arc::clone(&self.pending_segments);
             let result = crate::system_audio::start(Arc::new(move |frame: &[f32]| {
                 if !capturing.load(Ordering::SeqCst) || paused_system.load(Ordering::SeqCst) {
                     return;
+                }
+                if LEVEL_STREAM.load(Ordering::Relaxed) {
+                    note_level(&system_level, frame_level(frame));
                 }
                 let Ok(mut segmenter) = system_segmenter.lock() else {
                     return;
@@ -550,6 +612,8 @@ impl MeetingManager {
         // meeting transcribing something.
         self.mic_speaking.store(false, Ordering::Relaxed);
         self.system_speaking.store(false, Ordering::Relaxed);
+        self.mic_level.store(0, Ordering::Relaxed);
+        self.system_level.store(0, Ordering::Relaxed);
         self.pending_segments.store(0, Ordering::Relaxed);
         self.capturing.store(true, Ordering::SeqCst);
         *self.active.lock().unwrap() = Some(ActiveSession {
@@ -588,6 +652,8 @@ impl MeetingManager {
             let paused = Arc::clone(&self.paused);
             let mic_speaking = Arc::clone(&self.mic_speaking);
             let system_speaking = Arc::clone(&self.system_speaking);
+            let mic_level = Arc::clone(&self.mic_level);
+            let system_level = Arc::clone(&self.system_level);
             let pending = Arc::clone(&self.pending_segments);
             let generation = Arc::clone(&self.generation);
             let my_generation = self.generation.load(Ordering::SeqCst);
@@ -618,6 +684,25 @@ impl MeetingManager {
                     if next != last {
                         last = next;
                         let _ = app.emit("meeting-activity", next);
+                    }
+
+                    // The waveform, and only while something is drawing it. The
+                    // peaks are read either way so a stream turned on mid-call
+                    // starts from now rather than from the loudest moment of
+                    // the meeting so far.
+                    let levels = LevelSnapshot {
+                        mic: take_level(&mic_level),
+                        system: take_level(&system_level),
+                    };
+                    if LEVEL_STREAM.load(Ordering::Relaxed) {
+                        let _ = app.emit(
+                            "meeting-level",
+                            if quiet {
+                                LevelSnapshot::default()
+                            } else {
+                                levels
+                            },
+                        );
                     }
                 }
                 // The panel keeps the finished transcript on screen, so leaving
