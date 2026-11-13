@@ -120,7 +120,21 @@ The rules now:
 
 **`checkout.session.completed` creates the Max licence**, not `customer.subscription.created` — it's the only event carrying the buyer's email, and the worker makes no Stripe API calls. The subscription events only move the billing window afterwards.
 
-**Model aliases, not model ids.** The app asks for a job (`ghostly-fast`, `ghostly-balanced`, `ghostly-vision`); the gateway resolves to `claude-haiku-4-5` / `claude-sonnet-5`. Routing retunes in a Worker deploy with no app release — one of the few things Max offers that BYO-key can't replicate.
+**Model aliases, not model ids.** The app asks for a job; the gateway resolves it to a model _and_ a thinking setting (`MODEL_ROUTES` in `src/ai.ts`). Routing retunes in a Worker deploy with no app release — one of the few things Max offers that BYO-key can't replicate.
+
+| Alias              | Used by                                                       | Model               | Thinking               |
+| ------------------ | ------------------------------------------------------------- | ------------------- | ---------------------- |
+| `ghostly-fast`     | Refinement, voice edit, titles, live meeting lines, learning  | `claude-haiku-5-5`  | Off (`disabled`)       |
+| `ghostly-summary`  | Meeting summaries, notes enhancement                          | `claude-haiku-5-5`  | Adaptive, effort `low` |
+| `ghostly-balanced` | Ask (history), meeting chat — and summaries from older builds | `claude-sonnet-5-5` | Adaptive, effort `low` |
+| `ghostly-vision`   | Screenshot Q&A                                                | `claude-sonnet-5-5` | Off (`between_tools`)  |
+
+Two rules that look optional and aren't:
+
+- **Never leave `thinking` unset on a 5.5 model.** Both default to adaptive thinking, and `translateStream` forwards text only — the user waits through reasoning they never see, billed as output. Haiku 5.5 turns it off with `{type: "disabled"}` (effort ≤ high); Sonnet 5.5 rejects that and uses `{type: "between_tools"}`, which tolerates no other `thinking` field.
+- **`ghostly-summary` must deploy before the app build that sends it.** An unknown alias falls back to the fast route, so an early app build would get summaries with thinking off rather than an error — degraded, not broken.
+
+The 5.5 models can also decline a request (`stop_reason: "refusal"`, HTTP 200). Non-streaming, the gateway turns that into `422 refused`; streaming, a decline before any text arrives as an empty completion, which the app already treats as a failure.
 
 **Fair use is a cost cap, so it meters every dimension that costs money.** Requests alone is not a budget: 8,000 dictations is the intended ~$14 of Haiku, but 8,000 requests each carrying 200k tokens of context is four orders of magnitude more. Caps are requests (8,000), input tokens (40M), output tokens (4M), plus per-request ceilings on `max_tokens` (8,192), body size (6 MB — screenshots are inline base64) and message count (64).
 

@@ -121,7 +121,7 @@ pub async fn enhance(
             backend,
             NOTES_SYSTEM_PROMPT,
             &prompt,
-            crate::max_gateway::Job::Balanced,
+            crate::max_gateway::Job::Summary,
         )
         .await
         {

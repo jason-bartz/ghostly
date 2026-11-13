@@ -88,8 +88,12 @@ pub enum Job {
     /// Per-dictation work: refinement, voice edit, note titles, live meeting
     /// line cleanup. Runs constantly, so it runs cheap.
     Fast,
-    /// One-shot reasoning over a lot of text — meeting summaries, and
-    /// questions asked of the transcript history.
+    /// Condensing a long transcript in one pass — meeting summaries and notes
+    /// enhancement. Nobody watches these stream in, so they run cheaper than
+    /// questions do.
+    Summary,
+    /// Answering questions over a lot of text — the transcript history and
+    /// meeting chat, where synthesising scattered excerpts needs more model.
     Balanced,
     /// Anything with an image attached.
     Vision,
@@ -99,6 +103,10 @@ impl Job {
     pub fn alias(self) -> &'static str {
         match self {
             Job::Fast => "ghostly-fast",
+            // A Worker that predates this alias serves it on its default
+            // (fast) route rather than refusing it, so the Worker should still
+            // deploy before an app build that sends it.
+            Job::Summary => "ghostly-summary",
             Job::Balanced => "ghostly-balanced",
             Job::Vision => "ghostly-vision",
         }

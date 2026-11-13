@@ -490,7 +490,7 @@ async fn run_backend_raw(
             app,
             SYSTEM_PROMPT,
             &prompt,
-            crate::max_gateway::Job::Balanced,
+            crate::max_gateway::Job::Summary,
         )
         .await
         {
