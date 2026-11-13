@@ -13,9 +13,9 @@ import { PageHeader } from "../../ui/PageHeader";
  * a level most people should never need to touch, and a wrong answer here
  * looks like a bug rather than a preference.
  *
- * The "Experimental Features" group used to live here and gated exactly one
- * thing — Open Mic. Open Mic now ships under Dictation, so the group gated
- * nothing, and a switch that changes nothing visible is worse than no switch.
+ * The "Experimental Features" group used to live here. It gated a single
+ * feature that later graduated out of it, leaving the group gating nothing —
+ * and a switch that changes nothing visible is worse than no switch.
  * `experimental_enabled` is left in settings and in the diagnostics bundle so
  * the next incubating feature can pick it back up.
  */

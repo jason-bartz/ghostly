@@ -4,10 +4,10 @@
 //! instance of [`LaneSegmenter`], which closes an utterance on sustained
 //! silence and emits it for transcription.
 //!
-//! Two deliberate differences from `managers::continuous`:
+//! Two deliberate design choices:
 //!
-//! 1. **Configuration is snapshotted at construction.** `continuous.rs` calls
-//!    `get_settings()` on every frame — 33 store reads per second per lane.
+//! 1. **Configuration is snapshotted at construction.** Reading settings per
+//!    frame would be 33 store reads per second per lane.
 //! 2. **The length cap flushes at the quietest point in a lookback window**
 //!    rather than cutting hard at the limit. A fast talker who never pauses
 //!    would otherwise be sliced mid-word every few seconds.

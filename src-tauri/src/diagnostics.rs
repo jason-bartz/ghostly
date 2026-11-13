@@ -602,7 +602,6 @@ fn redacted_settings_from(s: &crate::settings::AppSettings) -> serde_json::Value
             "builtin_profiles_enabled": s.builtin_profiles_enabled,
             "style_enabled": s.style_enabled,
             "voice_editing_enabled": s.voice_editing_enabled,
-            "continuous_dictation_enabled": s.continuous_dictation_enabled,
             "correction_phrases_enabled": s.correction_phrases_enabled,
             "rest_api_enabled": s.rest_api_enabled,
             "experimental_enabled": s.experimental_enabled,

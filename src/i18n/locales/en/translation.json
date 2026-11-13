@@ -498,8 +498,7 @@
         "transcription": "Transcription",
         "history": "Data & Privacy",
         "experimental": "Performance",
-        "developer": "Developer",
-        "continuousDictation": "Open Mic"
+        "developer": "Developer"
       },
       "experimentalToggle": {
         "label": "Developer Mode",
@@ -508,28 +507,6 @@
       "lazyStreamClose": {
         "label": "Warm Mic Mode",
         "description": "Keeps the microphone open for 30 seconds after stopping, cutting startup delay for back-to-back dictation. May temporarily affect Bluetooth audio quality."
-      },
-      "continuousDictation": {
-        "label": "Open Mic",
-        "description": "Hands-free dictation: leave the mic open and Ghostly transcribes each utterance on silence. No key press per sentence.",
-        "warning": "While the mic is open it stays open the entire time. This can degrade Bluetooth audio quality in all other apps. Only what's spoken gets transcribed — but any nearby voice or loud playback can trigger a segment. Close the mic with the shortcut or button when you step away.",
-        "arm": "Open mic",
-        "disarm": "Close mic",
-        "statusArmed": "Open — listening",
-        "statusDisarmed": "Closed",
-        "silenceLabel": "Silence to end segment",
-        "silenceDescription": "How long a pause must last (ms) before the current utterance is closed and transcribed. Shorter = snappier; longer = fewer fragmentations.",
-        "minLabel": "Minimum segment length",
-        "minDescription": "Segments shorter than this (ms) are dropped as noise (coughs, clicks, short sounds).",
-        "maxLabel": "Maximum segment length",
-        "maxDescription": "Hard cap (ms) on a single segment. If you speak longer than this without pausing, Ghostly force-transcribes mid-stream.",
-        "submitPhraseLabel": "Submit phrase",
-        "submitPhraseDescription": "When a segment ends with this phrase, Ghostly strips it and presses the submit key — say \"…send it\" to fire off a chat message hands-free.",
-        "submitPhrasePlaceholder": "send it",
-        "submitKeyLabel": "Submit key",
-        "submitKeyDescription": "Which keystroke to send when the submit phrase is detected.",
-        "submitKeyEnter": "Enter",
-        "submitKeyCmdEnter": "Cmd+Enter"
       },
       "acceleration": {
         "whisper": {
@@ -1380,7 +1357,7 @@
       },
       "advanced": {
         "title": "Dictation",
-        "subtitle": "Shortcuts, open mic, and how text is inserted."
+        "subtitle": "Shortcuts and how text is inserted."
       },
       "about": {
         "title": "About",
@@ -1544,9 +1521,7 @@
     "pasteFailedTitle": "Failed to Paste Text",
     "pasteFailed": "Text could not be pasted into the active application.",
     "postProcessFailedTitle": "AI Refinement Failed",
-    "screenshotQaFailedTitle": "Screenshot Q&A Failed",
-    "openMicFailedTitle": "Open Mic couldn't transcribe that",
-    "openMicFailed": "The utterance was captured but not transcribed. Check Settings for details."
+    "screenshotQaFailedTitle": "Screenshot Q&A Failed"
   },
   "appLanguage": {
     "title": "Application Language",

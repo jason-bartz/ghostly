@@ -44,23 +44,8 @@ pub fn handle_shortcut_event(
         return;
     }
 
-    // Continuous dictation arm/disarm: toggle on key press only.
-    // Not backed by ACTION_MAP — dispatch before the lookup.
-    if binding_id == "toggle_continuous_dictation" {
-        if is_pressed {
-            if let Some(cm) =
-                app.try_state::<Arc<crate::managers::continuous::ContinuousDictationManager>>()
-            {
-                cm.toggle();
-            } else {
-                warn!("Continuous dictation manager not available");
-            }
-        }
-        return;
-    }
-
-    // Meeting capture start/stop. Like continuous dictation this is not backed
-    // by ACTION_MAP, because it has no press/release lifecycle.
+    // Meeting capture start/stop. Not backed by ACTION_MAP, because it has no
+    // press/release lifecycle — dispatch before the lookup.
     if binding_id == "toggle_meeting" {
         if is_pressed {
             if let Some(manager) = app.try_state::<Arc<crate::meetings::MeetingManager>>() {

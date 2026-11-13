@@ -152,20 +152,6 @@ const settingUpdaters: {
   error_reporting_enabled: (value) =>
     commands.changeErrorReportingSetting(value as boolean),
   appearance: (value) => commands.changeAppearanceSetting(value as any),
-  continuous_dictation_enabled: (value) =>
-    commands.changeContinuousDictationEnabledSetting(value as boolean),
-  continuous_silence_ms: (value) =>
-    commands.changeContinuousSilenceMsSetting(value as number),
-  continuous_max_segment_ms: (value) =>
-    commands.changeContinuousMaxSegmentMsSetting(value as number),
-  continuous_min_segment_ms: (value) =>
-    commands.changeContinuousMinSegmentMsSetting(value as number),
-  continuous_submit_phrase_enabled: (value) =>
-    commands.changeContinuousSubmitPhraseEnabledSetting(value as boolean),
-  continuous_submit_phrase: (value) =>
-    commands.changeContinuousSubmitPhraseSetting(value as string),
-  continuous_submit_key: (value) =>
-    commands.changeContinuousSubmitKeySetting(value as string),
   show_tray_icon: (value) =>
     commands.changeShowTrayIconSetting(value as boolean),
   show_dock_icon: (value) =>

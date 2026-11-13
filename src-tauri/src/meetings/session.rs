@@ -379,23 +379,6 @@ impl MeetingManager {
         // this they would still be there when the next one begins.
         let _ = self.app.emit("meeting-starting", ());
 
-        // Both features snapshot and restore the *global* microphone mode, so
-        // running them together makes whichever stops last restore a stale mode
-        // — typically leaving the stream forced open forever, or killing the
-        // other's capture. They are also redundant: both are hands-free
-        // continuous listening. Refuse rather than silently misbehave.
-        if let Some(continuous) = self
-            .app
-            .try_state::<Arc<crate::managers::continuous::ContinuousDictationManager>>()
-        {
-            if continuous.is_armed() {
-                return Err(
-                    "Continuous dictation is armed. Turn it off before capturing a meeting."
-                        .to_string(),
-                );
-            }
-        }
-
         // Free-tier cap, checked once at session start rather than per segment.
         // An hour of continuous meeting transcription would otherwise be the
         // largest unmetered path in the product — the shortcut-driven dictation

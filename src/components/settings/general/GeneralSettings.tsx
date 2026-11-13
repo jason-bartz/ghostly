@@ -15,7 +15,6 @@ import { ShowOverlay } from "../ShowOverlay";
 import { SoundPicker } from "../SoundPicker";
 import { ClamshellMicrophoneSelector } from "../ClamshellMicrophoneSelector";
 import { AlwaysOnMicrophone } from "../AlwaysOnMicrophone";
-import { ContinuousDictation } from "../ContinuousDictation";
 import { PageHeader } from "../../ui/PageHeader";
 
 export const GeneralSettings: React.FC = () => {
@@ -38,15 +37,6 @@ export const GeneralSettings: React.FC = () => {
         {!isLinux && !pushToTalk && (
           <ShortcutInput shortcutId="cancel" grouped={true} />
         )}
-      </SettingsGroup>
-
-      {/* ── Open Mic ──
-          Sits with the other ways of starting a recording rather than under
-          Performance, where it was reachable only by expanding the Advanced
-          disclosure and flipping an experimental switch first. It is still
-          off by default — an open microphone is a real trade, not a default. */}
-      <SettingsGroup title={t("settings.advanced.groups.continuousDictation")}>
-        <ContinuousDictation descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 
       {/* ── Active model quick-switch ── */}

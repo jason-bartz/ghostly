@@ -441,8 +441,8 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     // defers the native hide by 300 ms so the fade-out can play, and that timer
     // has no way to know the overlay has since been asked to come back — so a
     // show landing inside the window (recording → transcribing → next
-    // utterance, or Open Mic firing twice in quick succession) got wiped by the
-    // previous hide a fraction of a second later.
+    // utterance in quick succession) got wiped by the previous hide a fraction
+    // of a second later.
     HIDE_GENERATION.fetch_add(1, Ordering::SeqCst);
 
     // Recover from a startup that could not build the panel. `PanelBuilder`

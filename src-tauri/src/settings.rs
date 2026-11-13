@@ -399,7 +399,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub meeting_default_enabled_migrated: bool,
     /// Marker for the shortcut-defaults migration that moved transcribe to
-    /// `fn` and the edit/screenshot/continuous bindings to the Cmd+Option
+    /// `fn` and the edit/screenshot bindings to the Cmd+Option
     /// family. When false, `migrate_binding_defaults_v2` syncs stored
     /// `default_binding` fields to the new code defaults and upgrades any
     /// `current_binding` that was still sitting on the old default.
@@ -541,40 +541,6 @@ pub struct AppSettings {
     pub experimental_enabled: bool,
     #[serde(default)]
     pub lazy_stream_close: bool,
-    /// Enables Open Mic, the hands-free dictation mode. When true, an
-    /// additional shortcut opens/closes a VAD-driven loop that transcribes each
-    /// utterance on silence without any key press.
-    ///
-    /// Defaults off: leaving the microphone open has real costs (Bluetooth
-    /// audio quality degrades system-wide, and any nearby voice can trigger a
-    /// segment), so it stays an explicit opt-in even though it is no longer
-    /// hidden behind the experimental flag.
-    #[serde(default)]
-    pub continuous_dictation_enabled: bool,
-    /// Milliseconds of trailing silence that closes a segment.
-    #[serde(default = "default_continuous_silence_ms")]
-    pub continuous_silence_ms: u32,
-    /// Hard ceiling on a single segment before force-flushing.
-    #[serde(default = "default_continuous_max_segment_ms")]
-    pub continuous_max_segment_ms: u32,
-    /// Segments shorter than this are dropped (cough/click suppression).
-    #[serde(default = "default_continuous_min_segment_ms")]
-    pub continuous_min_segment_ms: u32,
-    /// When true, ending a continuous-dictation segment with the configured
-    /// submit phrase strips the phrase and sends the submit keystroke after
-    /// pasting. Lets the user finish a thought with "...send it" to fire off
-    /// a chat message hands-free.
-    #[serde(default)]
-    pub continuous_submit_phrase_enabled: bool,
-    /// Phrase that triggers the submit keystroke when it appears at the end of
-    /// a segment. Matched case-insensitively with word boundaries.
-    #[serde(default = "default_continuous_submit_phrase")]
-    pub continuous_submit_phrase: String,
-    /// Which key to send when the submit phrase fires. Reuses `AutoSubmitKey`
-    /// but the UI exposes only Enter and Cmd+Enter — Ctrl+Enter is uncommon
-    /// for chat submit on macOS.
-    #[serde(default)]
-    pub continuous_submit_key: AutoSubmitKey,
     #[serde(default)]
     pub keyboard_implementation: KeyboardImplementation,
     #[serde(default = "default_show_tray_icon")]
@@ -1006,22 +972,6 @@ fn default_append_trailing_space() -> bool {
     true
 }
 
-fn default_continuous_silence_ms() -> u32 {
-    900
-}
-
-fn default_continuous_max_segment_ms() -> u32 {
-    20_000
-}
-
-fn default_continuous_min_segment_ms() -> u32 {
-    400
-}
-
-fn default_continuous_submit_phrase() -> String {
-    "send it".to_string()
-}
-
 fn default_translate_to_english() -> bool {
     false
 }
@@ -1450,7 +1400,6 @@ pub fn get_default_settings() -> AppSettings {
 
     // "Ghostly commands" family on macOS: Cmd+Option+<letter>. Avoids bare Cmd
     // shortcuts (C/V/X/S/Z/A/W/Q/T/N) and Apple's Cmd+Shift+3/4/5 screenshots.
-    // `cmd+option+d` is reserved (hide/show Dock), so continuous uses K.
     #[cfg(target_os = "macos")]
     let default_screenshot_shortcut = "cmd+option+s";
     #[cfg(not(target_os = "macos"))]
@@ -1523,27 +1472,6 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: "escape".to_string(),
         },
     );
-    // Open Mic on/off. K = "keep listening"; avoids Cmd+Option+D (Dock) and
-    // Cmd+Option+M (minimize). The stored id stays `toggle_continuous_dictation`
-    // because it is persisted in every existing user's settings file — the
-    // rename is a labelling change, not a data migration.
-    #[cfg(target_os = "macos")]
-    let default_continuous_shortcut = "cmd+option+k";
-    #[cfg(not(target_os = "macos"))]
-    let default_continuous_shortcut = "";
-    bindings.insert(
-        "toggle_continuous_dictation".to_string(),
-        ShortcutBinding {
-            id: "toggle_continuous_dictation".to_string(),
-            name: "Toggle Open Mic".to_string(),
-            description:
-                "Opens or closes the mic for hands-free dictation. While the mic is open, Ghostly transcribes each utterance automatically on silence — no key press per sentence."
-                    .to_string(),
-            default_binding: default_continuous_shortcut.to_string(),
-            current_binding: default_continuous_shortcut.to_string(),
-        },
-    );
-
     // Meeting capture. Unbound by default: Meeting Mode is off out of the box,
     // and claiming a chord for a feature the user has not enabled is a good way
     // to collide with something they already use.
@@ -1648,13 +1576,6 @@ pub fn get_default_settings() -> AppSettings {
         milestone_notifications: default_milestone_notifications(),
         experimental_enabled: false,
         lazy_stream_close: false,
-        continuous_dictation_enabled: false,
-        continuous_silence_ms: default_continuous_silence_ms(),
-        continuous_max_segment_ms: default_continuous_max_segment_ms(),
-        continuous_min_segment_ms: default_continuous_min_segment_ms(),
-        continuous_submit_phrase_enabled: false,
-        continuous_submit_phrase: default_continuous_submit_phrase(),
-        continuous_submit_key: AutoSubmitKey::default(),
         keyboard_implementation: KeyboardImplementation::default(),
         show_tray_icon: default_show_tray_icon(),
         show_dock_icon: default_show_dock_icon(),
@@ -1811,18 +1732,6 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
                     }
                 }
 
-                // Migration: `transcribe_with_post_process` was removed in
-                // favor of auto-refinement on the main transcribe shortcut.
-                // Drop any orphan binding carried over from older installs.
-                if settings
-                    .bindings
-                    .remove("transcribe_with_post_process")
-                    .is_some()
-                {
-                    debug!("Removing obsolete `transcribe_with_post_process` binding");
-                    updated = true;
-                }
-
                 if updated {
                     debug!("Settings updated with new bindings");
                     store.set("settings", serde_json::to_value(&settings).unwrap());
@@ -1869,6 +1778,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     changed |= migrate_binding_defaults_v2(&mut settings);
     changed |= migrate_trailing_space_default(&mut settings);
     changed |= migrate_meeting_ai_auto(&mut settings);
+    changed |= remove_obsolete_bindings(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -1878,6 +1788,34 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     }
 
     settings
+}
+
+/// Shortcut bindings for features that no longer exist. Registration only walks
+/// the code defaults, so a stale entry is never bound — but stored settings
+/// from older installs still carry it, and without this it would linger there
+/// for good: in the diagnostics bundle, and in `unregister_all_shortcuts`,
+/// which walks the stored map rather than the defaults.
+///
+/// - `transcribe_with_post_process`: replaced by auto-refinement on the main
+///   transcribe shortcut.
+/// - `toggle_continuous_dictation`: Open Mic, the hands-free dictation mode,
+///   was removed.
+const OBSOLETE_BINDING_IDS: &[&str] = &[
+    "transcribe_with_post_process",
+    "toggle_continuous_dictation",
+];
+
+/// Drop any binding listed in [`OBSOLETE_BINDING_IDS`]. Returns true when
+/// something was removed, so the caller knows to persist the cleaned map.
+fn remove_obsolete_bindings(settings: &mut AppSettings) -> bool {
+    let mut removed = false;
+    for id in OBSOLETE_BINDING_IDS {
+        if settings.bindings.remove(*id).is_some() {
+            debug!("Removing obsolete `{}` binding", id);
+            removed = true;
+        }
+    }
+    removed
 }
 
 /// One-shot reset of `start_hidden` to the new 0.1.7 default of false.
@@ -1974,7 +1912,7 @@ fn migrate_confirm_paste_default(settings: &mut AppSettings) -> bool {
 }
 
 /// One-shot migration that upgrades pre-existing installs to the new shortcut
-/// defaults (transcribe=fn, Cmd+Option family for edit/screenshot/continuous).
+/// defaults (transcribe=fn, Cmd+Option family for edit/screenshot).
 ///
 /// For each binding whose code default has changed:
 /// - If the user's `current_binding` still matches their old stored
@@ -2116,6 +2054,7 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     changed |= migrate_binding_defaults_v2(&mut settings);
     changed |= migrate_trailing_space_default(&mut settings);
     changed |= migrate_meeting_ai_auto(&mut settings);
+    changed |= remove_obsolete_bindings(&mut settings);
     let migrated = hydrate_api_keys_from_keychain(&mut settings);
     if changed || migrated {
         store.set(
@@ -2319,5 +2258,59 @@ mod tests {
             MeetingSettings::default().live_refinement
         );
         assert_eq!(parsed.panel_x, None);
+    }
+
+    /// Settings saved while Open Mic existed carry its `continuous_*` fields
+    /// and its `toggle_continuous_dictation` shortcut. They must still parse —
+    /// a failed parse resets every setting to defaults — and the dead binding
+    /// and fields are dropped rather than carried forward indefinitely.
+    #[test]
+    fn settings_from_open_mic_era_still_load() {
+        let mut stored = serde_json::to_value(get_default_settings()).unwrap();
+        let obj = stored.as_object_mut().unwrap();
+        obj.insert("continuous_dictation_enabled".into(), true.into());
+        obj.insert("continuous_silence_ms".into(), 900.into());
+        obj.insert("continuous_max_segment_ms".into(), 20_000.into());
+        obj.insert("continuous_min_segment_ms".into(), 400.into());
+        obj.insert("continuous_submit_phrase_enabled".into(), true.into());
+        obj.insert("continuous_submit_phrase".into(), "send it".into());
+        obj.insert("continuous_submit_key".into(), "cmd_enter".into());
+        obj["bindings"].as_object_mut().unwrap().insert(
+            "toggle_continuous_dictation".into(),
+            serde_json::json!({
+                "id": "toggle_continuous_dictation",
+                "name": "Toggle Open Mic",
+                "description": "Opens or closes the mic for hands-free dictation.",
+                "default_binding": "cmd+option+k",
+                "current_binding": "cmd+option+k",
+            }),
+        );
+
+        let mut settings: AppSettings =
+            serde_json::from_value(stored).expect("Open Mic-era settings must still parse");
+
+        assert!(remove_obsolete_bindings(&mut settings));
+        assert!(!settings
+            .bindings
+            .contains_key("toggle_continuous_dictation"));
+        assert!(settings.bindings.contains_key("transcribe"));
+        // Nothing left to remove, so the caller does not rewrite the store.
+        assert!(!remove_obsolete_bindings(&mut settings));
+
+        // The stale fields are not carried forward on the next write.
+        let rewritten = serde_json::to_value(&settings).unwrap();
+        assert!(rewritten
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|k| !k.starts_with("continuous_")));
+    }
+
+    #[test]
+    fn default_bindings_contain_no_obsolete_ids() {
+        let settings = get_default_settings();
+        for id in OBSOLETE_BINDING_IDS {
+            assert!(!settings.bindings.contains_key(*id), "{id} is obsolete");
+        }
     }
 }

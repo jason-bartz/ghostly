@@ -591,21 +591,6 @@ fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), Str
     Ok(())
 }
 
-/// Public helper to fire an auto-submit keystroke independently of a paste.
-/// Used by continuous dictation's submit-phrase feature, which decides on its
-/// own whether to submit (and may submit even when the segment is just the
-/// trigger phrase with no text to paste).
-pub fn send_submit_key(app_handle: &AppHandle, key: AutoSubmitKey) -> Result<(), String> {
-    let enigo_state = app_handle
-        .try_state::<EnigoState>()
-        .ok_or("Enigo state not initialized")?;
-    let mut enigo = enigo_state
-        .0
-        .lock()
-        .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
-    send_return_key(&mut enigo, key)
-}
-
 fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool {
     auto_submit && paste_method != PasteMethod::None
 }

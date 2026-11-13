@@ -114,8 +114,9 @@ pub enum RecordingState {
 pub enum MicrophoneMode {
     AlwaysOn,
     OnDemand,
-    /// Hands-free continuous dictation. Stream stays open whenever the feature
-    /// is armed and VAD drives segmentation. No shortcut press/release cycle.
+    /// Hands-free capture for Meeting Mode. Stream stays open for the whole
+    /// session and the meeting's own VAD drives segmentation through a raw-frame
+    /// listener. No shortcut press/release cycle.
     Continuous,
 }
 
@@ -123,9 +124,8 @@ pub enum MicrophoneMode {
 
 /// Shared fan-out for raw 16 kHz frame callbacks. The `AudioRecordingManager`
 /// installs a single forwarder on the recorder that reads this registry
-/// per-frame; external subsystems (continuous dictation, Meeting Mode's
-/// microphone lane) register and unregister by key without rebuilding the
-/// recorder.
+/// per-frame; external subsystems (Meeting Mode's microphone lane) register
+/// and unregister by key without rebuilding the recorder.
 ///
 /// `Arc` rather than `Box` so the forwarder can take a cheap snapshot of the
 /// current listeners and release the lock before invoking any of them.
@@ -135,7 +135,6 @@ pub type RawFrameCallback = Arc<dyn Fn(&[f32]) + Send + Sync + 'static>;
 /// the previous listener, which keeps re-arming idempotent.
 pub type RawFrameListenerKey = &'static str;
 
-pub const RAW_FRAME_LISTENER_CONTINUOUS: RawFrameListenerKey = "continuous-dictation";
 pub const RAW_FRAME_LISTENER_MEETING: RawFrameListenerKey = "meeting-mic-lane";
 
 /// Registry plus a pre-built snapshot for the audio hot path.
@@ -339,8 +338,9 @@ impl AudioRecordingManager {
     /// while the microphone stream is open.
     ///
     /// Listeners are keyed, so multiple subsystems can tap the stream at once
-    /// (continuous dictation and Meeting Mode's microphone lane). Registering
-    /// an existing key replaces that listener, making re-arming idempotent.
+    /// without disturbing one another (Meeting Mode's microphone lane is the
+    /// current one). Registering an existing key replaces that listener, making
+    /// re-arming idempotent.
     ///
     /// The callback runs on the recorder's worker thread once per 30 ms frame
     /// and must not block.

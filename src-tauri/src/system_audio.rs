@@ -30,8 +30,8 @@ use log::{debug, info, warn};
 use crate::audio_toolkit::audio::FrameResampler;
 use crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE;
 
-/// 30 ms frames, matching `managers::continuous::FRAME_SAMPLES` and the frame
-/// size the microphone lane's resampler emits.
+/// 30 ms frames, matching `meetings::lane::FRAME_SAMPLES` and the frame size
+/// the microphone lane's resampler emits.
 const FRAME_DURATION: Duration = Duration::from_millis(30);
 
 /// Bound on the queue between the audio thread and our worker. At 48 kHz a

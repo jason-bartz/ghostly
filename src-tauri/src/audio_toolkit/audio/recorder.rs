@@ -37,7 +37,7 @@ pub struct AudioRecorder {
     vad: Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
     /// Fires for every resampled 16 kHz frame, regardless of whether a
-    /// recording is active. Used by the continuous-dictation loop to run its
+    /// recording is active. Used by Meeting Mode's microphone lane to run its
     /// own VAD/segmentation independent of the start/stop recording cycle.
     raw_frame_cb: Option<Arc<dyn Fn(&[f32]) + Send + Sync + 'static>>,
 }
@@ -68,7 +68,7 @@ impl AudioRecorder {
     }
 
     /// Register a callback that receives every resampled 16 kHz frame
-    /// regardless of recording state. Used for continuous dictation.
+    /// regardless of recording state. Used by Meeting Mode's microphone lane.
     pub fn with_raw_frame_callback<F>(mut self, cb: F) -> Self
     where
         F: Fn(&[f32]) + Send + Sync + 'static,

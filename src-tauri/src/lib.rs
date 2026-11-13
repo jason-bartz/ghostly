@@ -252,21 +252,10 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(Arc::new(rest_api::PasteSuppressor::default()));
     app_handle.manage(Arc::new(rest_api::RestApiServer::new()));
 
-    // Continuous dictation manager (dev-mode gated). Construction is fallible
-    // because it loads the Silero VAD; a failure here only disables continuous
-    // dictation — regular shortcuts keep working.
-    match managers::continuous::ContinuousDictationManager::new(app_handle.clone()) {
-        Ok(cm) => {
-            app_handle.manage(cm);
-        }
-        Err(e) => {
-            log::warn!("Continuous dictation disabled: {}", e);
-        }
-    }
-
     // Meeting Mode. Constructed after the transcription and history managers
-    // because the capture worker resolves both out of Tauri state. Fallible
-    // like continuous dictation: a failure here disables Meeting Mode only.
+    // because the capture worker resolves both out of Tauri state. Construction
+    // is fallible (it opens the meeting store); a failure here disables Meeting
+    // Mode only — regular shortcuts keep working.
     match meetings::MeetingManager::new(app_handle.clone()) {
         Ok(mm) => {
             app_handle.manage(mm);
@@ -605,13 +594,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             diagnostics::run_health_check,
             diagnostics::export_diagnostics_bundle,
             diagnostics::reveal_diagnostics_bundle,
-            shortcut::change_continuous_dictation_enabled_setting,
-            shortcut::change_continuous_silence_ms_setting,
-            shortcut::change_continuous_max_segment_ms_setting,
-            shortcut::change_continuous_min_segment_ms_setting,
-            shortcut::change_continuous_submit_phrase_enabled_setting,
-            shortcut::change_continuous_submit_phrase_setting,
-            shortcut::change_continuous_submit_key_setting,
             shortcut::change_app_language_setting,
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
@@ -651,8 +633,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::models::has_any_models_or_downloads,
             commands::audio::update_microphone_mode,
             commands::audio::get_microphone_mode,
-            commands::audio::set_continuous_dictation_armed,
-            commands::audio::is_continuous_dictation_armed,
             commands::audio::get_windows_microphone_permission_status,
             commands::audio::open_microphone_privacy_settings,
             commands::audio::get_available_microphones,
