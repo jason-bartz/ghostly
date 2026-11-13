@@ -220,6 +220,15 @@ Reference docs live in [docs/API.md](docs/API.md) — update them with any endpo
 
 Access debug features: `Cmd+Shift+D`
 
+## Disk Hygiene
+
+`src-tauri/target/` settles at 6–9GB, but Cargo never deletes artifacts orphaned by dependency, feature, or toolchain changes. Left alone it has reached 42GB.
+
+- **Cleanup job (maintainer's machine):** a daily launch agent, `com.jasonbartz.rust-target-gc`, runs `~/.local/bin/rust-target-gc.sh` (log: `~/Library/Logs/rust-target-gc.log`). It sweeps every Cargo `target/` under `~/Dev Projects` and clears `node_modules` and `target/` from agent worktrees idle for 7 days. If the repo moves outside `~/Dev Projects`, update `SEARCH_ROOTS` in that script. It posts a notification until you do.
+- **Keep `crate-type = ["rlib"]`** in `src-tauri/Cargo.toml`. The `staticlib`/`cdylib` entries in Tauri's template are for mobile and cost ~490MB per build.
+- **Releases build in GitHub Actions** (`scripts/release.sh`). Avoid local `bun run tauri build`; if you need one, delete `src-tauri/target/release` afterwards, since LTO release output runs to several GB.
+- **In a worktree, prefer `cargo check`** over `cargo build` or `tauri dev` unless you need to run the app. Each worktree builds its own `target/` from scratch.
+
 ## Platform Notes
 
 Ghostly is macOS-only. Metal acceleration, accessibility permissions required for keyboard shortcuts. Minimum macOS 10.15.
