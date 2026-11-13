@@ -53,6 +53,8 @@ Free/Max pricing, comparison table rebuilt (new row: "Fully usable without a sub
 
 **Archived:** `prod_ULG39lQsFFAMxv` and `prod_UKrzmlZwucEndh` (there were two duplicate Pro products). Old link `plink_1TMZYaBH5FhMp4sKxGJ0gyhs` deactivated. Branding and Stripe Tax handled manually in the Dashboard.
 
+**Stripe Tax, verified 2026-11-13 via the API:** status `active`, head office Buffalo NY, one active registration (US — NY state sales tax), `automatic_tax` enabled on both Max payment links, and the Max product carries tax code `txcd_10103001` (SaaS). Register in another state when you cross its economic-nexus threshold; Stripe Tax's dashboard flags those as they approach.
+
 The payment links exist but **are not published anywhere.** Don't publish until §4 is deployed and §5 done.
 
 ### App — **v0.1.26 shipped** (signed, notarized, on R2 + GitHub, auto-updater live)
@@ -104,7 +106,7 @@ Routes added: `POST /v1/chat/completions`, `GET /ai/status`. `ANTHROPIC_API_KEY`
 
 **Gateway auth is the device token, not the licence key** (since 0.1.37). The app sends the Ed25519 token it already holds; `authenticate()` in `src/ai.ts` verifies the signature against `ED25519_PUBLIC_KEY_HEX`, then requires that machine's activation to be live. The raw key used to be enough on its own — and it is emailed, shareable, and worked from any OpenAI-compatible client anywhere, so one subscription could serve any number of people. Now the 3-device limit binds the gateway too, and deactivating a Mac cuts it off at once.
 
-- Builds ≤ 0.1.36 still send the raw key. `LEGACY_KEY_AUTH = "on"` (wrangler.toml) lets them through and stamps `licenses.last_legacy_auth_at`. Once nothing has stamped it for a couple of weeks, set it to `"off"`; old builds then get `401 update_required`. Check with `SELECT key, last_legacy_auth_at FROM licenses WHERE last_legacy_auth_at IS NOT NULL`.
+- Builds ≤ 0.1.36 still send the raw key. `LEGACY_KEY_AUTH = "until:2026-11-30"` (wrangler.toml) lets them through until 00:00 UTC on 30 Nov 2026, then refuses them by itself with `401 update_required` — no deploy needed. Each legacy request stamps `licenses.last_legacy_auth_at`; see who is still on it with `SELECT key, last_legacy_auth_at FROM licenses WHERE last_legacy_auth_at IS NOT NULL`. The value also takes `"on"` / `"off"`; anything unparseable reads as off.
 - `/ai/status`, `/billing/portal` and `/sync/*` still take the raw key. None of them spends money.
 - A subscriber can still lift _their own_ token and use the gateway as a general Claude endpoint. That is what the dollar cap below is for.
 
@@ -308,7 +310,7 @@ Endpoints verified against production: meta create/refuse-overwrite, monotonic p
 
 **`bun run check:translations` fails 0/19.** Long-standing, expected, non-blocking — only add new strings to `en/`.
 
-**Existing Pro holders.** The v0.1.26 release notes promise _"Email support@try-ghostly.com and we will make it right."_ That commitment is live and undefined. Their $39 now buys nothing over Free; comping them Max is the obvious make-good but hasn't been decided.
+**Existing Pro holders — closed 2026-11-13.** The v0.1.26 release notes promised _"Email support@try-ghostly.com and we will make it right."_ The only Pro licence ever sold is the owner's own, so no customer is owed anything. Pro rows stay valid forever (`tier='pro'`, no hosted AI); if one ever surfaces through support, comping Max is still the answer.
 
 **The provider list is not a menu of what you're entitled to.** `ensure_post_process_defaults` seeds every provider Ghostly ships — including `ghostly_max` — into every install, on every launch, so the backend can resolve one the instant it becomes usable. Any new UI that renders `post_process_providers` has to filter for entitlement itself. Two places do: `usePostProcessProviderState` and `ProfileEditor`.
 
