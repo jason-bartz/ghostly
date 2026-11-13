@@ -1,13 +1,16 @@
 import React, {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { commands } from "@/bindings";
 import { noteKeyEdit, NOTES_SAVE_DEBOUNCE_MS } from "@/lib/notes";
 
@@ -25,9 +28,23 @@ import { noteKeyEdit, NOTES_SAVE_DEBOUNCE_MS } from "@/lib/notes";
  * - Saves are debounced and fire-and-forget. Every keystroke reaching SQLite
  *   would be absurd, and a save that fails is worth a message, not a modal —
  *   the text is still on screen either way.
+ * - It shares its pane with Ask, so it no longer draws its own header: the
+ *   panel's tab bar owns the pane, and the notepad's own controls — the
+ *   Mine/Enhanced switch and Enhance — render into the tab bar's slot while
+ *   the notepad is the tab showing. Hidden rather than unmounted when Ask is
+ *   showing, so unsaved text and the caret survive a look at the other tab.
  */
 
 type Tab = "mine" | "enhanced";
+
+export interface NotesPaneHandle {
+  /**
+   * Adds text to the end of the user's own notes — "Add to notes" on an Ask
+   * answer. Always to Mine, never to the enhanced copy: the user chose to keep
+   * it, which makes it theirs.
+   */
+  appendToNotes: (text: string) => void;
+}
 
 interface NotesPaneProps {
   /** The meeting the notes belong to, or null while none is on screen. */
@@ -38,252 +55,253 @@ interface NotesPaneProps {
   finished: boolean;
   /** There are transcript lines to enhance from. */
   hasTranscript: boolean;
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
-  /** Set by the panel's split, which owns the divider.  */
-  style?: React.CSSProperties;
+  /** The notepad is the tab showing. */
+  visible: boolean;
+  /** The pane is open, not folded down to its tab bar. */
+  expanded: boolean;
+  /** Where the notepad's controls render — the panel's tab bar. */
+  headerSlot: HTMLElement | null;
 }
 
-export const NotesPane: React.FC<NotesPaneProps> = ({
-  meetingId,
-  capturing,
-  finished,
-  hasTranscript,
-  collapsed,
-  onToggleCollapsed,
-  style,
-}) => {
-  const { t } = useTranslation();
-
-  const [mine, setMine] = useState("");
-  const [enhanced, setEnhanced] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("mine");
-  const [enhancing, setEnhancing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const saveTimer = useRef<number | null>(null);
-  // The meeting the text on screen belongs to. `null` means it is scratch —
-  // typed before any meeting existed — which is what makes carrying it into
-  // the next meeting distinguishable from resurrecting the last one's.
-  const attachedId = useRef<string | null>(null);
-  // Read by the debounced save, which captures its closure once.
-  const draft = useRef({ mine: "", enhanced: "" });
-  draft.current = { mine, enhanced: enhanced ?? "" };
-
-  const flush = useCallback((id: string, which: Tab) => {
-    if (which === "enhanced") {
-      void commands.setMeetingEnhancedNotes(id, draft.current.enhanced);
-    } else {
-      void commands.setMeetingNotes(id, draft.current.mine);
-    }
-  }, []);
-
-  const scheduleSave = useCallback(
-    (which: Tab) => {
-      const id = attachedId.current;
-      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-      if (!id) return; // Scratch notes live in memory until a meeting exists.
-      saveTimer.current = window.setTimeout(
-        () => flush(id, which),
-        NOTES_SAVE_DEBOUNCE_MS,
-      );
+export const NotesPane = forwardRef<NotesPaneHandle, NotesPaneProps>(
+  (
+    {
+      meetingId,
+      capturing,
+      finished,
+      hasTranscript,
+      visible,
+      expanded,
+      headerSlot,
     },
-    [flush],
-  );
+    ref,
+  ) => {
+    const { t } = useTranslation();
 
-  // Follow the meeting on screen. Every branch here is a real sequence the
-  // panel produces, and getting one wrong either loses notes or shows the
-  // previous meeting's notes under this meeting's transcript.
-  useEffect(() => {
-    let active = true;
+    const [mine, setMine] = useState("");
+    const [enhanced, setEnhanced] = useState<string | null>(null);
+    const [tab, setTab] = useState<Tab>("mine");
+    const [enhancing, setEnhancing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    if (meetingId === null) {
-      // The panel dropped its meeting — a new one is starting. Notes belonging
-      // to the meeting that just left the screen go with it.
-      if (attachedId.current !== null) {
-        attachedId.current = null;
-        setMine("");
+    const saveTimer = useRef<number | null>(null);
+    // The meeting the text on screen belongs to. `null` means it is scratch —
+    // typed before any meeting existed — which is what makes carrying it into
+    // the next meeting distinguishable from resurrecting the last one's.
+    const attachedId = useRef<string | null>(null);
+    // Read by the debounced save, which captures its closure once.
+    const draft = useRef({ mine: "", enhanced: "" });
+    draft.current = { mine, enhanced: enhanced ?? "" };
+
+    const flush = useCallback((id: string, which: Tab) => {
+      if (which === "enhanced") {
+        void commands.setMeetingEnhancedNotes(id, draft.current.enhanced);
+      } else {
+        void commands.setMeetingNotes(id, draft.current.mine);
+      }
+    }, []);
+
+    const scheduleSave = useCallback(
+      (which: Tab) => {
+        const id = attachedId.current;
+        if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+        if (!id) return; // Scratch notes live in memory until a meeting exists.
+        saveTimer.current = window.setTimeout(
+          () => flush(id, which),
+          NOTES_SAVE_DEBOUNCE_MS,
+        );
+      },
+      [flush],
+    );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        appendToNotes: (text: string) => {
+          const addition = text.trim();
+          if (!addition) return;
+          const current = draft.current.mine;
+          const next = current.trim()
+            ? `${current.trimEnd()}\n\n${addition}\n`
+            : `${addition}\n`;
+          draft.current = { ...draft.current, mine: next };
+          setMine(next);
+          setTab("mine");
+          scheduleSave("mine");
+        },
+      }),
+      [scheduleSave],
+    );
+
+    // Follow the meeting on screen. Every branch here is a real sequence the
+    // panel produces, and getting one wrong either loses notes or shows the
+    // previous meeting's notes under this meeting's transcript.
+    useEffect(() => {
+      let active = true;
+
+      if (meetingId === null) {
+        // The panel dropped its meeting — a new one is starting. Notes belonging
+        // to the meeting that just left the screen go with it.
+        if (attachedId.current !== null) {
+          attachedId.current = null;
+          setMine("");
+          setEnhanced(null);
+          setTab("mine");
+        }
+        return;
+      }
+
+      if (attachedId.current === meetingId) return;
+
+      if (attachedId.current === null && draft.current.mine.trim() !== "") {
+        // Scratch notes, typed before this meeting existed. Adopt them.
+        attachedId.current = meetingId;
+        void commands.setMeetingNotes(meetingId, draft.current.mine);
         setEnhanced(null);
         setTab("mine");
+        return;
       }
-      return;
-    }
 
-    if (attachedId.current === meetingId) return;
-
-    if (attachedId.current === null && draft.current.mine.trim() !== "") {
-      // Scratch notes, typed before this meeting existed. Adopt them.
       attachedId.current = meetingId;
-      void commands.setMeetingNotes(meetingId, draft.current.mine);
-      setEnhanced(null);
-      setTab("mine");
-      return;
-    }
+      void commands.getMeetingNotes(meetingId).then((result) => {
+        // A meeting swapped underneath the query must not be written over.
+        if (!active || attachedId.current !== meetingId) return;
+        if (result.status === "error") {
+          setError(result.error);
+          return;
+        }
+        setMine(result.data.notes ?? "");
+        setEnhanced(result.data.enhanced);
+        setTab(result.data.enhanced ? "enhanced" : "mine");
+      });
 
-    attachedId.current = meetingId;
-    void commands.getMeetingNotes(meetingId).then((result) => {
-      // A meeting swapped underneath the query must not be written over.
-      if (!active || attachedId.current !== meetingId) return;
+      return () => {
+        active = false;
+      };
+    }, [meetingId]);
+
+    // An enhancement started from the library lands here too — same row, two
+    // windows.
+    useEffect(() => {
+      const unlisten = listen<{ meetingId: string; body: string }>(
+        "meeting-notes-enhanced",
+        (event) => {
+          if (event.payload.meetingId !== attachedId.current) return;
+          setEnhanced(event.payload.body);
+          setTab("enhanced");
+        },
+      );
+      return () => {
+        void unlisten.then((fn) => fn());
+      };
+    }, []);
+
+    // A pending save must not be lost to the panel closing or the window
+    // reloading. `flush` on unmount covers the first; `beforeunload` the second.
+    useEffect(() => {
+      const save = () => {
+        if (saveTimer.current === null) return;
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        const id = attachedId.current;
+        if (id) flush(id, "mine");
+      };
+      window.addEventListener("beforeunload", save);
+      return () => {
+        window.removeEventListener("beforeunload", save);
+        save();
+      };
+    }, [flush]);
+
+    const handleEnhance = async () => {
+      const id = meetingId;
+      // The notes on screen must already belong to this meeting. Enhancing
+      // before the load effect has caught up would push the previous meeting's
+      // text into this one.
+      if (!id || attachedId.current !== id) return;
+      // Whatever is in the box has to be on disk before the model reads it,
+      // otherwise it enhances the notes as they were 600ms ago.
+      if (saveTimer.current !== null) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const pending = await commands.setMeetingNotes(id, draft.current.mine);
+      if (pending.status === "error") {
+        setError(pending.error);
+        return;
+      }
+
+      setError(null);
+      setEnhancing(true);
+      const result = await commands.enhanceMeetingNotes(id);
+      setEnhancing(false);
       if (result.status === "error") {
         setError(result.error);
         return;
       }
-      setMine(result.data.notes ?? "");
-      setEnhanced(result.data.enhanced);
-      setTab(result.data.enhanced ? "enhanced" : "mine");
-    });
-
-    return () => {
-      active = false;
+      setEnhanced(result.data);
+      setTab("enhanced");
     };
-  }, [meetingId]);
 
-  // An enhancement started from the library lands here too — same row, two
-  // windows.
-  useEffect(() => {
-    const unlisten = listen<{ meetingId: string; body: string }>(
-      "meeting-notes-enhanced",
-      (event) => {
-        if (event.payload.meetingId !== attachedId.current) return;
-        setEnhanced(event.payload.body);
-        setTab("enhanced");
-      },
-    );
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, []);
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        if (canEnhance) void handleEnhance();
+        return;
+      }
+      const field = event.currentTarget;
+      // Bullets, numbering and indentation all live in `@/lib/notes`, so this
+      // notepad and the library's behave identically.
+      const next = noteKeyEdit(event, field);
+      if (!next) return;
 
-  // A pending save must not be lost to the panel closing or the window
-  // reloading. `flush` on unmount covers the first; `beforeunload` the second.
-  useEffect(() => {
-    const save = () => {
-      if (saveTimer.current === null) return;
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-      const id = attachedId.current;
-      if (id) flush(id, "mine");
-    };
-    window.addEventListener("beforeunload", save);
-    return () => {
-      window.removeEventListener("beforeunload", save);
-      save();
-    };
-  }, [flush]);
-
-  const handleEnhance = async () => {
-    const id = meetingId;
-    // The notes on screen must already belong to this meeting. Enhancing
-    // before the load effect has caught up would push the previous meeting's
-    // text into this one.
-    if (!id || attachedId.current !== id) return;
-    // Whatever is in the box has to be on disk before the model reads it,
-    // otherwise it enhances the notes as they were 600ms ago.
-    if (saveTimer.current !== null) {
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    const pending = await commands.setMeetingNotes(id, draft.current.mine);
-    if (pending.status === "error") {
-      setError(pending.error);
-      return;
-    }
-
-    setError(null);
-    setEnhancing(true);
-    const result = await commands.enhanceMeetingNotes(id);
-    setEnhancing(false);
-    if (result.status === "error") {
-      setError(result.error);
-      return;
-    }
-    setEnhanced(result.data);
-    setTab("enhanced");
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
-      if (canEnhance) void handleEnhance();
-      return;
-    }
-    const field = event.currentTarget;
-    // Bullets, numbering and indentation all live in `@/lib/notes`, so this
-    // notepad and the library's behave identically.
-    const next = noteKeyEdit(event, field);
-    if (!next) return;
+      if (tab === "enhanced") setEnhanced(next.value);
+      else setMine(next.value);
+      scheduleSave(tab);
+      // React re-renders before the caret can be placed, so this waits a frame.
+      requestAnimationFrame(() => {
+        field.setSelectionRange(next.caret, next.caret);
+      });
+    };
 
-    event.preventDefault();
-    if (tab === "enhanced") setEnhanced(next.value);
-    else setMine(next.value);
-    scheduleSave(tab);
-    // React re-renders before the caret can be placed, so this waits a frame.
-    requestAnimationFrame(() => {
-      field.setSelectionRange(next.caret, next.caret);
-    });
-  };
+    const value = tab === "enhanced" ? (enhanced ?? "") : mine;
+    const canEnhance =
+      meetingId !== null && hasTranscript && !capturing && !enhancing;
 
-  const value = tab === "enhanced" ? (enhanced ?? "") : mine;
-  const canEnhance =
-    meetingId !== null && hasTranscript && !capturing && !enhancing;
+    // The moment to suggest enhancement — but as *emphasis on the button that
+    // already does it*, not as a second control.
+    //
+    // This used to be a card: body copy, an "Enhance my notes" button and a "Not
+    // now" button, stacked between the notepad and the panel's own footer. At the
+    // end of a meeting that put five buttons into the bottom hundred pixels, and
+    // if the notepad was collapsed or the divider dragged low it read as a heap
+    // of controls piled on each other. It was also redundant — the header has had
+    // an Enhance button the whole time, doing exactly the same thing.
+    //
+    // So the card is gone and the existing button simply becomes prominent: a
+    // filled pill that says what it will do. Nothing new appears, nothing needs
+    // dismissing, and the layout is identical whether the notepad is open or
+    // collapsed.
+    const offering =
+      finished && hasTranscript && enhanced === null && !enhancing;
 
-  // The moment to suggest enhancement — but as *emphasis on the button that
-  // already does it*, not as a second control.
-  //
-  // This used to be a card: body copy, an "Enhance my notes" button and a "Not
-  // now" button, stacked between the notepad and the panel's own footer. At the
-  // end of a meeting that put five buttons into the bottom hundred pixels, and
-  // if the notepad was collapsed or the divider dragged low it read as a heap
-  // of controls piled on each other. It was also redundant — the header has had
-  // an Enhance button the whole time, doing exactly the same thing.
-  //
-  // So the card is gone and the existing button simply becomes prominent: a
-  // filled pill that says what it will do. Nothing new appears, nothing needs
-  // dismissing, and the layout is identical whether the notepad is open or
-  // collapsed.
-  const offering = finished && hasTranscript && enhanced === null && !enhancing;
+    const placeholder = useMemo(() => {
+      if (meetingId === null) return t("meeting.notes.placeholderIdle");
+      return capturing
+        ? t("meeting.notes.placeholderLive")
+        : t("meeting.notes.placeholder");
+    }, [meetingId, capturing, t]);
 
-  const placeholder = useMemo(() => {
-    if (meetingId === null) return t("meeting.notes.placeholderIdle");
-    return capturing
-      ? t("meeting.notes.placeholderLive")
-      : t("meeting.notes.placeholder");
-  }, [meetingId, capturing, t]);
-
-  return (
-    // `overflow-hidden` is a guarantee, not a tidy-up. The pane's height is a
-    // share of the split, so a user who has dragged the divider most of the way
-    // down leaves it shorter than its own contents — and without this they
-    // simply carried on painting, straight over the button row below.
-    <section
-      style={collapsed ? undefined : style}
-      className={`flex min-h-0 flex-col overflow-hidden bg-surface-2/30 ${
-        collapsed ? "flex-none border-t border-hairline" : ""
-      }`}
-      aria-label={t("meeting.notes.heading")}
-    >
-      <div className="flex h-7 shrink-0 items-center gap-1.5 px-2.5">
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          title={
-            collapsed ? t("meeting.notes.expand") : t("meeting.notes.collapse")
-          }
-          aria-expanded={!collapsed}
-          className="flex items-center gap-1 rounded p-0.5 text-[10px] font-semibold uppercase tracking-[0.07em] text-text-subtle transition-colors duration-150 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-        >
-          {collapsed ? (
-            <ChevronUp className="h-3 w-3" aria-hidden />
-          ) : (
-            <ChevronDown className="h-3 w-3" aria-hidden />
-          )}
-          {t("meeting.notes.heading")}
-        </button>
-
+    // The notepad's controls, in the panel's tab bar. Shown whenever the
+    // notepad is the tab — folded or not — so Enhance is one click away at the
+    // end of a meeting even with the pane collapsed.
+    const toolbar = (
+      <>
         {/* The two versions. Only ever shown once both exist — a single-tab
-            tab bar is chrome that explains nothing. */}
+          tab bar is chrome that explains nothing. */}
         {enhanced !== null && (
-          <div className="ml-1 flex items-center gap-0.5 rounded-md bg-fill-2 p-[2px]">
+          <div className="flex shrink-0 items-center gap-0.5 rounded-md bg-fill-2 p-[2px]">
             {(["mine", "enhanced"] as const).map((option) => (
               <button
                 key={option}
@@ -291,7 +309,7 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
                 onClick={() => setTab(option)}
                 className={`rounded px-1.5 py-[1px] text-[10px] font-medium transition-colors duration-150 ${
                   tab === option
-                    ? "bg-surface-1 text-text"
+                    ? "bg-surface-1 text-text shadow-sm"
                     : "text-text-subtle hover:text-text"
                 }`}
               >
@@ -305,10 +323,8 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
           </div>
         )}
 
-        <span className="flex-1" />
-
         {/* Quiet at rest, filled at the end of a meeting — see `offering`.
-            One control, two weights, rather than two controls. */}
+          One control, two weights, rather than two controls. */}
         <button
           type="button"
           onClick={() => void handleEnhance()}
@@ -338,10 +354,23 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
                 ? t("meeting.notes.reEnhance")
                 : t("meeting.notes.enhance")}
         </button>
-      </div>
+      </>
+    );
 
-      {!collapsed && (
-        <>
+    return (
+      <>
+        {visible && headerSlot && createPortal(toolbar, headerSlot)}
+
+        {/* `overflow-hidden` is a guarantee, not a tidy-up. The pane's height is
+          a share of the split, so a user who has dragged the divider most of
+          the way down leaves it shorter than its own contents — and without
+          this they simply carried on painting, straight over what is below. */}
+        <div
+          className={`min-h-0 flex-1 flex-col overflow-hidden ${
+            visible && expanded ? "flex" : "hidden"
+          }`}
+          aria-label={t("meeting.notes.heading")}
+        >
           <textarea
             value={value}
             onChange={(event) => {
@@ -361,7 +390,7 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             spellCheck
-            className="min-h-0 flex-1 resize-none bg-transparent px-3 pb-2.5 text-[13px] leading-[1.55] text-text outline-none placeholder:text-text-faint"
+            className="min-h-0 flex-1 resize-none bg-transparent px-3 pb-2.5 pt-1 text-[13px] leading-[1.6] text-text outline-none placeholder:text-text-faint"
           />
 
           {error && (
@@ -369,10 +398,12 @@ export const NotesPane: React.FC<NotesPaneProps> = ({
               {error}
             </p>
           )}
-        </>
-      )}
-    </section>
-  );
-};
+        </div>
+      </>
+    );
+  },
+);
+
+NotesPane.displayName = "NotesPane";
 
 export default NotesPane;

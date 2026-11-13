@@ -75,7 +75,7 @@ Backend:
 
 - `license::ai_status()` + `get_ai_status` command → `GET /ai/status`. `LicenseState.tier` exposes the token's tier, so every UI gate is offline and instant.
 - **`max_gateway.rs`** — the one new module. Parses the gateway's `error.code` out of `llm_client`'s error strings, remembers `fair_use_exceeded` for the current UTC month, and wraps all four `llm_client` entry points with the BYO overflow retry. Pass-through for every other provider.
-- Every hosted-AI call site now goes through those wrappers: refinement (streaming), voice edit, AI metadata, meeting refine + summarise, screenshot Q&A. `test_post_process_connection` deliberately does **not** — a diagnostic that silently succeeds via the fallback would report a broken gateway as healthy.
+- Every hosted-AI call site now goes through those wrappers: refinement (streaming), voice edit, AI metadata, meeting refine + summarise, meeting titles (`ghostly-fast`), meeting Ask (streaming, `ghostly-balanced`), screenshot Q&A. `test_post_process_connection` deliberately does **not** — a diagnostic that silently succeeds via the fallback would report a broken gateway as healthy.
 - `post-process-failed` gained a `code` field, set only for gateway rejections.
 - `sync_max_provider_key` now also **deletes the keychain entry** on lapse and selects the Max provider **only on the transition** into entitlement.
 

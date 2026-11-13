@@ -464,6 +464,52 @@ where
     .await
 }
 
+/// [`send_chat_completion_stream`] with a caller-chosen request ceiling. See
+/// [`crate::llm_client::send_chat_completion_stream_with_timeout`].
+#[allow(clippy::too_many_arguments)]
+pub async fn send_chat_completion_stream_with_timeout<F>(
+    settings: &AppSettings,
+    target: Target,
+    user_content: String,
+    system_prompt: Option<String>,
+    timeout: std::time::Duration,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    on_delta: F,
+) -> Result<String, String>
+where
+    F: FnMut(&str) + Clone,
+{
+    let target = effective_target(settings, target);
+    let first = crate::llm_client::send_chat_completion_stream_with_timeout(
+        &target.provider,
+        target.api_key.clone(),
+        &target.model,
+        user_content.clone(),
+        system_prompt.clone(),
+        timeout,
+        std::sync::Arc::clone(&cancel),
+        on_delta.clone(),
+    )
+    .await;
+
+    let Err(err) = &first else { return first };
+    let Some(fallback) = retry_target(settings, &target, err) else {
+        return first;
+    };
+
+    crate::llm_client::send_chat_completion_stream_with_timeout(
+        &fallback.provider,
+        fallback.api_key,
+        &fallback.model,
+        user_content,
+        system_prompt,
+        timeout,
+        cancel,
+        on_delta,
+    )
+    .await
+}
+
 /// A short, user-facing explanation for a gateway failure.
 ///
 /// Returned alongside the code so the frontend can show a localized string but

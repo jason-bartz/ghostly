@@ -35,7 +35,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::audio_toolkit::vad::{SileroVad, SmoothedVad};
 use crate::managers::audio::{AudioRecordingManager, MicrophoneMode, RAW_FRAME_LISTENER_MEETING};
 use crate::managers::transcription::TranscriptionManager;
-use crate::settings::{get_settings, MeetingSettings};
+use crate::settings::{get_settings, MeetingSettings, MeetingSummaryBackend};
 
 use super::dedup::CrossLaneDeduper;
 use super::lane::{CapturedSegment, LaneSegmenter, SegmenterConfig};
@@ -43,7 +43,7 @@ use super::speakers::SpeakerRegistry;
 use super::store::MeetingStore;
 use super::types::{
     DetectionSource, LabelSource, Lane, MeetingSegmentEvent, MeetingStatus, MeetingStatusEvent,
-    NewSegment,
+    NewSegment, TitleSource,
 };
 
 /// Bound on the queue between segmenters and the transcription worker. Each
@@ -54,6 +54,12 @@ const JOB_QUEUE_CAPACITY: usize = 64;
 /// How often the silence watchdog checks in. The threshold it enforces is
 /// measured in minutes, so this only bounds how late an auto-end can be.
 const SILENCE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+
+/// How often a live meeting checks whether enough has been said to name it.
+/// Naming is not urgent — it is the difference between the title appearing at
+/// minute three or a few seconds after — so this stays well clear of the
+/// activity ticker's cadence.
+const LIVE_TITLE_POLL_INTERVAL: Duration = Duration::from_secs(20);
 
 /// How often the live-activity ticker samples the lanes.
 ///
@@ -123,6 +129,11 @@ enum Job {
 struct ActiveSession {
     meeting_id: String,
     title: Option<String>,
+    /// Who wrote `title`. Mirrors the row, so a status push never presents an
+    /// AI title as the user's or the other way round.
+    title_source: TitleSource,
+    /// See [`super::types::Meeting::platform`].
+    platform: Option<String>,
     started_at: i64,
     /// How this capture began. Drives whether auto-stop may end it.
     detection_source: DetectionSource,
@@ -265,6 +276,8 @@ impl MeetingManager {
                 draining,
                 meeting_id: Some(session.meeting_id.clone()),
                 title: session.title.clone(),
+                title_source: session.title_source,
+                platform: session.platform.clone(),
                 started_at: Some(session.started_at),
                 system_audio_active: session.system_audio_active,
                 app_display_name: session.app_display_name.clone(),
@@ -331,7 +344,20 @@ impl MeetingManager {
                 app_display_name.as_deref(),
             ))
         });
-        let result = self.start_inner(detection_source, app_bundle_id, app_display_name, title);
+        // Stored rather than re-derived later: for a browser call the platform
+        // only exists in the tab's URL, which is gone once the call is.
+        let platform = (!super::title::is_ghostly(app_bundle_id.as_deref()))
+            .then(|| {
+                super::platform::canonical(app_bundle_id.as_deref(), app_display_name.as_deref())
+            })
+            .flatten();
+        let result = self.start_inner(
+            detection_source,
+            app_bundle_id,
+            app_display_name,
+            platform,
+            title,
+        );
         if let Err(reason) = &result {
             let _ = self.app.emit("meeting-start-failed", reason.clone());
         }
@@ -343,6 +369,7 @@ impl MeetingManager {
         detection_source: DetectionSource,
         app_bundle_id: Option<String>,
         app_display_name: Option<String>,
+        platform: Option<String>,
         title: Option<String>,
     ) -> Result<String, String> {
         let _guard = self.transition.lock().unwrap();
@@ -410,6 +437,7 @@ impl MeetingManager {
                 started_at,
                 app_bundle_id.as_deref(),
                 app_display_name.as_deref(),
+                platform.as_deref(),
                 detection_source,
                 false,
             )
@@ -602,6 +630,8 @@ impl MeetingManager {
         *self.active.lock().unwrap() = Some(ActiveSession {
             meeting_id: meeting_id.clone(),
             title,
+            title_source: TitleSource::Default,
+            platform,
             started_at,
             detection_source,
             app_bundle_id,
@@ -741,6 +771,69 @@ impl MeetingManager {
                     .await
                     {
                         debug!("Meeting: rolling summary skipped: {e}");
+                    }
+                }
+            });
+        }
+
+        // Live naming. The placeholder says which app and which day, which is
+        // the same for every call that day; once enough has been said, the
+        // meeting is named after what it is about — and named again when the
+        // conversation has settled into its subject, since the first few
+        // minutes so often belong to something else. The wrap-up names it a
+        // final time when capture ends (see `stop`).
+        //
+        // Polled rather than driven by segment events: this needs a character
+        // count from the store every so often, not a wakeup per utterance.
+        if meeting_config.summary_backend.resolve(&settings) != MeetingSummaryBackend::Extractive {
+            let app = self.app.clone();
+            let store = self.store.clone();
+            let capturing = Arc::clone(&self.capturing);
+            let paused = Arc::clone(&self.paused);
+            let generation = Arc::clone(&self.generation);
+            let my_generation = self.generation.load(Ordering::SeqCst);
+            let meeting_id_for_title = meeting_id.clone();
+
+            tauri::async_runtime::spawn(async move {
+                // Character counts at which to (re)draft: the first naming,
+                // then the correction.
+                let mut thresholds = vec![
+                    super::title::LIVE_TITLE_MIN_CHARS,
+                    super::title::LIVE_TITLE_REFRESH_CHARS,
+                ]
+                .into_iter();
+                let mut next = thresholds.next();
+                let mut failures = 0;
+                while let Some(threshold) = next {
+                    tokio::time::sleep(LIVE_TITLE_POLL_INTERVAL).await;
+                    if !capturing.load(Ordering::SeqCst)
+                        || generation.load(Ordering::SeqCst) != my_generation
+                    {
+                        return;
+                    }
+                    if paused.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    let said = store.transcript_chars(&meeting_id_for_title).unwrap_or(0);
+                    if said < threshold {
+                        continue;
+                    }
+                    match super::title::generate(&app, &store, &meeting_id_for_title, None, false)
+                        .await
+                    {
+                        // Named — or the user named it, which ends the job.
+                        Ok(Some(_)) => next = thresholds.next(),
+                        Ok(None) => return,
+                        Err(e) => {
+                            debug!("Meeting: live title skipped: {e}");
+                            failures += 1;
+                            // A provider that is down now is likely down for
+                            // the rest of the call. Stop asking; the wrap-up
+                            // will try once more.
+                            if failures >= 3 {
+                                return;
+                            }
+                        }
                     }
                 }
             });
@@ -935,13 +1028,33 @@ impl MeetingManager {
                                 "meeting-final-summary",
                                 super::types::MeetingSummaryEvent {
                                     meeting_id: summary_id.clone(),
-                                    body,
+                                    body: body.clone(),
                                 },
                             );
+                            // The wrap-up is the whole meeting, distilled — the
+                            // best thing there will ever be to name it from.
+                            if let Err(e) = super::title::generate(
+                                &app,
+                                &store,
+                                &summary_id,
+                                Some(&body),
+                                false,
+                            )
+                            .await
+                            {
+                                debug!("Meeting: final title skipped: {e}");
+                            }
                         }
                         Err(e) => {
                             debug!("Meeting: final summary skipped: {e}");
                             let _ = app.emit("meeting-final-summary-failed", e);
+                            // No wrap-up to work from, but the transcript is
+                            // still there and may never have been named.
+                            if let Err(e) =
+                                super::title::generate(&app, &store, &summary_id, None, false).await
+                            {
+                                debug!("Meeting: final title skipped: {e}");
+                            }
                         }
                     }
                 });
@@ -1005,11 +1118,19 @@ impl MeetingManager {
     ///
     /// Returns false when `meeting_id` is not the meeting being captured, which
     /// is the normal case for renames done from the library.
-    pub fn rename_active(&self, meeting_id: &str, title: Option<String>) -> bool {
+    pub fn rename_active(
+        &self,
+        meeting_id: &str,
+        title: Option<String>,
+        source: TitleSource,
+    ) -> bool {
         {
             let mut guard = self.active.lock().unwrap();
             match guard.as_mut() {
-                Some(session) if session.meeting_id == meeting_id => session.title = title,
+                Some(session) if session.meeting_id == meeting_id => {
+                    session.title = title;
+                    session.title_source = source;
+                }
                 _ => return false,
             }
         }

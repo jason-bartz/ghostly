@@ -133,11 +133,46 @@ impl DetectionSource {
     }
 }
 
+/// Who gave a meeting its current name.
+///
+/// The whole contract of AI naming rests on this: Ghostly may rename a meeting
+/// it named itself — the dated placeholder, or an earlier AI title it has since
+/// improved on — and must never touch one the user typed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TitleSource {
+    /// The `"{platform} meeting - MM/DD/YY"` placeholder.
+    #[default]
+    Default,
+    /// Written by a model from what was said.
+    Ai,
+    /// Typed by the user. Final.
+    User,
+}
+
+impl TitleSource {
+    /// Written as SQL literals where it is stored, so that the "never replace
+    /// the user's name" check lives in one `WHERE` clause; read back here.
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "ai" => TitleSource::Ai,
+            "user" => TitleSource::User,
+            _ => TitleSource::Default,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Meeting {
     pub id: String,
     pub title: Option<String>,
+    /// See [`TitleSource`].
+    pub title_source: TitleSource,
+    /// The service the call was held on — "Zoom", "Google Meet" — rather than
+    /// the program that captured it, which for a browser call is just the
+    /// browser. Drives the logo beside the meeting everywhere it is listed.
+    pub platform: Option<String>,
     /// Unix seconds.
     pub started_at: i64,
     pub ended_at: Option<i64>,
@@ -274,6 +309,10 @@ pub struct MeetingStatus {
     pub active: bool,
     pub meeting_id: Option<String>,
     pub title: Option<String>,
+    /// Whether `title` is the placeholder, an AI title or the user's own.
+    pub title_source: TitleSource,
+    /// See [`Meeting::platform`].
+    pub platform: Option<String>,
     pub started_at: Option<i64>,
     /// True when the far-side lane is actually running. False means mic-only,
     /// which the panel surfaces explicitly rather than silently degrading.
@@ -301,6 +340,8 @@ impl Default for MeetingStatus {
             active: false,
             meeting_id: None,
             title: None,
+            title_source: TitleSource::Default,
+            platform: None,
             started_at: None,
             system_audio_active: false,
             app_display_name: None,
@@ -328,6 +369,8 @@ pub struct MeetingSegmentEvent {
 pub struct MeetingDetectedEvent {
     pub bundle_id: String,
     pub display_name: String,
+    /// The service the call is on, which for a browser is not `display_name`.
+    pub platform: Option<String>,
     /// Seconds remaining before capture starts automatically. `None` means the
     /// user must confirm explicitly.
     pub countdown_secs: Option<u32>,
@@ -368,4 +411,169 @@ pub struct MeetingSegmentRefinedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct MeetingStatusEvent {
     pub status: MeetingStatus,
+}
+
+/// A meeting was renamed by Ghostly.
+///
+/// Both windows listen: the panel's header and the library row change name
+/// together, whichever of them asked.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingTitleEvent {
+    pub meeting_id: String,
+    pub title: String,
+    pub source: TitleSource,
+}
+
+// ---- Ask -----------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingChatRole {
+    User,
+    Assistant,
+}
+
+impl MeetingChatRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MeetingChatRole::User => "user",
+            MeetingChatRole::Assistant => "assistant",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "assistant" => MeetingChatRole::Assistant,
+            _ => MeetingChatRole::User,
+        }
+    }
+}
+
+/// The one-tap questions in the Ask tab.
+///
+/// Each is a carefully worded instruction on the backend and a short label in
+/// the UI. The label is what the thread shows as the user's turn — "Action
+/// items" — while the model is sent the full brief behind it, so the thread
+/// reads like a conversation instead of a wall of prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingChatPreset {
+    /// What happened in the last few minutes, and how to rejoin.
+    CatchUp,
+    /// The meeting so far, or the whole meeting once it has ended.
+    Summary,
+    /// Owner, task, due date.
+    ActionItems,
+    /// Questions worth asking next.
+    SuggestQuestion,
+    /// What the user should raise next, from their notes and open threads.
+    TalkingPoints,
+    /// How the other side seems to feel, with the evidence.
+    Sentiment,
+    /// Decided versus still open.
+    Decisions,
+    /// A ready-to-send follow-up email.
+    FollowUpEmail,
+}
+
+impl MeetingChatPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MeetingChatPreset::CatchUp => "catch_up",
+            MeetingChatPreset::Summary => "summary",
+            MeetingChatPreset::ActionItems => "action_items",
+            MeetingChatPreset::SuggestQuestion => "suggest_question",
+            MeetingChatPreset::TalkingPoints => "talking_points",
+            MeetingChatPreset::Sentiment => "sentiment",
+            MeetingChatPreset::Decisions => "decisions",
+            MeetingChatPreset::FollowUpEmail => "follow_up_email",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        Some(match value {
+            "catch_up" => MeetingChatPreset::CatchUp,
+            "summary" => MeetingChatPreset::Summary,
+            "action_items" => MeetingChatPreset::ActionItems,
+            "suggest_question" => MeetingChatPreset::SuggestQuestion,
+            "talking_points" => MeetingChatPreset::TalkingPoints,
+            "sentiment" => MeetingChatPreset::Sentiment,
+            "decisions" => MeetingChatPreset::Decisions,
+            "follow_up_email" => MeetingChatPreset::FollowUpEmail,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingChatMessage {
+    pub id: i64,
+    pub meeting_id: String,
+    pub role: MeetingChatRole,
+    pub body: String,
+    /// Set on a user turn that came from a one-tap preset.
+    pub preset: Option<MeetingChatPreset>,
+    /// Unix seconds.
+    pub created_at: i64,
+}
+
+/// One question and its answer, as stored.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingChatExchange {
+    pub question: MeetingChatMessage,
+    pub answer: MeetingChatMessage,
+    /// The user pressed stop. `answer` holds what had arrived by then.
+    pub stopped: bool,
+}
+
+/// Whether the Ask tab can answer, and where the answer would come from.
+///
+/// Asked before the user types, so a meeting with no usable model presents
+/// itself as set-up-needed rather than accepting a question and failing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingChatAvailability {
+    /// A cloud model: the full transcript fits, answers stream.
+    Cloud,
+    /// Apple Intelligence: private, but a small window of the meeting at once.
+    OnDevice,
+    /// Meeting AI is set to keyword summaries only.
+    Extractive,
+    /// A cloud provider is selected but has no key or model behind it.
+    NeedsSetup,
+    /// On-device was chosen and this Mac cannot run it.
+    OnDeviceUnavailable,
+}
+
+/// A question has been put to the meeting — from the panel, or from the
+/// catch-up shortcut while the panel was showing something else.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingChatStartedEvent {
+    pub meeting_id: String,
+    pub request_id: String,
+    pub question: MeetingChatMessage,
+}
+
+/// The next piece of a streaming answer.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingChatDeltaEvent {
+    pub meeting_id: String,
+    pub request_id: String,
+    pub delta: String,
+}
+
+/// An answer finished, stopped, or failed. Exactly one per started question.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingChatFinishedEvent {
+    pub meeting_id: String,
+    pub request_id: String,
+    /// The stored exchange, absent when the question failed.
+    pub exchange: Option<MeetingChatExchange>,
+    pub error: Option<String>,
 }

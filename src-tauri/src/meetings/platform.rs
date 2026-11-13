@@ -160,9 +160,131 @@ pub fn resolve(bundle_id: &str, display_name: &str) -> Option<String> {
     platform.map(str::to_string)
 }
 
+/// The platform a meeting should be filed under, for a meeting being started.
+///
+/// [`resolve`] answers with the app's own display name for a native client,
+/// and that name is whatever the process calls itself — Zoom's is `zoom.us`.
+/// The built-in list of conferencing apps carries the name people actually
+/// use, so a known bundle id is looked up there first. Browsers still go
+/// through the URL, and a browser with no recognisable call open is not a
+/// platform at all: "Dia" is where the meeting was, not what it was.
+pub fn canonical(bundle_id: Option<&str>, display_name: Option<&str>) -> Option<String> {
+    if let Some(bundle_id) = bundle_id {
+        if is_browser(bundle_id) {
+            return resolve(bundle_id, display_name.unwrap_or_default());
+        }
+        if let Some(name) = known_app_name(bundle_id) {
+            return Some(name.to_string());
+        }
+    }
+    display_name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+}
+
+/// The curated name of a built-in conferencing app, by bundle id.
+fn known_app_name(bundle_id: &str) -> Option<&'static str> {
+    crate::settings::MEETING_APP_BUNDLE_IDS
+        .iter()
+        .find(|(id, _)| id.eq_ignore_ascii_case(bundle_id))
+        .map(|(_, name)| *name)
+}
+
+/// The platform of a meeting recorded before platforms were stored.
+///
+/// Those rows only kept the platform as the prefix of their placeholder title,
+/// `"Google Meet meeting - 08/12/26"`. That is the best evidence when it is
+/// still there, because for a browser call it is the only record of which
+/// service the tab was on. Failing that — the meeting was renamed — a native
+/// app is still its own platform; a browser is not, and is left unlabelled
+/// rather than called "Chrome".
+pub fn infer_for_record(
+    bundle_id: Option<&str>,
+    display_name: Option<&str>,
+    title: Option<&str>,
+) -> Option<String> {
+    if let Some(prefix) = title.and_then(placeholder_platform) {
+        return Some(prefix.to_string());
+    }
+    match bundle_id {
+        Some(id) if is_browser(id) => None,
+        Some(id) => known_app_name(id)
+            .map(str::to_string)
+            .or_else(|| display_name.map(str::to_string)),
+        None => None,
+    }
+    .filter(|name| !name.trim().is_empty())
+}
+
+/// `"Google Meet"` out of `"Google Meet meeting - 08/12/26"`.
+fn placeholder_platform(title: &str) -> Option<&str> {
+    let (platform, date) = title.rsplit_once(" meeting - ")?;
+    let is_date = date.len() == 8
+        && date.chars().enumerate().all(|(i, c)| {
+            if i == 2 || i == 5 {
+                c == '/'
+            } else {
+                c.is_ascii_digit()
+            }
+        });
+    (is_date && !platform.trim().is_empty()).then_some(platform.trim())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_known_native_app_is_filed_under_the_name_people_use() {
+        // Zoom's own process name is `zoom.us`, which is what a manual start
+        // from the frontmost app would otherwise record.
+        assert_eq!(
+            canonical(Some("us.zoom.xos"), Some("zoom.us")),
+            Some("Zoom".to_string())
+        );
+        assert_eq!(
+            canonical(Some("com.example.unknown"), Some("Some App")),
+            Some("Some App".to_string())
+        );
+        assert_eq!(canonical(None, None), None);
+        assert_eq!(canonical(None, Some("  ")), None);
+    }
+
+    #[test]
+    fn older_meetings_recover_their_platform_from_the_placeholder_title() {
+        assert_eq!(
+            infer_for_record(
+                Some("com.google.Chrome"),
+                Some("Google Chrome"),
+                Some("Google Meet meeting - 08/12/26")
+            ),
+            Some("Google Meet".to_string())
+        );
+        // Renamed browser meeting: the browser is not a platform.
+        assert_eq!(
+            infer_for_record(
+                Some("com.google.Chrome"),
+                Some("Google Chrome"),
+                Some("Acme sync")
+            ),
+            None
+        );
+        // Renamed native meeting: the app still is.
+        assert_eq!(
+            infer_for_record(Some("us.zoom.xos"), Some("zoom.us"), Some("Acme sync")),
+            Some("Zoom".to_string())
+        );
+        // A hand-typed name that merely contains "meeting -" is not a placeholder.
+        assert_eq!(
+            infer_for_record(None, None, Some("Weekly meeting - planning")),
+            None
+        );
+        assert_eq!(
+            infer_for_record(None, None, Some("Meeting - 08/12/26")),
+            None
+        );
+    }
 
     #[test]
     fn recognises_browsers_including_channel_builds() {

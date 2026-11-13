@@ -112,10 +112,18 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
 }
 
 fn create_client(provider: &PostProcessProvider, api_key: &str) -> Result<reqwest::Client, String> {
+    create_client_with_timeout(provider, api_key, REQUEST_TIMEOUT)
+}
+
+fn create_client_with_timeout(
+    provider: &PostProcessProvider,
+    api_key: &str,
+    timeout: std::time::Duration,
+) -> Result<reqwest::Client, String> {
     let headers = build_headers(provider, api_key)?;
     reqwest::Client::builder()
         .default_headers(headers)
-        .timeout(REQUEST_TIMEOUT)
+        .timeout(timeout)
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
@@ -415,6 +423,41 @@ pub async fn send_chat_completion_stream<F>(
     user_content: String,
     system_prompt: Option<String>,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    on_delta: F,
+) -> Result<String, String>
+where
+    F: FnMut(&str),
+{
+    send_chat_completion_stream_with_timeout(
+        provider,
+        api_key,
+        model,
+        user_content,
+        system_prompt,
+        REQUEST_TIMEOUT,
+        cancel,
+        on_delta,
+    )
+    .await
+}
+
+/// [`send_chat_completion_stream`] with a caller-chosen ceiling on the whole
+/// request.
+///
+/// The default suits dictation cleanup, where an answer that has not finished
+/// in thirty seconds has failed. A chat answer over an hour of meeting is a
+/// different job: a long, legitimate reply streams for longer than that, and
+/// the ceiling would cut it off mid-sentence. `reqwest`'s timeout covers the
+/// body too, not just the connection, so it has to be raised per call.
+#[allow(clippy::too_many_arguments)]
+pub async fn send_chat_completion_stream_with_timeout<F>(
+    provider: &PostProcessProvider,
+    api_key: String,
+    model: &str,
+    user_content: String,
+    system_prompt: Option<String>,
+    timeout: std::time::Duration,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     mut on_delta: F,
 ) -> Result<String, String>
 where
@@ -428,7 +471,7 @@ where
 
     debug!("Opening streaming chat completion to: {}", url);
 
-    let client = create_client(provider, &api_key)?;
+    let client = create_client_with_timeout(provider, &api_key, timeout)?;
 
     // Rules go in the system turn, the dictated text in the user turn. Keeping
     // them separate leans on the provider's instruction hierarchy so a

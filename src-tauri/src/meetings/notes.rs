@@ -116,7 +116,15 @@ pub async fn enhance(
             truncate_from_start(&notes, NOTES_BUDGET),
             transcript,
         );
-        match summarizer::run_model(app, backend, NOTES_SYSTEM_PROMPT, &prompt).await {
+        match summarizer::run_model(
+            app,
+            backend,
+            NOTES_SYSTEM_PROMPT,
+            &prompt,
+            crate::max_gateway::Job::Balanced,
+        )
+        .await
+        {
             Ok(raw) => {
                 let cleaned = clean_notes(&raw);
                 // A model that answered with nothing but filler has effectively

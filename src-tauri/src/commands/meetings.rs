@@ -9,8 +9,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::meetings::detector::MeetingDetector;
 use crate::meetings::summarizer;
 use crate::meetings::types::{
-    DetectionSource, Meeting, MeetingNotes, MeetingSegment, MeetingSpeaker, MeetingStatus,
-    MeetingSummary, SummaryKind,
+    DetectionSource, Meeting, MeetingChatAvailability, MeetingChatExchange, MeetingChatMessage,
+    MeetingChatPreset, MeetingNotes, MeetingSegment, MeetingSpeaker, MeetingStatus, MeetingSummary,
+    MeetingTitleEvent, SummaryKind, TitleSource,
 };
 use crate::meetings::MeetingManager;
 use crate::settings::{get_settings, write_settings, MeetingSettings};
@@ -292,22 +293,68 @@ pub fn delete_meeting(app: AppHandle, meeting_id: String) -> Result<(), String> 
         .map_err(|e| e.to_string())
 }
 
+/// Renames a meeting by hand.
+///
+/// A typed name is final — no AI pass will replace it. Clearing the name is
+/// the opposite: the dated placeholder comes back and Ghostly is free to name
+/// the meeting from what was said again. Returns the title now in effect, so
+/// the caller can show the placeholder it did not type.
 #[tauri::command]
 #[specta::specta]
-pub fn set_meeting_title(app: AppHandle, meeting_id: String, title: String) -> Result<(), String> {
+pub fn set_meeting_title(
+    app: AppHandle,
+    meeting_id: String,
+    title: String,
+) -> Result<String, String> {
     let manager = manager(&app)?;
-    manager
-        .store()
-        .set_meeting_title(&meeting_id, &title)
-        .map_err(|e| e.to_string())?;
+    let store = manager.store();
+    let trimmed = title.trim();
+
+    let (title, source) = if trimmed.is_empty() {
+        let meeting = store
+            .get_meeting(&meeting_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "That meeting no longer exists.".to_string())?;
+        let placeholder = crate::meetings::title::placeholder_for(
+            meeting.platform.as_deref(),
+            meeting.started_at,
+        );
+        store
+            .reset_meeting_title(&meeting_id, &placeholder)
+            .map_err(|e| e.to_string())?;
+        (placeholder, TitleSource::Default)
+    } else {
+        store
+            .set_meeting_title(&meeting_id, trimmed)
+            .map_err(|e| e.to_string())?;
+        (trimmed.to_string(), TitleSource::User)
+    };
+
     // Keeps the live panel's header in step when the meeting being renamed is
     // the one currently being captured.
-    let trimmed = title.trim();
-    manager.rename_active(
-        &meeting_id,
-        (!trimmed.is_empty()).then(|| trimmed.to_string()),
+    manager.rename_active(&meeting_id, Some(title.clone()), source);
+    let _ = app.emit(
+        "meeting-title",
+        MeetingTitleEvent {
+            meeting_id,
+            title: title.clone(),
+            source,
+        },
     );
-    Ok(())
+    Ok(title)
+}
+
+/// Names a meeting from what was said, on request.
+///
+/// The one path allowed to replace a name the user typed: they asked for it.
+#[tauri::command]
+#[specta::specta]
+pub async fn generate_meeting_title(app: AppHandle, meeting_id: String) -> Result<String, String> {
+    let manager = manager(&app)?;
+    let store = manager.store().clone();
+    crate::meetings::title::generate(&app, &store, &meeting_id, None, true)
+        .await?
+        .ok_or_else(|| "The meeting couldn't be named.".to_string())
 }
 
 /// Corrects one transcript line by hand.
@@ -446,6 +493,60 @@ pub async fn summarize_meeting(app: AppHandle, meeting_id: String) -> Result<Str
         SummaryKind::Final,
     )
     .await
+}
+
+// ---- Ask -----------------------------------------------------------------
+
+/// Whether the Ask tab can answer, asked before the user types.
+#[tauri::command]
+#[specta::specta]
+pub fn get_meeting_chat_availability(app: AppHandle) -> MeetingChatAvailability {
+    crate::meetings::chat::availability(&app)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_meeting_chat(
+    app: AppHandle,
+    meeting_id: String,
+) -> Result<Vec<MeetingChatMessage>, String> {
+    manager(&app)?
+        .store()
+        .list_chat_messages(&meeting_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn clear_meeting_chat(app: AppHandle, meeting_id: String) -> Result<(), String> {
+    manager(&app)?
+        .store()
+        .clear_chat(&meeting_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Asks the meeting a question. The answer streams as `meeting-chat-delta`
+/// events tagged with `request_id`, and the stored exchange is returned (and
+/// emitted as `meeting-chat-finished`) when it completes.
+#[tauri::command]
+#[specta::specta]
+pub async fn ask_meeting(
+    app: AppHandle,
+    meeting_id: String,
+    request_id: String,
+    body: String,
+    preset: Option<MeetingChatPreset>,
+) -> Result<MeetingChatExchange, String> {
+    let manager = manager(&app)?;
+    let store = manager.store().clone();
+    crate::meetings::chat::ask(&app, &store, &meeting_id, &request_id, &body, preset).await
+}
+
+/// Stops a streaming answer. What has already arrived is kept.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_meeting_chat(request_id: String) {
+    crate::meetings::chat::cancel(&request_id);
 }
 
 // ---- Notes ---------------------------------------------------------------

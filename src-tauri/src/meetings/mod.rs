@@ -15,12 +15,14 @@
 //! | [`session`] | The capture engine |
 //! | [`refine`] | AI cleanup of live transcript blocks |
 //! | [`summarizer`] | "Catch me up" |
+//! | [`chat`] | The panel's Ask tab: questions answered from the meeting |
 //! | [`notes`] | The notepad, and the AI pass that finishes it |
 //! | [`detector`] | Auto-connect |
 //! | [`platform`] | Which service a call is on, including in a browser tab |
-//! | [`title`] | The default `"{platform} meeting - {MM/DD/YY}"` name |
+//! | [`title`] | The placeholder name, and the AI name that replaces it |
 //! | [`mentions`] | Direct-address alerts |
 
+pub mod chat;
 pub mod dedup;
 pub mod detector;
 pub mod lane;

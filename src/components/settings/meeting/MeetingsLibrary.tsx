@@ -19,10 +19,13 @@ import {
   Pencil,
   Plus,
   Search,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { listen } from "@tauri-apps/api/event";
+import { PlatformLogo } from "../../icons/PlatformLogo";
 import { DateRangePicker, type DateRange } from "../../ui/DateRangePicker";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { PageHeader } from "../../ui/PageHeader";
@@ -35,6 +38,7 @@ import type {
   MeetingSegment,
   MeetingSpeaker,
   MeetingSummaryRow,
+  TitleSource,
 } from "../../../bindings";
 
 /**
@@ -112,6 +116,8 @@ export const MeetingsLibrary: React.FC = () => {
   const [showTagFilter, setShowTagFilter] = useState(false);
   const [showRetention, setShowRetention] = useState(false);
   const [exporting, setExporting] = useState<"md" | "json" | null>(null);
+  // Meetings Ghostly is naming right now, on request.
+  const [namingIds, setNamingIds] = useState<Set<string>>(() => new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,22 +144,63 @@ export const MeetingsLibrary: React.FC = () => {
     });
   }, [rows]);
 
+  const applyTitle = useCallback(
+    (meetingId: string, title: string, titleSource: TitleSource) => {
+      setRows((previous) =>
+        previous.map((row) =>
+          row.meeting.id === meetingId
+            ? { ...row, meeting: { ...row.meeting, title, titleSource } }
+            : row,
+        ),
+      );
+    },
+    [],
+  );
+
+  // A meeting renamed anywhere — the live panel, Ghostly naming it as the
+  // meeting ends — is renamed here too, without a reload.
+  useEffect(() => {
+    const unlisten = listen<{
+      meetingId: string;
+      title: string;
+      source: TitleSource;
+    }>("meeting-title", (event) => {
+      const { meetingId, title, source } = event.payload;
+      applyTitle(meetingId, title, source);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [applyTitle]);
+
   const commitRename = async (meetingId: string) => {
     const title = titleDraft.trim();
     setRenamingId(null);
-    if (!title) return;
+    // An empty name is a request, not a mistake: it hands naming back to
+    // Ghostly, and the backend answers with the placeholder that stands in.
     const result = await commands.setMeetingTitle(meetingId, title);
     if (result.status === "error") {
       toast.error(result.error);
       return;
     }
-    setRows((previous) =>
-      previous.map((row) =>
-        row.meeting.id === meetingId
-          ? { ...row, meeting: { ...row.meeting, title } }
-          : row,
-      ),
-    );
+    applyTitle(meetingId, result.data, title ? "user" : "default");
+  };
+
+  const generateTitle = async (meetingId: string) => {
+    setRenamingId(null);
+    setNamingIds((previous) => new Set(previous).add(meetingId));
+    const result = await commands.generateMeetingTitle(meetingId);
+    setNamingIds((previous) => {
+      const next = new Set(previous);
+      next.delete(meetingId);
+      return next;
+    });
+    if (result.status === "error") {
+      toast.error(result.error);
+      return;
+    }
+    applyTitle(meetingId, result.data, "ai");
+    toast.success(t("meeting.library.titleGenerated", { title: result.data }));
   };
 
   const commitTag = async (meetingId: string) => {
@@ -344,9 +391,13 @@ export const MeetingsLibrary: React.FC = () => {
 
     const map = new Map<string, MeetingSummaryRow[]>();
     for (const row of visibleRows) {
+      // Grouped by the service the call was on — "Google Meet", not the
+      // browser it happened to run in.
       const key =
         viewMode === "byApp"
-          ? (row.meeting.appDisplayName ?? t("meeting.library.unknownApp"))
+          ? (row.meeting.platform ??
+            row.meeting.appDisplayName ??
+            t("meeting.library.unknownApp"))
           : new Date(row.meeting.startedAt * 1000).toLocaleDateString(
               undefined,
               { dateStyle: "full" },
@@ -602,7 +653,17 @@ export const MeetingsLibrary: React.FC = () => {
           {groups.map((group) => (
             <div key={group.label ?? "all"}>
               {group.label && (
-                <p className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-text-subtle">
+                <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-text-subtle">
+                  {viewMode === "byApp" && (
+                    <PlatformLogo
+                      platform={
+                        group.label === t("meeting.library.unknownApp")
+                          ? null
+                          : group.label
+                      }
+                      size={16}
+                    />
+                  )}
                   {group.label}
                   <span className="ml-1.5 text-text-faint">
                     {group.rows.length}
@@ -636,6 +697,19 @@ export const MeetingsLibrary: React.FC = () => {
                           ) : (
                             <ChevronRight width={16} height={16} />
                           )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void toggleExpanded(row.meeting.id)}
+                          className="shrink-0"
+                          tabIndex={-1}
+                          aria-hidden
+                        >
+                          <PlatformLogo
+                            platform={row.meeting.platform}
+                            size={28}
+                          />
                         </button>
 
                         <div className="min-w-0 flex-1">
@@ -676,6 +750,18 @@ export const MeetingsLibrary: React.FC = () => {
                               >
                                 <X width={14} height={14} />
                               </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void generateTitle(row.meeting.id)
+                                }
+                                disabled={Number(row.segmentCount) === 0}
+                                className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-accent-bright hover:bg-accent/10 disabled:opacity-40"
+                                title={t("meeting.library.generateTitleHint")}
+                              >
+                                <Sparkles width={12} height={12} />
+                                {t("meeting.library.generateTitle")}
+                              </button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
@@ -686,9 +772,26 @@ export const MeetingsLibrary: React.FC = () => {
                                 }
                                 className="min-w-0 truncate text-left text-[13px] font-medium"
                               >
-                                {row.meeting.title ??
-                                  t("meeting.library.untitled")}
+                                <span
+                                  className={
+                                    namingIds.has(row.meeting.id)
+                                      ? "shimmer-text"
+                                      : ""
+                                  }
+                                >
+                                  {row.meeting.title ??
+                                    t("meeting.library.untitled")}
+                                </span>
                               </button>
+                              {row.meeting.titleSource === "ai" &&
+                                !namingIds.has(row.meeting.id) && (
+                                  <Sparkles
+                                    width={11}
+                                    height={11}
+                                    className="shrink-0 text-accent"
+                                    aria-label={t("meeting.library.namedByAi")}
+                                  />
+                                )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -699,6 +802,23 @@ export const MeetingsLibrary: React.FC = () => {
                                 className="shrink-0 rounded p-0.5 text-text-faint opacity-0 transition-opacity hover:text-text group-hover:opacity-100"
                               >
                                 <Pencil width={13} height={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void generateTitle(row.meeting.id)
+                                }
+                                disabled={
+                                  namingIds.has(row.meeting.id) ||
+                                  Number(row.segmentCount) === 0
+                                }
+                                title={t("meeting.library.generateTitleHint")}
+                                aria-label={t(
+                                  "meeting.library.generateTitleHint",
+                                )}
+                                className="shrink-0 rounded p-0.5 text-text-faint opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 disabled:opacity-0"
+                              >
+                                <Sparkles width={13} height={13} />
                               </button>
                             </div>
                           )}
@@ -718,9 +838,11 @@ export const MeetingsLibrary: React.FC = () => {
                               {t("meeting.library.lineCount", {
                                 count: Number(row.segmentCount),
                               })}
-                              {row.meeting.appDisplayName
-                                ? ` · ${row.meeting.appDisplayName}`
-                                : ""}
+                              {row.meeting.platform
+                                ? ` · ${row.meeting.platform}`
+                                : row.meeting.appDisplayName
+                                  ? ` · ${row.meeting.appDisplayName}`
+                                  : ""}
                               {!row.meeting.capturedSystemAudio
                                 ? ` · ${t("meeting.library.micOnly")}`
                                 : ""}

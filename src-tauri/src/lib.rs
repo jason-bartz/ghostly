@@ -702,6 +702,12 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::meetings::get_meeting_speakers,
             commands::meetings::delete_meeting,
             commands::meetings::set_meeting_title,
+            commands::meetings::generate_meeting_title,
+            commands::meetings::get_meeting_chat_availability,
+            commands::meetings::get_meeting_chat,
+            commands::meetings::clear_meeting_chat,
+            commands::meetings::ask_meeting,
+            commands::meetings::cancel_meeting_chat,
             commands::meetings::set_meeting_segment_text,
             commands::meetings::export_meeting_transcript,
             commands::meetings::catch_me_up,
@@ -786,6 +792,10 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             meetings::types::MeetingDetectedEvent,
             meetings::types::MeetingMentionEvent,
             meetings::types::MeetingNotesEnhancedEvent,
+            meetings::types::MeetingTitleEvent,
+            meetings::types::MeetingChatStartedEvent,
+            meetings::types::MeetingChatDeltaEvent,
+            meetings::types::MeetingChatFinishedEvent,
         ])
 }
 

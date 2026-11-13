@@ -8,39 +8,69 @@ import React, {
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { Pencil } from "lucide-react";
+import {
+  ArrowDown,
+  BellRing,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Download,
+  Loader2,
+  NotebookPen,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { usePanelTheme } from "./usePanelTheme";
-import { NotesPane } from "./NotesPane";
+import { NotesPane, type NotesPaneHandle } from "./NotesPane";
+import { AskPane, type AskPaneHandle } from "./AskPane";
+import { RichText, stripCitations } from "./RichText";
 import { MiniPlayer } from "./MiniPlayer";
 import { TrafficLights } from "./TrafficLights";
 import { GhostlyMark } from "@/components/icons/GhostlyMark";
+import { PlatformLogo } from "@/components/icons/PlatformLogo";
 import { commands } from "@/bindings";
-import type { MeetingSegment, MeetingStatus } from "@/bindings";
-import { groupIntoBlocks } from "@/lib/meetingBlocks";
+import type { MeetingSegment, MeetingStatus, TitleSource } from "@/bindings";
+import { groupIntoBlocks, blockText } from "@/lib/meetingBlocks";
 
 /**
- * The floating live transcript, over the notepad.
+ * The floating meeting panel: live transcript above, a workspace below.
  *
  * Design notes:
  * - Two panes, split by a draggable divider: the transcript is what the meeting
- *   is saying, the notepad is what you make of it. The split is remembered
- *   because it is a working preference, not a per-meeting decision — some
- *   people watch the transcript, some barely look at it.
+ *   is saying, the workspace is what you do with it — the notepad, or Ask, a
+ *   conversation with the meeting itself. Ask shares the notepad's pane rather
+ *   than replacing the transcript, because the point is asking about what is
+ *   being said while it is still being said. The split and the last tab are
+ *   remembered: they are working preferences, not per-meeting decisions.
+ * - The meeting is introduced, not just timed. A header row carries the logo
+ *   of the platform the call is on and the meeting's name — written by Ghostly
+ *   from what is being discussed once there is enough to go on, and never over
+ *   a name the user typed. Clearing the name hands naming back to Ghostly.
+ * - Transport lives in the title bar: the clock, pause, end. It used to be a
+ *   footer of three pills, which cost a row of transcript for the whole
+ *   meeting and put "End meeting" a careless click from "Where were we?".
+ *   Catching up is now an Ask preset, alongside the other things people
+ *   actually want mid-call.
  * - Auto-scroll sticks to the bottom but releases the moment the user scrolls
  *   up. Yanking someone back to the live edge while they are reading is the
- *   single most annoying thing a live transcript can do. The one exception is a
- *   summary arriving: the user pressed a button and is waiting for it, so the
- *   panel scrolls it into view and then stops following the live edge.
+ *   single most annoying thing a live transcript can do. A "Live" pill offers
+ *   the way back instead. A summary arriving, or a citation being followed, are
+ *   the exceptions: the user asked for that, so the panel goes there.
  * - The transcript reads as paragraphs, not as a chat log. It used to attribute
  *   and time-stamp every utterance, but "You" and "Participant" were never more
- *   than which audio lane the segment arrived on — two people sharing a
- *   microphone were one speaker, and the user's own voice echoing back off the
- *   call was a second one. A label that is wrong that often is worse than no
- *   label, so the transcript now shows the speech and leaves the guessing out.
+ *   than which audio lane the segment arrived on. A label that is wrong that
+ *   often is worse than no label. (The AI still sees the lane, with that
+ *   caveat, because "who committed to what" is half of what people ask it.)
+ * - Selecting text in the transcript offers "Ask about this" — the shortest
+ *   path from "wait, what did she mean?" to an answer.
  * - The transcript is deliberately NOT cleared when capture stops. The panel
- *   stays open afterwards so the user can read it and export it; wiping it on
- *   stop would destroy exactly that workflow. It *is* cleared when the next
- *   meeting starts — see `meeting-starting`.
+ *   stays open afterwards so the user can read it, ask about it and export it.
+ *   It *is* cleared when the next meeting starts — see `meeting-starting`.
  * - Every control applies its effect locally before the command resolves.
  *   Ending a meeting joins a worker thread and pausing rebuilds the tray menu
  *   on the main thread, so waiting for the round trip made the buttons feel
@@ -57,21 +87,17 @@ import { groupIntoBlocks } from "@/lib/meetingBlocks";
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = (total % 60).toString().padStart(2, "0");
+  return hours > 0
+    ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`;
 }
 
 /** `h:mm:ss` past the hour, `m:ss` below it. */
 function formatDuration(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-  const paddedSecs = secs.toString().padStart(2, "0");
-  return hours > 0
-    ? `${hours}:${minutes.toString().padStart(2, "0")}:${paddedSecs}`
-    : `${minutes}:${paddedSecs}`;
+  return formatClock(seconds * 1000);
 }
 
 function clampSplit(value: number): number {
@@ -90,6 +116,7 @@ function suggestedFileName(title: string): string {
 interface DetectedPayload {
   bundleId: string;
   displayName: string;
+  platform: string | null;
   countdownSecs: number | null;
 }
 
@@ -102,6 +129,12 @@ interface RefinedPayload {
   meetingId: string;
   segmentId: number;
   text: string;
+}
+
+interface TitlePayload {
+  meetingId: string;
+  title: string;
+  source: TitleSource;
 }
 
 /**
@@ -151,6 +184,21 @@ const DEFAULT_SPLIT = 0.58;
 const MIN_SPLIT = 0.2;
 const MAX_SPLIT = 0.85;
 
+/** Which workspace tab was last open. A per-window convenience, so local. */
+const PANE_STORAGE_KEY = "ghostly:meeting-pane";
+type PaneTab = "notes" | "ask";
+
+function loadPaneTab(): PaneTab {
+  try {
+    return localStorage.getItem(PANE_STORAGE_KEY) === "ask" ? "ask" : "notes";
+  } catch {
+    return "notes";
+  }
+}
+
+/** How long a transcript card stays lit after a citation lands on it. */
+const CITE_FLASH_MS = 1800;
+
 /** An action applied locally while its command is still in flight. */
 type Pending = {
   paused?: boolean;
@@ -163,33 +211,33 @@ type Pending = {
 /**
  * The panel's buttons.
  *
- * Flat by design: no borders, no fills at rest, no shadows. A footer of three
- * outlined pills reads as three competing decisions. Exactly one control per
- * state carries a fill — the thing you most likely came to press — and the rest
- * are quiet text that only take a background under the cursor.
+ * Flat by design: no borders, no fills at rest, no shadows. Exactly one control
+ * per state carries a fill — the thing you most likely came to press — and the
+ * rest are quiet until the cursor finds them.
  *
- * Shared so every control lands on the same height, radius and press feedback.
+ * `shrink-0 whitespace-nowrap` is load-bearing, not tidiness: the panel
+ * resizes down to 240pt, and flex children shrink below their content by
+ * default — labels spilled out of their own padding and across their
+ * neighbours.
  */
 const PanelButton: React.FC<
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: "primary" | "ghost" | "danger";
+    variant?: "primary" | "ghost" | "danger" | "icon";
   }
 > = ({ variant = "ghost", className = "", ...props }) => {
-  // `shrink-0 whitespace-nowrap` is load-bearing, not tidiness. Flex children
-  // shrink below their content by default, and the panel resizes down to 240pt:
-  // the three-button finished state was being squeezed until each label spilled
-  // out of its own padding box and ran across its neighbour. The buttons now
-  // hold their width and the footer wraps instead.
   const base =
-    "shrink-0 select-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-medium " +
+    "inline-flex shrink-0 select-none items-center justify-center gap-1 whitespace-nowrap rounded-lg text-[11.5px] font-medium " +
     "transition-[background-color,color,opacity,transform] duration-150 " +
-    "active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 " +
+    "active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40 " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50";
   const variants = {
     primary:
-      "bg-accent text-canvas hover:bg-accent-bright active:bg-accent-deep",
-    ghost: "text-text-muted hover:bg-fill-2 hover:text-text active:bg-fill-3",
-    danger: "text-danger hover:bg-danger/10 active:bg-danger/15",
+      "h-[24px] px-2.5 bg-accent text-canvas hover:bg-accent-bright active:bg-accent-deep",
+    ghost:
+      "h-[24px] px-2.5 text-text-muted hover:bg-fill-2 hover:text-text active:bg-fill-3",
+    danger:
+      "h-[24px] px-2.5 bg-danger/12 text-danger hover:bg-danger/20 active:bg-danger/25",
+    icon: "h-[24px] w-[24px] text-text-muted hover:bg-fill-2 hover:text-text active:bg-fill-3",
   };
   return (
     <button
@@ -197,6 +245,76 @@ const PanelButton: React.FC<
       className={`${base} ${variants[variant]} ${className}`}
       {...props}
     />
+  );
+};
+
+/** The wrap-up card at the foot of a finished transcript. */
+const SummaryCard: React.FC<{
+  heading: string;
+  body: string;
+  onCite: (ms: number) => void;
+  onAddToNotes: (text: string) => void;
+  onDismiss: () => void;
+  innerRef: React.Ref<HTMLDivElement>;
+}> = ({ heading, body, onCite, onAddToNotes, onDismiss, innerRef }) => {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <div
+      ref={innerRef}
+      className="animate-rise mt-3 overflow-hidden rounded-[14px] bg-gradient-to-b from-accent/[0.10] to-accent/[0.04] ring-1 ring-accent/20"
+    >
+      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2.5">
+        <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
+        <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.07em] text-accent-bright">
+          {heading}
+        </span>
+        <button
+          type="button"
+          onClick={() =>
+            void navigator.clipboard
+              .writeText(stripCitations(body))
+              .then(() => setCopied(true))
+          }
+          title={t("meeting.ask.copy")}
+          aria-label={t("meeting.ask.copy")}
+          className="rounded-md p-1 text-text-subtle transition-colors duration-150 hover:bg-fill-2 hover:text-text"
+        >
+          {copied ? (
+            <Check className="h-3 w-3 text-success" />
+          ) : (
+            <Copy className="h-3 w-3" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => onAddToNotes(body)}
+          title={t("meeting.ask.addToNotes")}
+          aria-label={t("meeting.ask.addToNotes")}
+          className="rounded-md p-1 text-text-subtle transition-colors duration-150 hover:bg-fill-2 hover:text-text"
+        >
+          <NotebookPen className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          title={t("meeting.panel.dismiss")}
+          aria-label={t("meeting.panel.dismiss")}
+          className="rounded-md p-1 text-text-subtle transition-colors duration-150 hover:bg-fill-2 hover:text-text"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="px-3 pb-3">
+        <RichText text={body} onCite={onCite} className="text-[12.5px]" />
+      </div>
+    </div>
   );
 };
 
@@ -212,30 +330,39 @@ const MeetingPanel: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [mention, setMention] = useState<string | null>(null);
   const [detected, setDetected] = useState<DetectedPayload | null>(null);
+  // The countdown's starting value, so the bar can show how much is left.
+  const [countdownFrom, setCountdownFrom] = useState<number | null>(null);
   const [activity, setActivity] = useState<ActivityPayload>(IDLE_ACTIVITY);
-  const [summaryHeading, setSummaryHeading] = useState("catchUpHeading");
   const [autoEnded, setAutoEnded] = useState(false);
   const [pending, setPending] = useState<Pending>({});
 
   // Held separately from `status.title`, which reverts to the default snapshot
   // the moment capture stops — the panel would otherwise forget the meeting's
-  // name while still showing its transcript.
+  // name while still showing its transcript. Same for its platform.
   const [meetingTitle, setMeetingTitle] = useState<string | null>(null);
+  const [titleSource, setTitleSource] = useState<TitleSource>("default");
+  const [platform, setPlatform] = useState<string | null>(null);
+  // A name is being written for this meeting right now.
+  const [naming, setNaming] = useState(false);
+  // Bumped when Ghostly renames the meeting, to replay the reveal.
+  const [titleRevision, setTitleRevision] = useState(0);
   // `null` means "not editing"; the empty string is a legitimate draft.
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
   // The meeting the panel is showing. Not `status.meetingId`: that goes null
   // the moment capture stops, while the panel deliberately keeps the finished
-  // transcript on screen — and renaming it, exporting it or catching up on it
+  // transcript on screen — and renaming it, exporting it or asking about it
   // all still need an id. Cleared only when the next meeting begins.
   const [meetingId, setMeetingId] = useState<string | null>(null);
 
-  // Share of the panel's height given to the transcript. The notepad takes the
-  // rest. Loaded from settings on mount and written back when a drag ends —
+  // Share of the panel's height given to the transcript. The workspace takes
+  // the rest. Loaded from settings on mount and written back when a drag ends —
   // per-pixel writes during the drag would hammer the settings store.
   const [split, setSplit] = useState(DEFAULT_SPLIT);
   const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const [paneTab, setPaneTab] = useState<PaneTab>(loadPaneTab);
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
   // Shrunk to the mini player. The window's geometry is Rust's business — see
   // `meetings::panel` — so this is only which of the two faces to draw, and the
@@ -243,9 +370,24 @@ const MeetingPanel: React.FC = () => {
   // says so with `meeting-panel-minimized`.
   const [minimized, setMinimized] = useState(false);
 
+  // Scrolled away from the live edge — offers the way back.
+  const [detached, setDetached] = useState(false);
+  // The card a citation just landed on.
+  const [flashKey, setFlashKey] = useState<number | null>(null);
+  // "Ask about this", floating over a transcript selection.
+  const [selection, setSelection] = useState<{
+    text: string;
+    top: number;
+    left: number;
+  } | null>(null);
+
+  const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<NotesPaneHandle>(null);
+  const askRef = useRef<AskPaneHandle>(null);
+  const blockRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const stickToBottom = useRef(true);
   const draggingSplit = useRef(false);
   // Mirrors `meetingId` for the event handlers, which capture their closure
@@ -274,7 +416,12 @@ const MeetingPanel: React.FC = () => {
     setActivity(IDLE_ACTIVITY);
     setTitleDraft(null);
     setMeetingTitle(null);
+    setTitleSource("default");
+    setPlatform(null);
+    setNaming(false);
     setElapsed(0);
+    setSelection(null);
+    setDetached(false);
     stickToBottom.current = true;
   }, []);
 
@@ -284,6 +431,13 @@ const MeetingPanel: React.FC = () => {
     // next one's transcript written over it.
     if (meetingIdRef.current !== meetingId) return;
     if (segmentsResult.status === "ok") setSegments(segmentsResult.data);
+  }, []);
+
+  const adoptStatusIdentity = useCallback((next: MeetingStatus) => {
+    if (!next.meetingId) return;
+    setMeetingTitle(next.title);
+    setTitleSource(next.titleSource);
+    setPlatform(next.platform);
   }, []);
 
   useEffect(() => {
@@ -300,7 +454,7 @@ const MeetingPanel: React.FC = () => {
       setStatus(current);
       adoptMeeting(current.meetingId);
       if (current.meetingId) {
-        setMeetingTitle(current.title);
+        adoptStatusIdentity(current);
         void refreshTranscript(current.meetingId);
       }
     });
@@ -339,7 +493,7 @@ const MeetingPanel: React.FC = () => {
           clearTranscript();
           void refreshTranscript(next.meetingId);
         }
-        if (next.meetingId) setMeetingTitle(next.title);
+        adoptStatusIdentity(next);
       },
     );
 
@@ -397,15 +551,6 @@ const MeetingPanel: React.FC = () => {
       },
     );
 
-    const unlistenCatchUp = listen<SummaryPayload>(
-      "meeting-catch-up",
-      (event) => {
-        if (!active) return;
-        setSummaryHeading("catchUpHeading");
-        setSummary(event.payload.body);
-      },
-    );
-
     // Ending a meeting kicks off a wrap-up automatically.
     const unlistenSummarizing = listen("meeting-summarizing", () => {
       if (active) setSummarizing(true);
@@ -424,12 +569,29 @@ const MeetingPanel: React.FC = () => {
         ) {
           return;
         }
-        setSummaryHeading("finalSummaryHeading");
         setSummary(event.payload.body);
       },
     );
     const unlistenFinalFailed = listen("meeting-final-summary-failed", () => {
       if (active) setSummarizing(false);
+    });
+
+    // Ghostly named the meeting, or the user renamed it from the library.
+    const unlistenTitle = listen<TitlePayload>("meeting-title", (event) => {
+      if (!active) return;
+      const { meetingId: id, title, source } = event.payload;
+      if (id !== meetingIdRef.current) return;
+      setMeetingTitle(title);
+      setTitleSource(source);
+      if (source === "ai") setTitleRevision((n) => n + 1);
+    });
+    const unlistenTitlePending = listen<{
+      meetingId: string;
+      pending: boolean;
+    }>("meeting-title-pending", (event) => {
+      if (!active) return;
+      if (event.payload.meetingId !== meetingIdRef.current) return;
+      setNaming(event.payload.pending);
     });
 
     // Silence auto-end. Said out loud, because a meeting that ended without
@@ -441,13 +603,21 @@ const MeetingPanel: React.FC = () => {
     const unlistenDetected = listen<DetectedPayload>(
       "meeting-detected",
       (event) => {
-        if (active) setDetected(event.payload);
+        if (!active) return;
+        setDetected(event.payload);
+        setCountdownFrom((previous) =>
+          event.payload.countdownSecs === null
+            ? null
+            : Math.max(previous ?? 0, event.payload.countdownSecs),
+        );
       },
     );
 
     // The call ended before the user answered.
     const unlistenCleared = listen("meeting-detection-cleared", () => {
-      if (active) setDetected(null);
+      if (!active) return;
+      setDetected(null);
+      setCountdownFrom(null);
     });
 
     // The window changed shape. Usually because this panel asked it to, but not
@@ -469,20 +639,24 @@ const MeetingPanel: React.FC = () => {
       void unlistenActivity.then((fn) => fn());
       void unlistenRefined.then((fn) => fn());
       void unlistenMention.then((fn) => fn());
-      void unlistenCatchUp.then((fn) => fn());
       void unlistenSummarizing.then((fn) => fn());
       void unlistenFinal.then((fn) => fn());
       void unlistenFinalFailed.then((fn) => fn());
+      void unlistenTitle.then((fn) => fn());
+      void unlistenTitlePending.then((fn) => fn());
       void unlistenAutoEnded.then((fn) => fn());
       void unlistenDetected.then((fn) => fn());
       void unlistenCleared.then((fn) => fn());
       void unlistenMinimized.then((fn) => fn());
     };
-  }, [adoptMeeting, clearTranscript, refreshTranscript]);
+  }, [adoptMeeting, adoptStatusIdentity, clearTranscript, refreshTranscript]);
 
   // Capture starting resolves the prompt either way.
   useEffect(() => {
-    if (status?.active) setDetected(null);
+    if (status?.active) {
+      setDetected(null);
+      setCountdownFrom(null);
+    }
   }, [status?.active]);
 
   // The indicator appearing grows the content too, so it follows the live edge
@@ -493,10 +667,10 @@ const MeetingPanel: React.FC = () => {
     if (node) node.scrollTop = node.scrollHeight;
   }, [segments, activity]);
 
-  // A summary is the one thing worth interrupting the live edge for: the user
-  // pressed a button and is waiting for the answer, and it renders below a
-  // transcript they are usually scrolled away from — so without this it arrived
-  // off-screen and looked like nothing had happened.
+  // A summary is one of the few things worth interrupting the live edge for:
+  // the user is waiting for it, and it renders below a transcript they are
+  // usually scrolled away from — so without this it arrived off-screen and
+  // looked like nothing had happened.
   useEffect(() => {
     if (!summary) return;
     const scroller = scrollRef.current;
@@ -515,9 +689,23 @@ const MeetingPanel: React.FC = () => {
   // a line on a message the user has already read.
   useEffect(() => {
     if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 4000);
+    const timer = window.setTimeout(() => setNotice(null), 3200);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (flashKey === null) return;
+    const timer = window.setTimeout(() => setFlashKey(null), CITE_FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [flashKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANE_STORAGE_KEY, paneTab);
+    } catch {
+      // Storage can be unavailable; the tab simply isn't remembered.
+    }
+  }, [paneTab]);
 
   const active = (status?.active ?? false) && !pending.ending;
   const paused = pending.paused ?? status?.paused ?? false;
@@ -531,13 +719,9 @@ const MeetingPanel: React.FC = () => {
   // meeting, and this is exactly equivalent.
   const finished = !active && !pending.starting && meetingId !== null;
 
-  // The live edge. Someone talking outranks the queue: while a lane is open the
-  // indicator is named, and once everyone has stopped it becomes an unattributed
-  // "still transcribing" while the backlog clears.
-  //
-  // Gated on capture as well as the payload so a dropped final event — the app
-  // quitting mid-meeting, a panel reopened onto a stale state — cannot leave a
-  // transcript with dots pulsing under it forever.
+  // The live edge. Gated on capture as well as the payload so a dropped final
+  // event — the app quitting mid-meeting, a panel reopened onto a stale state —
+  // cannot leave a transcript with dots pulsing under it forever.
   const talking = activity.mic || activity.system;
   const showActivity =
     (active || draining) && (talking || activity.pending > 0);
@@ -562,14 +746,111 @@ const MeetingPanel: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [startedAt, active, paused, pausedMs]);
 
-  const handleCatchUp = async () => {
-    setSummarizing(true);
-    setError(null);
-    const result = await commands.catchMeUp(meetingId);
-    setSummarizing(false);
-    if (result.status === "ok") setSummary(result.data);
-    else setError(result.error);
+  // ---- Workspace -----------------------------------------------------------
+
+  const openPane = useCallback(
+    (tab: PaneTab) => {
+      setPaneTab(tab);
+      if (notesCollapsed) {
+        setNotesCollapsed(false);
+        void commands.setMeetingNotesLayout(split, false);
+      }
+    },
+    [notesCollapsed, split],
+  );
+
+  const handleAddToNotes = useCallback((text: string) => {
+    notesRef.current?.appendToNotes(text);
+  }, []);
+
+  // A citation: bring the transcript to the card that moment falls in, and
+  // light it. The clock in an answer is floored to the second, so the card
+  // wanted is the last one starting at or before the end of that second.
+  const handleCite = useCallback(
+    (ms: number) => {
+      const target = [...blocks]
+        .reverse()
+        .find((block) => block.startMs <= ms + 999);
+      const block = target ?? blocks[0];
+      if (!block) return;
+      const node = blockRefs.current.get(block.key);
+      const scroller = scrollRef.current;
+      if (!node || !scroller) return;
+      stickToBottom.current = false;
+      setDetached(true);
+      scroller.scrollTo({
+        top: Math.max(0, node.offsetTop - scroller.clientHeight / 3),
+        behavior: "smooth",
+      });
+      setFlashKey(block.key);
+    },
+    [blocks],
+  );
+
+  // ⌘K: straight to the question box, from anywhere in the panel.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openPane("ask");
+        askRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openPane]);
+
+  // ---- Transcript interactions ----------------------------------------------
+
+  const jumpToLive = () => {
+    const node = scrollRef.current;
+    if (!node) return;
+    stickToBottom.current = true;
+    setDetached(false);
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
   };
+
+  const handleTranscriptMouseUp = () => {
+    // Read after the browser has finished updating the selection.
+    requestAnimationFrame(() => {
+      const picked = window.getSelection();
+      const text = picked?.toString().trim() ?? "";
+      const scroller = scrollRef.current;
+      const root = rootRef.current;
+      if (
+        !picked ||
+        picked.rangeCount === 0 ||
+        text.length < 3 ||
+        !scroller ||
+        !root ||
+        !scroller.contains(picked.anchorNode)
+      ) {
+        setSelection(null);
+        return;
+      }
+      const rect = picked.getRangeAt(0).getBoundingClientRect();
+      const frame = root.getBoundingClientRect();
+      setSelection({
+        text,
+        top: Math.max(4, rect.top - frame.top - 34),
+        left: Math.min(
+          frame.width - 120,
+          Math.max(8, rect.left - frame.left + rect.width / 2 - 56),
+        ),
+      });
+    });
+  };
+
+  const askAboutSelection = () => {
+    if (!selection) return;
+    const text = selection.text;
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+    openPane("ask");
+    askRef.current?.askAbout(text);
+  };
+
+  // ---- Commands -------------------------------------------------------------
 
   const handleStartMeeting = async () => {
     setError(null);
@@ -593,7 +874,7 @@ const MeetingPanel: React.FC = () => {
       setError(result.error);
     }
     // The panel stays open on purpose: the wrap-up summary lands here, and the
-    // user still wants to read back, name speakers and export.
+    // user still wants to read back, ask about it and export.
   };
 
   const handleTogglePause = async () => {
@@ -612,7 +893,7 @@ const MeetingPanel: React.FC = () => {
 
     // The save dialog is a plugin call and can reject outright — a panel that
     // cannot present a sheet, a revoked permission. Unhandled, that is a silent
-    // dead button, which is the failure mode this whole session has been about.
+    // dead button.
     let path: string | null = null;
     try {
       path = await saveDialog({
@@ -641,12 +922,9 @@ const MeetingPanel: React.FC = () => {
     );
   };
 
-  /// Transcript, notes and summary onto the clipboard.
-  ///
-  /// Export writes a file, which is the right shape for keeping a meeting and
-  /// the wrong one for the far more common thing: pasting the wrap-up into the
-  /// thread you were about to send anyway. That needed a save dialog, a folder
-  /// and then a trip to Finder.
+  /// Transcript, notes and summary onto the clipboard — the far more common
+  /// thing than a file: pasting the wrap-up into the thread you were about to
+  /// send anyway.
   const handleCopy = async () => {
     if (!meetingId) return;
     setError(null);
@@ -670,7 +948,7 @@ const MeetingPanel: React.FC = () => {
     void commands.setMeetingNotesLayout(nextSplit, collapsed);
   }, []);
 
-  const handleToggleNotes = () => {
+  const handleToggleCollapsed = () => {
     const next = !notesCollapsed;
     setNotesCollapsed(next);
     persistLayout(split, next);
@@ -701,8 +979,8 @@ const MeetingPanel: React.FC = () => {
     persistLayout(split, notesCollapsed);
   };
 
-  // Arrow keys move the divider a line at a time — the panel is a window like
-  // any other, and a control only a mouse can reach is not a control.
+  // Arrow keys move the divider a line at a time — a control only a mouse can
+  // reach is not a control.
   const handleDividerKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const step =
       event.key === "ArrowUp" ? -0.04 : event.key === "ArrowDown" ? 0.04 : 0;
@@ -715,8 +993,7 @@ const MeetingPanel: React.FC = () => {
 
   // NSPanel: `getCurrentWindow().hide()` from the webview does not reliably
   // hide a panel, so closing goes through the same main-thread path that
-  // created it. Nothing to apply optimistically — the window itself is the
-  // feedback — but it must not wait on anything either.
+  // created it.
   const handleClose = () => {
     void commands.hideMeetingPanel();
   };
@@ -739,34 +1016,66 @@ const MeetingPanel: React.FC = () => {
   };
 
   const commitTitle = async () => {
-    const next = (titleDraft ?? "").trim();
+    if (titleDraft === null) return;
+    const next = titleDraft.trim();
     setTitleDraft(null);
     if (!meetingId || next === (meetingTitle ?? "")) return;
-    setMeetingTitle(next || null);
+    // A cleared name hands naming back to Ghostly; the backend answers with
+    // the placeholder that replaces it.
+    if (next) {
+      setMeetingTitle(next);
+      setTitleSource("user");
+    }
     const result = await commands.setMeetingTitle(meetingId, next);
+    if (result.status === "error") {
+      setError(result.error);
+      return;
+    }
+    setMeetingTitle(result.data);
+    setTitleSource(next ? "user" : "default");
+  };
+
+  const handleSuggestTitle = async () => {
+    if (!meetingId) return;
+    setTitleDraft(null);
+    setNaming(true);
+    const result = await commands.generateMeetingTitle(meetingId);
+    setNaming(false);
     if (result.status === "error") setError(result.error);
+    // Success arrives as `meeting-title`, which every window hears.
   };
 
   const title = meetingTitle ?? t("meeting.panel.title");
   const showDuration = startedAt !== null || elapsed > 0;
+  const hasMeeting = meetingId !== null || active;
+  const startedLabel =
+    startedAt !== null
+      ? new Date(startedAt * 1000).toLocaleTimeString(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : null;
 
   return (
     // Opaque, with no `backdrop-blur`. WebKit does not clip a backdrop filter
     // to its element's `border-radius`, so the blurred layer painted as a
     // square and the panel's corners read as square no matter what radius the
-    // container carried. At 95% opacity the blur was buying nothing anyway.
+    // container carried.
     //
     // The radius has to follow the shape the window is actually in: the mini
-    // player is a pill, and `meetings::panel` rounds the *window* to match. The
-    // two are drawn separately and the smaller of them wins, so a 14px root
-    // inside a 20px window mask reads as a rounded rectangle, not a pill.
+    // player is a pill, and `meetings::panel` rounds the *window* to match.
+    //
+    // `@container` so the title bar can drop its wordmark when the panel is
+    // narrow, rather than squeezing the controls that matter.
     <div
-      className={`relative flex h-full w-full flex-col overflow-hidden bg-surface-1 text-text shadow-2xl ${
+      ref={rootRef}
+      className={`@container relative flex h-full w-full flex-col overflow-hidden bg-surface-1 text-text shadow-2xl ${
         minimized ? "rounded-[20px]" : "rounded-[14px]"
       }`}
     >
       {minimized && (
         <MiniPlayer
+          platform={platform}
           active={active}
           paused={paused}
           clock={showDuration ? formatDuration(elapsed) : null}
@@ -775,42 +1084,23 @@ const MeetingPanel: React.FC = () => {
       )}
 
       {/* Hidden rather than unmounted. The notepad holds text that has not been
-          written to disk yet — including notes typed before any meeting exists,
-          which live nowhere else — and the transcript holds a scroll position
-          the user chose. Minimising must cost neither. `contents` keeps the
-          children as flex items of the panel, so the layout is identical to
-          having no wrapper at all. */}
+          written to disk yet, Ask may be mid-answer, and the transcript holds a
+          scroll position the user chose. Minimising must cost none of them.
+          `contents` keeps the children as flex items of the panel. */}
       <div className={minimized ? "hidden" : "contents"}>
-        {/* The title bar. Also the drag handle — the panel is undecorated, so
-          this is the only way to move it.
+        {/* The title bar, and the only way to move an undecorated panel.
 
-          Every child is made transparent to the mouse, rather than repeating
-          `data-tauri-drag-region` on each of them. Tauri's drag region is a
-          `mousedown` listener that tests `event.target` for the attribute, and
-          the target is the *deepest* element under the cursor — which over the
-          logo is a `<path>` inside the SVG, not the SVG the attribute was on.
-          So the strip had dead spots exactly where its contents were, which is
-          most of it. With the contents transparent the target is always this
-          div, and the whole bar drags.
+          Every child is transparent to the mouse, so the drag target is always
+          this div — Tauri's drag region tests `event.target`, which over the
+          logo is a `<path>` deep inside the SVG. Buttons are exempted by a
+          descendant selector, which survives nesting.
 
-          Buttons are exempted by a descendant selector rather than by
-          `pointer-events-auto` on each one: `& button` outranks `& > *`, so the
-          exemption survives being nested inside a group — which the window
-          buttons are.
-
-          It carries the brand rather than the meeting: the meeting's own name
-          is editable, and a title bar you have to think about before grabbing
-          is not a title bar. The name is on its own row below.
-
-          It is surface-coloured, not a saturated accent bar. A solid purple
-          block across the top made the panel read as a different application
-          from the one it belongs to — the rest of Ghostly reserves the accent
-          for the thing you are meant to press, and a title bar is never that.
-          The ghost mark keeps the accent, which is enough to say whose window
-          this is. */}
+          It carries the transport: how long, pause, end. One control per state
+          carries a fill or a tint — End while live, New meeting after — and the
+          rest are quiet. */}
         <div
           data-tauri-drag-region
-          className="relative flex h-8 shrink-0 cursor-grab select-none items-center gap-2 border-b border-hairline bg-surface-2 pl-3 pr-2.5 [&>*]:pointer-events-none [&_button]:pointer-events-auto active:cursor-grabbing"
+          className="relative flex h-9 shrink-0 cursor-grab select-none items-center gap-2 border-b border-hairline bg-surface-2 pl-3 pr-2 [&>*]:pointer-events-none [&_button]:pointer-events-auto active:cursor-grabbing"
         >
           <TrafficLights
             onClose={handleClose}
@@ -818,10 +1108,8 @@ const MeetingPanel: React.FC = () => {
             onZoom={handleZoom}
           />
 
-          {/* Height only: the mark's viewBox is taller than it is wide, and a
-            square box squashes the hem sweep it is named for. */}
-          <GhostlyMark className="ml-1 h-[15px] w-auto shrink-0 text-accent" />
-          <span className="truncate text-[11px] font-semibold tracking-[0.09em] text-text-subtle">
+          <GhostlyMark className="ml-1 hidden h-[14px] w-auto shrink-0 text-accent @min-[300px]:block" />
+          <span className="hidden truncate text-[11px] font-semibold tracking-[0.09em] text-text-subtle @min-[380px]:inline">
             {t("meeting.panel.brand")}
           </span>
 
@@ -829,57 +1117,178 @@ const MeetingPanel: React.FC = () => {
 
           {(active || showDuration) && (
             <div
-              title={t("meeting.panel.durationHint")}
-              className="flex shrink-0 items-center gap-1.5 rounded-full bg-fill-2 px-2 py-[2px]"
+              title={
+                active && paused
+                  ? t("meeting.panel.pausedNotice")
+                  : t("meeting.panel.durationHint")
+              }
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] ${
+                active && !paused ? "bg-danger/10" : "bg-fill-2"
+              }`}
             >
+              <span className="relative flex h-[6px] w-[6px]">
+                {active && !paused && (
+                  <span className="absolute inset-0 animate-ping rounded-full bg-danger/60" />
+                )}
+                <span
+                  className={`relative h-[6px] w-[6px] rounded-full ${
+                    active && !paused
+                      ? "bg-danger"
+                      : active
+                        ? "bg-warning"
+                        : "bg-text-faint"
+                  }`}
+                />
+              </span>
               <span
-                className={`h-[5px] w-[5px] rounded-full ${
-                  active && !paused
-                    ? "animate-pulse bg-danger"
-                    : active
-                      ? "bg-text-faint"
-                      : "bg-text-faint/50"
+                className={`text-[10.5px] font-semibold tabular-nums ${
+                  active && !paused ? "text-danger" : "text-text-muted"
                 }`}
-              />
-              <span className="text-[10px] font-medium tabular-nums text-text-muted">
+              >
                 {showDuration
                   ? formatDuration(elapsed)
                   : t("meeting.panel.liveLabel")}
               </span>
             </div>
           )}
+
+          {pending.ending ? (
+            <PanelButton variant="ghost" disabled>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("meeting.panel.ending")}
+            </PanelButton>
+          ) : active ? (
+            <>
+              <PanelButton
+                variant="icon"
+                onClick={() => void handleTogglePause()}
+                title={
+                  paused ? t("meeting.panel.resume") : t("meeting.panel.pause")
+                }
+                aria-label={
+                  paused ? t("meeting.panel.resume") : t("meeting.panel.pause")
+                }
+              >
+                {paused ? (
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                ) : (
+                  <Pause className="h-3.5 w-3.5 fill-current" />
+                )}
+              </PanelButton>
+              <PanelButton
+                variant="danger"
+                onClick={() => void handleEndMeeting()}
+                title={t("meeting.panel.endMeeting")}
+              >
+                <span className="h-[7px] w-[7px] rounded-[2px] bg-current" />
+                {t("meeting.panel.end")}
+              </PanelButton>
+            </>
+          ) : finished ? (
+            <>
+              <PanelButton
+                variant="icon"
+                onClick={() => void handleCopy()}
+                disabled={pending.copying || segments.length === 0}
+                title={t("meeting.panel.copyAll")}
+                aria-label={t("meeting.panel.copyAll")}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </PanelButton>
+              <PanelButton
+                variant="icon"
+                onClick={() => void handleExport()}
+                disabled={pending.exporting || segments.length === 0}
+                title={t("meeting.panel.exportHint")}
+                aria-label={t("meeting.panel.exportHint")}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </PanelButton>
+              <PanelButton
+                variant="primary"
+                onClick={() => void handleStartMeeting()}
+                disabled={pending.starting}
+                title={t("meeting.panel.startNewMeeting")}
+              >
+                <Plus className="h-3 w-3" strokeWidth={2.5} />
+                <span className="hidden @min-[300px]:inline">
+                  {t("meeting.panel.newMeeting")}
+                </span>
+              </PanelButton>
+            </>
+          ) : null}
         </div>
 
-        {/* The meeting's own identity: name, and whatever the capture is doing
-          that the user needs to know about. Absent entirely before the first
-          meeting, so a panel opened by the detection prompt is just the prompt
-          rather than a stack of empty chrome.
+        {/* The meeting's identity: where it is, what it is called, and what
+          the capture is doing that the user needs to know. Absent before the
+          first meeting, so a panel opened by the detection prompt is just the
+          prompt rather than a stack of empty chrome. */}
+        {hasMeeting && (
+          <div className="flex shrink-0 items-center gap-2.5 border-b border-hairline px-3 py-2">
+            <PlatformLogo platform={platform} size={30} />
 
-          Untinted, now that the title bar above it is surface-coloured too —
-          two stacked bars of the same fill would read as one confused strip of
-          chrome. This row belongs to the content, so it takes the content's
-          background and only the hairline separates them. */}
-        {(meetingId !== null || active) && (
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-hairline px-3 py-1.5">
             <div className="min-w-0 flex-1">
               {titleDraft !== null ? (
-                <input
-                  autoFocus
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onBlur={() => void commitTitle()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void commitTitle();
-                    if (e.key === "Escape") setTitleDraft(null);
-                  }}
-                  placeholder={t("meeting.panel.titlePlaceholder")}
-                  className="w-full rounded-md bg-surface-2 px-1.5 py-[2px] text-[12px] font-medium outline-none ring-2 ring-accent/30"
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={() => void commitTitle()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void commitTitle();
+                      if (e.key === "Escape") setTitleDraft(null);
+                    }}
+                    placeholder={t("meeting.panel.titlePlaceholder")}
+                    className="min-w-0 flex-1 rounded-md bg-surface-2 px-1.5 py-[3px] text-[13px] font-semibold outline-none ring-2 ring-accent/35"
+                  />
+                  <button
+                    type="button"
+                    // Fires before the input's blur commits the draft.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void handleSuggestTitle()}
+                    disabled={segments.length === 0}
+                    title={t("meeting.panel.suggestTitle")}
+                    aria-label={t("meeting.panel.suggestTitle")}
+                    className="shrink-0 rounded-md p-1 text-accent transition-colors duration-150 hover:bg-accent/12 disabled:opacity-40"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ) : (
                 <div className="flex min-w-0 items-center gap-1">
-                  <span className="min-w-0 shrink truncate text-[12px] font-medium">
-                    {title}
-                  </span>
+                  <button
+                    type="button"
+                    disabled={!meetingId}
+                    onClick={() => setTitleDraft(meetingTitle ?? "")}
+                    title={
+                      titleSource === "ai"
+                        ? t("meeting.panel.titleAiHint")
+                        : t("meeting.panel.renameMeetingHint")
+                    }
+                    className="min-w-0 shrink truncate text-left text-[13px] font-semibold leading-tight"
+                  >
+                    <span
+                      key={titleRevision}
+                      className={`${naming ? "shimmer-text" : ""} ${
+                        titleRevision > 0 ? "title-reveal" : ""
+                      }`}
+                    >
+                      {title}
+                    </span>
+                  </button>
+                  {(naming || titleSource === "ai") && (
+                    <Sparkles
+                      className={`h-[11px] w-[11px] shrink-0 text-accent ${
+                        naming ? "animate-pulse" : ""
+                      }`}
+                      aria-label={
+                        naming
+                          ? t("meeting.panel.titleNaming")
+                          : t("meeting.panel.titleAiHint")
+                      }
+                    />
+                  )}
                   {meetingId && (
                     <button
                       type="button"
@@ -891,57 +1300,88 @@ const MeetingPanel: React.FC = () => {
                       // accident is a control nobody finds.
                       className="shrink-0 rounded p-0.5 text-text-faint transition-colors duration-150 hover:bg-fill-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                     >
-                      <Pencil className="h-[11px] w-[11px]" aria-hidden />
+                      <Pencil className="h-[10px] w-[10px]" aria-hidden />
                     </button>
                   )}
                 </div>
               )}
-            </div>
 
-            {/* Both of these used to be full sentences under the title, which
-              cost a line of transcript each. They are states, not news, so
-              they read as badges with the sentence on the tooltip. */}
-            {active && paused && (
-              <span
-                title={t("meeting.panel.pausedNotice")}
-                className="shrink-0 rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] font-medium text-warning"
-              >
-                {t("meeting.panel.pausedBadge")}
-              </span>
-            )}
-            {active && !paused && !status?.systemAudioActive && (
-              <span
-                title={t("meeting.panel.micOnly")}
-                className="shrink-0 rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] font-medium text-warning"
-              >
-                {t("meeting.panel.micOnlyBadge")}
-              </span>
-            )}
-            {draining && (
-              <span className="shrink-0 truncate text-[10px] text-text-subtle">
-                {t("meeting.panel.finishing")}
-              </span>
-            )}
+              <div className="mt-[2px] flex min-w-0 items-center gap-1.5 text-[10.5px] text-text-subtle">
+                {platform && <span className="truncate">{platform}</span>}
+                {platform && startedLabel && (
+                  <span className="text-text-faint" aria-hidden>
+                    ·
+                  </span>
+                )}
+                {startedLabel && (
+                  <span className="shrink-0 tabular-nums">
+                    {t("meeting.panel.startedAt", { time: startedLabel })}
+                  </span>
+                )}
+                {/* States, not news: badges, with the sentence on the tooltip. */}
+                {active && paused && (
+                  <span
+                    title={t("meeting.panel.pausedNotice")}
+                    className="shrink-0 rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] font-medium text-warning"
+                  >
+                    {t("meeting.panel.pausedBadge")}
+                  </span>
+                )}
+                {active && !paused && !status?.systemAudioActive && (
+                  <span
+                    title={t("meeting.panel.micOnly")}
+                    className="shrink-0 rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] font-medium text-warning"
+                  >
+                    {t("meeting.panel.micOnlyBadge")}
+                  </span>
+                )}
+                {draining && (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-text-subtle">
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    {t("meeting.panel.finishing")}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {detected && !active && (
-          <div className="animate-rise shrink-0 bg-accent/10 px-3 py-2.5">
-            <p className="text-[12px] font-medium text-text">
-              {t("meeting.detected.title", { app: detected.displayName })}
-            </p>
-            <p className="mt-0.5 text-[11px] text-text-muted">
-              {detected.countdownSecs !== null
-                ? t("meeting.detected.startingIn", {
-                    seconds: detected.countdownSecs,
-                  })
-                : t("meeting.detected.prompt")}
-            </p>
-            <div className="mt-2 flex items-center gap-2">
+          <div className="animate-rise mx-2.5 mt-2.5 shrink-0 overflow-hidden rounded-[13px] bg-accent/[0.08] ring-1 ring-accent/20">
+            <div className="flex items-start gap-2.5 p-3 pb-2">
+              <PlatformLogo
+                platform={detected.platform ?? detected.displayName}
+                size={30}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] font-semibold text-text">
+                  {t("meeting.detected.title", {
+                    app: detected.platform ?? detected.displayName,
+                  })}
+                </p>
+                <p className="mt-0.5 text-[11.5px] leading-[1.45] text-text-muted">
+                  {detected.countdownSecs !== null
+                    ? t("meeting.detected.startingIn", {
+                        seconds: detected.countdownSecs,
+                      })
+                    : t("meeting.detected.prompt")}
+                </p>
+              </div>
+            </div>
+            {detected.countdownSecs !== null && countdownFrom && (
+              <div className="mx-3 h-[3px] overflow-hidden rounded-full bg-accent/15">
+                <div
+                  className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-linear"
+                  style={{
+                    width: `${Math.max(0, ((detected.countdownSecs - 1) / countdownFrom) * 100)}%`,
+                  }}
+                />
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2.5 pt-2">
               {detected.countdownSecs === null && (
                 <PanelButton
                   variant="primary"
-                  className="px-2.5 py-1 text-[11px]"
                   onClick={() => {
                     setDetected(null);
                     void commands.acceptDetectedMeeting();
@@ -951,9 +1391,9 @@ const MeetingPanel: React.FC = () => {
                 </PanelButton>
               )}
               <PanelButton
-                className="px-2.5 py-1 text-[11px]"
                 onClick={() => {
                   setDetected(null);
+                  setCountdownFrom(null);
                   commands.dismissDetectedMeeting();
                 }}
               >
@@ -963,12 +1403,13 @@ const MeetingPanel: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setDetected(null);
+                  setCountdownFrom(null);
                   void commands.neverAutoConnectApp(
                     detected.bundleId,
                     detected.displayName,
                   );
                 }}
-                className="ml-auto text-[10px] text-text-subtle transition-colors duration-150 hover:text-text"
+                className="ml-auto text-[10.5px] text-text-subtle transition-colors duration-150 hover:text-text"
               >
                 {t("meeting.detected.never", { app: detected.displayName })}
               </button>
@@ -977,19 +1418,39 @@ const MeetingPanel: React.FC = () => {
         )}
 
         {mention && (
-          <div className="animate-rise flex shrink-0 items-start gap-2 bg-accent/10 px-3 py-2.5">
+          <div className="animate-rise mx-2.5 mt-2.5 flex shrink-0 items-start gap-2.5 rounded-[13px] bg-accent/[0.10] p-3 ring-1 ring-accent/25">
+            <span className="mt-[1px] flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-canvas">
+              <BellRing className="h-3.5 w-3.5" />
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-accent">
+              <p className="text-[11px] font-semibold text-accent-bright">
                 {t("meeting.panel.mentionHeading")}
               </p>
-              <p className="break-words text-[12px] text-text">{mention}</p>
+              <p className="mt-0.5 break-words text-[12px] leading-[1.45] text-text">
+                {mention}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMention(null);
+                  openPane("ask");
+                  askRef.current?.askAbout(mention);
+                }}
+                className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-md bg-accent/15 px-2 py-[3px] text-[11px] font-medium text-accent-bright transition-colors duration-150 hover:bg-accent/25"
+              >
+                <Sparkles className="h-3 w-3 shrink-0" />
+                <span className="truncate">
+                  {t("meeting.panel.mentionAsk")}
+                </span>
+              </button>
             </div>
             <button
               type="button"
               onClick={() => setMention(null)}
-              className="shrink-0 text-[11px] text-text-subtle transition-colors duration-150 hover:text-text"
+              aria-label={t("meeting.panel.dismiss")}
+              className="shrink-0 rounded-md p-1 text-text-subtle transition-colors duration-150 hover:bg-fill-2 hover:text-text"
             >
-              {t("meeting.panel.dismiss")}
+              <X className="h-3 w-3" />
             </button>
           </div>
         )}
@@ -997,7 +1458,7 @@ const MeetingPanel: React.FC = () => {
         {/* The split. `flexGrow` rather than percentage heights: the two panes
           have to share whatever the window is, and a percentage inside a flex
           column resolves against a height the divider is itself changing. */}
-        <div ref={splitRef} className="flex min-h-0 flex-1 flex-col">
+        <div ref={splitRef} className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
             style={
@@ -1011,7 +1472,10 @@ const MeetingPanel: React.FC = () => {
               const distanceFromBottom =
                 node.scrollHeight - node.scrollTop - node.clientHeight;
               stickToBottom.current = distanceFromBottom < 48;
+              setDetached(distanceFromBottom >= 48);
+              setSelection(null);
             }}
+            onMouseUp={handleTranscriptMouseUp}
             // `log` rather than a bare live region: it tells a screen reader
             // this is an append-only stream, so each new card is announced as it
             // lands instead of the whole transcript being re-read. Polite, since
@@ -1025,62 +1489,100 @@ const MeetingPanel: React.FC = () => {
             it is absolutely positioned, so leaving it up would stack the
             "listening" copy on top of the indicator. */}
             {segments.length === 0 && !showActivity ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 px-6 text-center">
-                <GhostlyMark
-                  className={`h-8 w-auto text-text-faint ${
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                <span
+                  className={`flex h-14 w-14 items-center justify-center rounded-full bg-fill-1 ring-1 ring-hairline ${
                     pending.starting || (active && !paused)
-                      ? "animate-pulse"
+                      ? "animate-pulse-ring"
                       : ""
                   }`}
-                />
-                <p className="text-[12px] text-text-subtle">
-                  {pending.starting
-                    ? t("meeting.panel.starting")
-                    : active
-                      ? t("meeting.panel.listening")
-                      : t("meeting.panel.notCapturing")}
-                </p>
+                >
+                  <GhostlyMark
+                    className={`h-7 w-auto ${
+                      active || pending.starting
+                        ? "text-accent"
+                        : "text-text-faint"
+                    }`}
+                  />
+                </span>
+                {pending.starting ? (
+                  <p className="text-[12px] text-text-subtle">
+                    {t("meeting.panel.starting")}
+                  </p>
+                ) : active ? (
+                  <p className="text-[12px] text-text-subtle">
+                    {paused
+                      ? t("meeting.panel.pausedNotice")
+                      : t("meeting.panel.listening")}
+                  </p>
+                ) : meetingId ? (
+                  <p className="text-[12px] text-text-subtle">
+                    {t("meeting.panel.notCapturing")}
+                  </p>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <p className="text-[13px] font-semibold text-text">
+                      {t("meeting.panel.idleTitle")}
+                    </p>
+                    <p className="max-w-[260px] text-[11.5px] leading-[1.5] text-text-subtle">
+                      {t("meeting.panel.idleBody")}
+                    </p>
+                    {!detected && (
+                      <PanelButton
+                        variant="primary"
+                        className="mt-1 h-[28px] px-3.5 text-[12px]"
+                        onClick={() => void handleStartMeeting()}
+                      >
+                        <span className="h-[7px] w-[7px] rounded-full bg-current" />
+                        {t("meeting.panel.startMeeting")}
+                      </PanelButton>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               /* One card per block of continuous speech.
 
                No name, no permanent timestamp: what is worth reading is what
-               was said, and a column of "You / Participant / You" down the left
-               edge was both noise and, half the time, wrong. But dropping the
-               names left the blocks running together as one slab of prose with
-               nothing to say where a thought ended. The card is what carries
-               that now — it does the job the speaker label used to do, without
-               claiming anything that might be false.
+               was said. The card carries the job the speaker label used to do —
+               saying where a thought ended — without claiming anything that
+               might be false. `w-fit` keeps a three-word aside a small pill.
 
-               `w-fit` so a card is only as wide as it needs to be: a three-word
-               aside stays a small pill instead of a wide box with one word in
-               it, which is what makes a page of these scan as a conversation.
-
-               The clock stays available on hover, since finding a moment again
-               is the one thing the metadata was genuinely good for. It is
-               positioned against the row rather than the card, so beside a
-               narrow card it sits in the empty space to its right. */
+               The clock stays on hover, since finding a moment again is the
+               one thing the metadata was genuinely good for — and it is where
+               a citation from Ask lands, lit for a moment so the eye finds it. */
               blocks.map((block) => (
                 <div
                   key={block.key}
+                  ref={(node) => {
+                    if (node) blockRefs.current.set(block.key, node);
+                    else blockRefs.current.delete(block.key);
+                  }}
                   className="group relative mb-1.5 last:mb-0"
                 >
-                  <div className="w-fit max-w-full rounded-[13px] bg-fill-1 px-3 py-2">
+                  <div
+                    className={`w-fit max-w-full rounded-[13px] px-3 py-2 transition-[background-color,box-shadow] duration-300 ${
+                      flashKey === block.key
+                        ? "cite-flash bg-accent/15 ring-1 ring-accent/50"
+                        : "bg-fill-1"
+                    }`}
+                  >
                     <p className="break-words text-[13px] leading-[1.55] text-text-muted">
-                      {block.segments.map((segment) => segment.text).join(" ")}
+                      {blockText(block)}
                     </p>
                   </div>
-                  <span className="pointer-events-none absolute right-1 top-1 rounded bg-surface-3 px-1 text-[10px] tabular-nums text-text-faint opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                  <span
+                    className={`pointer-events-none absolute right-1 top-1 rounded bg-surface-3 px-1 text-[10px] tabular-nums text-text-faint transition-opacity duration-150 group-hover:opacity-100 ${
+                      flashKey === block.key ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
                     {formatClock(block.startMs)}
                   </span>
                 </div>
               ))
             )}
 
-            {/* Somebody is mid-sentence, or the model is still catching up. Just
-              the dots: the name that used to sit above them was the same lane
-              guess the transcript has stopped making, and "someone is talking"
-              is the whole of what this indicator knows. */}
+            {/* Somebody is mid-sentence, or the model is still catching up. */}
             {showActivity && (
               <div
                 aria-live="polite"
@@ -1089,7 +1591,7 @@ const MeetingPanel: React.FC = () => {
                     ? t("meeting.panel.someoneSpeaking")
                     : t("meeting.panel.transcribing")
                 }
-                className="flex items-center gap-2"
+                className="mt-1.5 flex items-center gap-2"
               >
                 <TypingDots />
                 {!talking && (
@@ -1101,54 +1603,64 @@ const MeetingPanel: React.FC = () => {
             )}
 
             {summary && (
-              <div
-                ref={summaryRef}
-                className="animate-rise mt-3 rounded-xl bg-accent/[0.08] p-3"
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-accent">
-                    {t(`meeting.panel.${summaryHeading}`)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSummary(null)}
-                    className="shrink-0 text-[11px] text-text-subtle transition-colors duration-150 hover:text-text"
-                  >
-                    {t("meeting.panel.dismiss")}
-                  </button>
-                </div>
-                <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.5] text-text-muted">
-                  {summary}
-                </pre>
-              </div>
+              <SummaryCard
+                innerRef={summaryRef}
+                heading={t("meeting.panel.finalSummaryHeading")}
+                body={summary}
+                onCite={handleCite}
+                onAddToNotes={handleAddToNotes}
+                onDismiss={() => setSummary(null)}
+              />
             )}
 
             {summarizing && !summary && (
-              <p className="mt-3 text-center text-[11px] text-text-subtle">
+              <div className="animate-rise mt-3 flex items-center justify-center gap-1.5 text-[11px] text-text-subtle">
+                <Sparkles className="h-3 w-3 animate-pulse text-accent" />
                 <span className="shimmer-text">
                   {t("meeting.panel.wrappingUp")}
                 </span>
-              </p>
+              </div>
             )}
 
             {autoEnded && (
-              <p className="animate-rise mt-2 rounded-lg bg-fill-2 px-2 py-1.5 text-[11px] text-text-subtle">
+              <p className="animate-rise mt-2 rounded-lg bg-fill-2 px-2.5 py-1.5 text-[11px] text-text-subtle">
                 {t("meeting.panel.autoEnded")}
               </p>
             )}
 
-            {notice && (
-              <p className="animate-rise mt-2 rounded-lg bg-success/10 px-2 py-1.5 text-[11px] text-success">
-                {notice}
-              </p>
-            )}
-
             {error && (
-              <p className="animate-rise mt-2 rounded-lg bg-danger/10 px-2 py-1.5 text-[11px] text-danger">
-                {error}
-              </p>
+              <div className="animate-rise mt-2 flex items-start gap-2 rounded-lg bg-danger/10 px-2.5 py-1.5">
+                <p className="min-w-0 flex-1 text-[11px] leading-[1.45] text-danger">
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  aria-label={t("meeting.panel.dismiss")}
+                  className="shrink-0 text-danger/70 transition-colors duration-150 hover:text-danger"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
             )}
           </div>
+
+          {/* Back to the live edge, once the user has scrolled away from it. */}
+          {detached && (active || draining) && segments.length > 0 && (
+            <button
+              type="button"
+              onClick={jumpToLive}
+              style={
+                notesCollapsed
+                  ? { bottom: 44 }
+                  : { bottom: `calc(${(1 - split) * 100}% + 12px)` }
+              }
+              className="animate-rise absolute left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-surface-3 px-2.5 py-1 text-[11px] font-medium text-text shadow-lg ring-1 ring-hairline-strong transition-colors duration-150 hover:bg-surface-2"
+            >
+              <ArrowDown className="h-3 w-3" />
+              {t("meeting.panel.jumpToLive")}
+            </button>
+          )}
 
           {!notesCollapsed && (
             <div
@@ -1173,86 +1685,139 @@ const MeetingPanel: React.FC = () => {
             </div>
           )}
 
-          <NotesPane
-            meetingId={meetingId}
-            capturing={active || draining}
-            finished={finished && !draining}
-            hasTranscript={segments.length > 0}
-            collapsed={notesCollapsed}
-            onToggleCollapsed={handleToggleNotes}
-            style={{ flexGrow: 1 - split, flexShrink: 1, flexBasis: 0 }}
-          />
+          {/* The workspace: Notes or Ask, under one tab bar. Both panes stay
+            mounted — a hidden notepad keeps its unsaved text, a hidden Ask keeps
+            streaming — and each renders its own controls into the bar's slot
+            while it is the tab showing. */}
+          <section
+            style={
+              notesCollapsed
+                ? undefined
+                : { flexGrow: 1 - split, flexShrink: 1, flexBasis: 0 }
+            }
+            className={`flex min-h-0 flex-col overflow-hidden bg-surface-2/30 ${
+              notesCollapsed ? "flex-none border-t border-hairline" : ""
+            }`}
+          >
+            <div className="flex h-8 shrink-0 items-center gap-1.5 pl-1.5 pr-2">
+              <button
+                type="button"
+                onClick={handleToggleCollapsed}
+                title={
+                  notesCollapsed
+                    ? t("meeting.workspace.expand")
+                    : t("meeting.workspace.collapse")
+                }
+                aria-label={
+                  notesCollapsed
+                    ? t("meeting.workspace.expand")
+                    : t("meeting.workspace.collapse")
+                }
+                aria-expanded={!notesCollapsed}
+                className="rounded p-1 text-text-subtle transition-colors duration-150 hover:bg-fill-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              >
+                {notesCollapsed ? (
+                  <ChevronUp className="h-3 w-3" aria-hidden />
+                ) : (
+                  <ChevronDown className="h-3 w-3" aria-hidden />
+                )}
+              </button>
+
+              <div
+                role="tablist"
+                className="flex shrink-0 items-center gap-0.5 rounded-lg bg-fill-2 p-[2px]"
+              >
+                {(["notes", "ask"] as const).map((tab) => {
+                  const selected = paneTab === tab;
+                  const Icon = tab === "notes" ? NotebookPen : Sparkles;
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() =>
+                        selected && !notesCollapsed ? undefined : openPane(tab)
+                      }
+                      title={
+                        tab === "ask"
+                          ? t("meeting.workspace.askHint")
+                          : undefined
+                      }
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-[3px] text-[11px] font-medium transition-[background-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+                        selected
+                          ? "bg-surface-1 text-text shadow-sm"
+                          : "text-text-subtle hover:text-text"
+                      }`}
+                    >
+                      <Icon
+                        className={`h-3 w-3 ${
+                          selected && tab === "ask" ? "text-accent" : ""
+                        }`}
+                        aria-hidden
+                      />
+                      {t(`meeting.workspace.${tab}`)}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <span className="flex-1" />
+
+              <div
+                ref={setHeaderSlot}
+                className="flex min-w-0 items-center justify-end gap-1"
+              />
+            </div>
+
+            <NotesPane
+              ref={notesRef}
+              meetingId={meetingId}
+              capturing={active || draining}
+              finished={finished && !draining}
+              hasTranscript={segments.length > 0}
+              visible={paneTab === "notes"}
+              expanded={!notesCollapsed}
+              headerSlot={headerSlot}
+            />
+            <AskPane
+              ref={askRef}
+              meetingId={meetingId}
+              live={active || draining}
+              hasTranscript={segments.length > 0}
+              visible={paneTab === "ask" && !notesCollapsed}
+              headerSlot={headerSlot}
+              onCite={handleCite}
+              onAddToNotes={(text) => {
+                handleAddToNotes(text);
+                setNotice(t("meeting.ask.addedToNotes"));
+              }}
+              onExternalQuestion={() => openPane("ask")}
+            />
+          </section>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-hairline bg-surface-2/40 px-3 py-2">
-          {pending.ending ? (
-            <PanelButton disabled>{t("meeting.panel.ending")}</PanelButton>
-          ) : active ? (
-            <>
-              <PanelButton
-                variant="primary"
-                onClick={() => void handleCatchUp()}
-                disabled={summarizing || segments.length === 0}
-              >
-                {summarizing
-                  ? t("meeting.panel.catchingUp")
-                  : t("meeting.panel.catchMeUp")}
-              </PanelButton>
-              <PanelButton onClick={() => void handleTogglePause()}>
-                {paused ? t("meeting.panel.resume") : t("meeting.panel.pause")}
-              </PanelButton>
-              <PanelButton
-                variant="danger"
-                className="ml-auto"
-                onClick={() => void handleEndMeeting()}
-              >
-                {t("meeting.panel.endMeeting")}
-              </PanelButton>
-            </>
-          ) : finished ? (
-            // The meeting is over. "Where were we?" and Pause have nothing left
-            // to act on, so the row becomes the three things you actually do with
-            // a finished transcript.
-            <>
-              <PanelButton
-                variant="primary"
-                onClick={() => void handleStartMeeting()}
-                disabled={pending.starting}
-              >
-                {t("meeting.panel.startNewMeeting")}
-              </PanelButton>
-              <PanelButton
-                onClick={() => void handleCopy()}
-                disabled={pending.copying || segments.length === 0}
-              >
-                {pending.copying
-                  ? t("meeting.panel.copying")
-                  : t("meeting.panel.copy")}
-              </PanelButton>
-              <PanelButton
-                onClick={() => void handleExport()}
-                disabled={pending.exporting || segments.length === 0}
-              >
-                {pending.exporting
-                  ? t("meeting.panel.exporting")
-                  : t("meeting.panel.export")}
-              </PanelButton>
-              <PanelButton className="ml-auto" onClick={handleClose}>
-                {t("meeting.panel.close")}
-              </PanelButton>
-            </>
-          ) : (
-            <PanelButton
-              variant="primary"
-              onClick={() => void handleStartMeeting()}
-              disabled={pending.starting}
-            >
-              {pending.starting
-                ? t("meeting.panel.starting")
-                : t("meeting.panel.startMeeting")}
-            </PanelButton>
-          )}
-        </div>
+        {/* "Ask about this", floating over a transcript selection. */}
+        {selection && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={askAboutSelection}
+            style={{ top: selection.top, left: selection.left }}
+            className="animate-rise absolute z-20 flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-canvas shadow-lg shadow-accent/25 transition-colors duration-150 hover:bg-accent-bright"
+          >
+            <Sparkles className="h-3 w-3" />
+            {t("meeting.panel.askAboutSelection")}
+          </button>
+        )}
+
+        {/* Transient confirmations, as a toast over the panel's foot. */}
+        {notice && (
+          <div className="animate-rise pointer-events-none absolute bottom-3 left-1/2 z-30 flex max-w-[90%] -translate-x-1/2 items-center gap-1.5 rounded-full bg-surface-3 px-3 py-1.5 text-[11px] font-medium text-text shadow-xl ring-1 ring-hairline-strong">
+            <Check className="h-3 w-3 shrink-0 text-success" />
+            <span className="truncate">{notice}</span>
+          </div>
+        )}
       </div>
     </div>
   );

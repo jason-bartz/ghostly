@@ -1493,7 +1493,7 @@ pub fn get_default_settings() -> AppSettings {
             id: "meeting_catch_up".to_string(),
             name: "Where Were We".to_string(),
             description:
-                "Summarises what you missed in the meeting since the last summary, and shows it in the live transcript panel."
+                "Catches you up on the meeting in the panel's Ask tab: what you missed, anything waiting on you, and a line to rejoin with."
                     .to_string(),
             default_binding: String::new(),
             current_binding: String::new(),

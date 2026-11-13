@@ -1783,9 +1783,6 @@
       "zoom": "Zoom",
       "restore": "Reopen the meeting panel",
       "restoreHint": "Click to reopen · drag to move",
-      "catchMeUp": "Where were we?",
-      "catchingUp": "Looking back…",
-      "catchUpHeading": "Where were we?",
       "dismiss": "Dismiss",
       "listening": "Listening… transcript will appear here.",
       "notCapturing": "No meeting is being captured.",
@@ -1800,17 +1797,13 @@
       "starting": "Starting…",
       "ending": "Ending…",
       "wrappingUp": "Writing the wrap-up…",
-      "titlePlaceholder": "Meeting name…",
+      "titlePlaceholder": "Meeting name — leave blank and Ghostly names it",
       "renameMeetingHint": "Rename this meeting",
       "durationHint": "Time since the meeting started",
       "finishing": "Finishing transcription…",
       "brand": "Ghostly",
       "startNewMeeting": "Start new meeting",
-      "export": "Export",
-      "exporting": "Exporting…",
       "exported": "Saved to {{name}}",
-      "copy": "Copy",
-      "copying": "Copying…",
       "copied": "Copied to the clipboard",
       "transcriptLabel": "Live transcript",
       "exportFilter": "Markdown",
@@ -1820,7 +1813,20 @@
       "pausedBadge": "Paused",
       "micOnlyBadge": "Mic only",
       "someoneSpeaking": "Someone is speaking",
-      "transcribing": "Transcribing…"
+      "transcribing": "Transcribing…",
+      "titleAiHint": "Named by Ghostly from the conversation — click to rename",
+      "titleNaming": "Naming this meeting…",
+      "suggestTitle": "Let Ghostly name it from the conversation",
+      "startedAt": "Started {{time}}",
+      "end": "End",
+      "newMeeting": "New meeting",
+      "copyAll": "Copy transcript, notes and summary",
+      "exportHint": "Export as Markdown",
+      "jumpToLive": "Live",
+      "askAboutSelection": "Ask about this",
+      "mentionAsk": "What are they asking?",
+      "idleTitle": "Ready when you are",
+      "idleBody": "Start a meeting and Ghostly transcribes both sides of the call live — no bot joins, nobody is notified."
     },
     "notes": {
       "heading": "Notes",
@@ -1977,7 +1983,88 @@
       "retentionHint": "Meeting transcripts are kept on this Mac only. Change how long they're kept in the Settings tab.",
       "unknownApp": "Other",
       "editLine": "Click to correct this line",
-      "revealNotFound": "Couldn't find that meeting — it may have been deleted."
+      "revealNotFound": "Couldn't find that meeting — it may have been deleted.",
+      "generateTitle": "Name with AI",
+      "generateTitleHint": "Let Ghostly name this meeting from what was said",
+      "generatingTitle": "Naming…",
+      "titleGenerated": "Renamed to “{{title}}”",
+      "namedByAi": "Named by Ghostly from the conversation",
+      "unknownPlatform": "Other"
+    },
+    "workspace": {
+      "notes": "Notes",
+      "ask": "Ask",
+      "askHint": "Ask anything about this meeting (⌘K)",
+      "collapse": "Hide this pane",
+      "expand": "Show this pane"
+    },
+    "ask": {
+      "emptyTitle": "Ask anything about this meeting",
+      "emptyBody": "Answers come from the live transcript and your notes, with links back to the moment it was said.",
+      "emptyBodyFinished": "Answers come from the transcript and your notes, with links back to the moment it was said.",
+      "noMeetingTitle": "Nothing to ask about yet",
+      "noMeetingBody": "Start a meeting and ask as it happens — what was decided, what to say next, how it's landing.",
+      "waitingBody": "Once people start talking, ask anything about what's being said.",
+      "placeholder": "Ask about this meeting…",
+      "placeholderQuote": "Ask about this part, or just press Enter…",
+      "placeholderNoMeeting": "Start a meeting to ask about it",
+      "send": "Send",
+      "stop": "Stop",
+      "thinking": "Thinking…",
+      "stopped": "Stopped",
+      "retry": "Try again",
+      "copy": "Copy",
+      "copied": "Copied",
+      "addToNotes": "Add to notes",
+      "addedToNotes": "Added to your notes",
+      "newChat": "Clear conversation",
+      "clearConfirm": "Clear?",
+      "jumpTo": "Jump to {{time}} in the transcript",
+      "quoting": "About this part of the transcript",
+      "removeQuote": "Remove quote",
+      "explainQuote": "What's the context here, and why does it matter?",
+      "onDeviceNote": "Apple Intelligence · answers from the last few minutes of the meeting",
+      "unavailableTitle": "Ask needs an AI model",
+      "openSettings": "Open Settings",
+      "unavailable": {
+        "extractive": "Meeting AI is set to keyword summaries. Choose a model under Settings → Meetings to ask questions.",
+        "needs_setup": "Your AI provider isn't set up yet. Add a key under Settings → Refinement, or use Ghostly Max.",
+        "on_device_unavailable": "Apple Intelligence isn't available on this Mac. Choose a cloud model under Settings → Meetings."
+      },
+      "presets": {
+        "catch_up": {
+          "label": "Catch me up",
+          "hint": "What did I just miss?"
+        },
+        "summary": {
+          "label": "Summarize",
+          "hint": "Key points and decisions"
+        },
+        "action_items": {
+          "label": "Action items",
+          "hint": "Who owes what, by when"
+        },
+        "suggest_question": {
+          "label": "What should I ask?",
+          "hint": "Sharp questions for next"
+        },
+        "talking_points": {
+          "label": "Talking points",
+          "hint": "What to raise next"
+        },
+        "sentiment": {
+          "label": "Read the room",
+          "hint": "How it's landing, and why"
+        },
+        "decisions": {
+          "label": "Decisions",
+          "hint": "Decided vs. still open"
+        },
+        "follow_up_email": {
+          "label": "Follow-up email",
+          "hint": "Ready to send"
+        }
+      }
     }
   },
   "max": {

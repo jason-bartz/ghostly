@@ -264,6 +264,45 @@ static MIGRATIONS: &[M] = &[
         "ALTER TABLE meetings ADD COLUMN enhanced_notes TEXT;
          ALTER TABLE meetings ADD COLUMN enhanced_notes_at INTEGER;",
     ),
+    // Where a meeting's name came from, and which service it was held on.
+    //
+    // `title_source` is what lets Ghostly name a meeting from what was said
+    // without ever overwriting a name the user typed: AI titles only replace
+    // `default` and `ai` rows. Existing rows are classified by shape — the
+    // generated placeholder is `"{platform} meeting - MM/DD/YY"` or
+    // `"Meeting - MM/DD/YY"`, so anything else was typed by hand. GLOB rather
+    // than LIKE so a hand-written "Weekly meeting - planning" is not mistaken
+    // for a placeholder.
+    //
+    // `platform` was always resolved — the detector reads it out of the
+    // browser's URL — but only ever survived as a prefix of the title, which a
+    // rename then destroyed. Older rows are left NULL and inferred on read; see
+    // `meetings::platform::infer_for_record`.
+    //
+    // `meeting_chat_messages` is the conversation the user has with a meeting
+    // in the panel's Ask tab. One row per turn, so a reopened meeting picks up
+    // where it left off and the thread follows the meeting into deletion.
+    M::up(
+        "ALTER TABLE meetings ADD COLUMN platform TEXT;
+         ALTER TABLE meetings ADD COLUMN title_source TEXT NOT NULL DEFAULT 'default';
+         UPDATE meetings SET title_source = 'user'
+          WHERE title IS NOT NULL
+            AND TRIM(title) != ''
+            AND title NOT GLOB '* meeting - [0-9][0-9]/[0-9][0-9]/[0-9][0-9]'
+            AND title NOT GLOB 'Meeting - [0-9][0-9]/[0-9][0-9]/[0-9][0-9]'
+            AND title != 'Untitled meeting';
+
+         CREATE TABLE IF NOT EXISTS meeting_chat_messages (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+             role TEXT NOT NULL,
+             body TEXT NOT NULL,
+             preset TEXT,
+             created_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_meeting_chat_meeting
+             ON meeting_chat_messages(meeting_id, id);",
+    ),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -2268,6 +2307,12 @@ mod tests {
             [],
         )
         .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_chat_messages (meeting_id, role, body, created_at) \
+             VALUES ('m1', 'user', 'what did I miss?', 0)",
+            [],
+        )
+        .unwrap();
 
         conn.execute("DELETE FROM meetings WHERE id = 'm1'", [])
             .unwrap();
@@ -2277,6 +2322,7 @@ mod tests {
             "meeting_speakers",
             "meeting_summaries",
             "meeting_tags",
+            "meeting_chat_messages",
         ] {
             let remaining: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
@@ -2285,6 +2331,62 @@ mod tests {
                 .unwrap();
             assert_eq!(remaining, 0, "{table} rows survived the cascade");
         }
+    }
+
+    /// Existing titles are sorted into "Ghostly's placeholder" and "typed by
+    /// the user" by shape, because only the first may ever be replaced by an
+    /// AI title. Getting this wrong in the permissive direction overwrites a
+    /// name somebody chose; in the strict direction it merely leaves an old
+    /// placeholder alone.
+    #[test]
+    fn existing_titles_are_classified_by_who_wrote_them() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        let migrations = MIGRATIONS.to_vec();
+        let (before, last) = migrations.split_at(migrations.len() - 1);
+        Migrations::new(before.to_vec())
+            .to_latest(&mut conn)
+            .expect("earlier migrations apply");
+
+        for (id, title) in [
+            ("placeholder", Some("Google Meet meeting - 08/12/26")),
+            ("bare", Some("Meeting - 08/12/26")),
+            ("legacy", Some("Untitled meeting")),
+            ("untitled", None),
+            ("typed", Some("Weekly meeting - planning")),
+            ("renamed", Some("Acme pricing call")),
+        ] {
+            conn.execute(
+                "INSERT INTO meetings (id, title, started_at, detection_source) \
+                 VALUES (?1, ?2, 0, 'manual')",
+                params![id, title],
+            )
+            .unwrap();
+        }
+
+        let mut all = before.to_vec();
+        all.extend_from_slice(last);
+        Migrations::new(all)
+            .to_latest(&mut conn)
+            .expect("the title-source migration applies");
+
+        let source = |id: &str| -> String {
+            conn.query_row(
+                "SELECT title_source FROM meetings WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(source("placeholder"), "default");
+        assert_eq!(source("bare"), "default");
+        assert_eq!(source("legacy"), "default");
+        assert_eq!(source("untitled"), "default");
+        assert_eq!(
+            source("typed"),
+            "user",
+            "a hand-typed name that merely contains 'meeting -' is the user's"
+        );
+        assert_eq!(source("renamed"), "user");
     }
 
     fn setup_conn() -> Connection {

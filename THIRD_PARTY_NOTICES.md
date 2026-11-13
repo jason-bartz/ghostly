@@ -82,3 +82,7 @@ The `silero_vad_v4.onnx` model weights are downloaded at build time from a separ
 ## Whisper Model Weights
 
 Whisper model weights downloaded by Ghostly at runtime are distributed by OpenAI under the MIT License. See https://github.com/openai/whisper for details.
+
+## Meeting platform logos
+
+The meeting platform logos shown beside meetings (Zoom, Google Meet, Microsoft Teams, Slack, Discord, WhatsApp, Amazon Chime, Messenger) are from [SVG Logos](https://github.com/gilbarbara/logos) by Gil Barbara, and the Webex, Jitsi, GoTo Meeting and HEY marks are from [Simple Icons](https://github.com/simple-icons/simple-icons). Both collections are dedicated to the public domain under CC0 1.0. The logos remain trademarks of their respective owners and are used only to identify the service a meeting was held on.

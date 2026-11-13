@@ -13,8 +13,9 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use super::types::{
-    DetectionSource, LabelSource, Lane, Meeting, MeetingNotes, MeetingSegment, MeetingSpeaker,
-    MeetingSummary, NewSegment, SpeakerKind, SummaryKind,
+    DetectionSource, LabelSource, Lane, Meeting, MeetingChatMessage, MeetingChatPreset,
+    MeetingChatRole, MeetingNotes, MeetingSegment, MeetingSpeaker, MeetingSummary, NewSegment,
+    SpeakerKind, SummaryKind, TitleSource,
 };
 
 /// Turns a user's search box into an FTS5 query.
@@ -101,20 +102,22 @@ impl MeetingStore {
         started_at: i64,
         app_bundle_id: Option<&str>,
         app_display_name: Option<&str>,
+        platform: Option<&str>,
         detection_source: DetectionSource,
         captured_system_audio: bool,
     ) -> Result<()> {
         self.conn()?.execute(
             "INSERT INTO meetings
-                (id, title, started_at, app_bundle_id, app_display_name,
-                 detection_source, captured_system_audio)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                (id, title, title_source, started_at, app_bundle_id, app_display_name,
+                 platform, detection_source, captured_system_audio)
+             VALUES (?1, ?2, 'default', ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 id,
                 title,
                 started_at,
                 app_bundle_id,
                 app_display_name,
+                platform,
                 detection_source.as_str(),
                 captured_system_audio
             ],
@@ -130,12 +133,64 @@ impl MeetingStore {
         Ok(())
     }
 
+    /// A name the user typed. Final: no AI pass will replace it.
     pub fn set_meeting_title(&self, id: &str, title: &str) -> Result<()> {
         self.conn()?.execute(
-            "UPDATE meetings SET title = ?2 WHERE id = ?1",
+            "UPDATE meetings SET title = ?2, title_source = 'user' WHERE id = ?1",
             params![id, title],
         )?;
         Ok(())
+    }
+
+    /// Hands naming back to Ghostly: the placeholder returns, and the next AI
+    /// pass is free to replace it. What clearing the name field means.
+    pub fn reset_meeting_title(&self, id: &str, placeholder: &str) -> Result<()> {
+        self.conn()?.execute(
+            "UPDATE meetings SET title = ?2, title_source = 'default' WHERE id = ?1",
+            params![id, placeholder],
+        )?;
+        Ok(())
+    }
+
+    /// Writes an AI title, unless the user has named the meeting themselves.
+    ///
+    /// The check is in the `WHERE` clause rather than a read beforehand, so a
+    /// rename that lands while the model is still thinking always wins — there
+    /// is no window between "is it still ours?" and the write. Returns whether
+    /// the title was written. `force` is for the user explicitly asking for a
+    /// generated name, which is consent to replace their own.
+    pub fn set_ai_title(&self, id: &str, title: &str, force: bool) -> Result<bool> {
+        let changed = self.conn()?.execute(
+            "UPDATE meetings SET title = ?2, title_source = 'ai'
+              WHERE id = ?1 AND (?3 OR title_source != 'user')",
+            params![id, title, force],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn title_source(&self, id: &str) -> Result<TitleSource> {
+        let conn = self.conn()?;
+        let source: Option<String> = conn
+            .query_row(
+                "SELECT title_source FROM meetings WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .ok();
+        Ok(source
+            .map(|s| TitleSource::from_str(&s))
+            .unwrap_or_default())
+    }
+
+    /// Characters of transcript recorded so far — the cheap "has enough been
+    /// said to name this yet?" check, without loading every line.
+    pub fn transcript_chars(&self, meeting_id: &str) -> Result<i64> {
+        let conn = self.conn()?;
+        Ok(conn.query_row(
+            "SELECT COALESCE(SUM(LENGTH(text)), 0) FROM meeting_segments WHERE meeting_id = ?1",
+            params![meeting_id],
+            |row| row.get(0),
+        )?)
     }
 
     /// Records that the far-side lane is running. Called after the tap starts,
@@ -151,8 +206,8 @@ impl MeetingStore {
     pub fn get_meeting(&self, id: &str) -> Result<Option<Meeting>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, started_at, ended_at, app_bundle_id, app_display_name,
-                    detection_source, captured_system_audio
+            "SELECT id, title, title_source, platform, started_at, ended_at, app_bundle_id,
+                    app_display_name, detection_source, captured_system_audio
              FROM meetings WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::map_meeting)?;
@@ -162,8 +217,8 @@ impl MeetingStore {
     pub fn list_meetings(&self, limit: i64) -> Result<Vec<Meeting>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, started_at, ended_at, app_bundle_id, app_display_name,
-                    detection_source, captured_system_audio
+            "SELECT id, title, title_source, platform, started_at, ended_at, app_bundle_id,
+                    app_display_name, detection_source, captured_system_audio
              FROM meetings ORDER BY started_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit], Self::map_meeting)?;
@@ -247,16 +302,100 @@ impl MeetingStore {
     }
 
     fn map_meeting(row: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
+        let title: Option<String> = row.get("title")?;
+        let app_bundle_id: Option<String> = row.get("app_bundle_id")?;
+        let app_display_name: Option<String> = row.get("app_display_name")?;
+        // Stored since the platform column existed; inferred for the meetings
+        // recorded before it, which would otherwise be the only rows in the
+        // library without a logo.
+        let platform = row.get::<_, Option<String>>("platform")?.or_else(|| {
+            super::platform::infer_for_record(
+                app_bundle_id.as_deref(),
+                app_display_name.as_deref(),
+                title.as_deref(),
+            )
+        });
         Ok(Meeting {
             id: row.get("id")?,
-            title: row.get("title")?,
+            title,
+            title_source: TitleSource::from_str(&row.get::<_, String>("title_source")?),
+            platform,
             started_at: row.get("started_at")?,
             ended_at: row.get("ended_at")?,
-            app_bundle_id: row.get("app_bundle_id")?,
-            app_display_name: row.get("app_display_name")?,
+            app_bundle_id,
+            app_display_name,
             detection_source: DetectionSource::from_str(&row.get::<_, String>("detection_source")?),
             captured_system_audio: row.get("captured_system_audio")?,
         })
+    }
+
+    // ---- Ask -------------------------------------------------------------
+
+    pub fn insert_chat_message(
+        &self,
+        meeting_id: &str,
+        role: MeetingChatRole,
+        body: &str,
+        preset: Option<MeetingChatPreset>,
+        created_at: i64,
+    ) -> Result<MeetingChatMessage> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO meeting_chat_messages (meeting_id, role, body, preset, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                meeting_id,
+                role.as_str(),
+                body,
+                preset.map(|p| p.as_str()),
+                created_at
+            ],
+        )?;
+        Ok(MeetingChatMessage {
+            id: conn.last_insert_rowid(),
+            meeting_id: meeting_id.to_string(),
+            role,
+            body: body.to_string(),
+            preset,
+            created_at,
+        })
+    }
+
+    pub fn list_chat_messages(&self, meeting_id: &str) -> Result<Vec<MeetingChatMessage>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, meeting_id, role, body, preset, created_at
+             FROM meeting_chat_messages WHERE meeting_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![meeting_id], |row| {
+            Ok(MeetingChatMessage {
+                id: row.get(0)?,
+                meeting_id: row.get(1)?,
+                role: MeetingChatRole::from_str(&row.get::<_, String>(2)?),
+                body: row.get(3)?,
+                preset: row
+                    .get::<_, Option<String>>(4)?
+                    .and_then(|p| MeetingChatPreset::from_str(&p)),
+                created_at: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn delete_chat_message(&self, id: i64) -> Result<()> {
+        self.conn()?.execute(
+            "DELETE FROM meeting_chat_messages WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_chat(&self, meeting_id: &str) -> Result<()> {
+        self.conn()?.execute(
+            "DELETE FROM meeting_chat_messages WHERE meeting_id = ?1",
+            params![meeting_id],
+        )?;
+        Ok(())
     }
 
     // ---- Speakers --------------------------------------------------------
@@ -426,8 +565,9 @@ impl MeetingStore {
         let fts = fts_prefix_query(needle);
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT m.id, m.title, m.started_at, m.ended_at, m.app_bundle_id,
-                    m.app_display_name, m.detection_source, m.captured_system_audio
+            "SELECT m.id, m.title, m.title_source, m.platform, m.started_at, m.ended_at,
+                    m.app_bundle_id, m.app_display_name, m.detection_source,
+                    m.captured_system_audio
              FROM meetings m
              WHERE m.title LIKE ?1 ESCAPE '\\'
                 OR m.app_display_name LIKE ?1 ESCAPE '\\'
@@ -463,8 +603,9 @@ impl MeetingStore {
         // `m.id` and `s.id` collide, and both mappers read columns by name, so
         // the segment side is aliased and mapped explicitly.
         let mut stmt = conn.prepare(
-            "SELECT m.id, m.title, m.started_at, m.ended_at, m.app_bundle_id,
-                    m.app_display_name, m.detection_source, m.captured_system_audio,
+            "SELECT m.id, m.title, m.title_source, m.platform, m.started_at, m.ended_at,
+                    m.app_bundle_id, m.app_display_name, m.detection_source,
+                    m.captured_system_audio,
                     s.id AS seg_id, s.meeting_id AS seg_meeting_id,
                     s.speaker_id AS seg_speaker_id, s.lane AS seg_lane,
                     s.start_ms AS seg_start_ms, s.end_ms AS seg_end_ms,
@@ -499,8 +640,8 @@ impl MeetingStore {
     pub fn meetings_in_range(&self, from: i64, to: i64, limit: i64) -> Result<Vec<Meeting>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, started_at, ended_at, app_bundle_id, app_display_name,
-                    detection_source, captured_system_audio
+            "SELECT id, title, title_source, platform, started_at, ended_at, app_bundle_id,
+                    app_display_name, detection_source, captured_system_audio
              FROM meetings
              WHERE started_at >= ?1 AND started_at <= ?2
              ORDER BY started_at DESC LIMIT ?3",

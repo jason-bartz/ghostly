@@ -486,7 +486,14 @@ async fn run_backend_raw(
                 }
             }
         }
-        MeetingSummaryBackend::Cloud => match cloud(app, SYSTEM_PROMPT, &prompt).await {
+        MeetingSummaryBackend::Cloud => match cloud(
+            app,
+            SYSTEM_PROMPT,
+            &prompt,
+            crate::max_gateway::Job::Balanced,
+        )
+        .await
+        {
             Ok(text) => Ok(text),
             Err(e) => {
                 warn!("Meeting summary: cloud failed ({e}), using extractive");
@@ -505,23 +512,28 @@ async fn run_backend_raw(
 /// over a prompt that contains the user's own notes would return their own
 /// sentences back at them as though a model had done something. Callers that
 /// need a genuine model get the error and choose their own fallback.
+///
+/// `job` picks the Max model tier. Merging notes is a careful read of two
+/// documents and earns the balanced model; naming a meeting is a dozen words
+/// out and runs on the fast one.
 pub(super) async fn run_model(
     app: &AppHandle,
     backend: MeetingSummaryBackend,
     system: &str,
     prompt: &str,
+    job: crate::max_gateway::Job,
 ) -> Result<String, String> {
     match backend {
         MeetingSummaryBackend::Extractive => {
             Err("No AI model is configured for meeting summaries.".to_string())
         }
         MeetingSummaryBackend::Auto | MeetingSummaryBackend::OnDevice => on_device(system, prompt),
-        MeetingSummaryBackend::Cloud => cloud(app, system, prompt).await,
+        MeetingSummaryBackend::Cloud => cloud(app, system, prompt, job).await,
     }
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn on_device(system: &str, prompt: &str) -> Result<String, String> {
+pub(super) fn on_device(system: &str, prompt: &str) -> Result<String, String> {
     if !crate::apple_intelligence::check_apple_intelligence_availability() {
         return Err("Apple Intelligence is not available on this Mac".to_string());
     }
@@ -531,11 +543,16 @@ fn on_device(system: &str, prompt: &str) -> Result<String, String> {
 }
 
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-fn on_device(_system: &str, _prompt: &str) -> Result<String, String> {
+pub(super) fn on_device(_system: &str, _prompt: &str) -> Result<String, String> {
     Err("On-device summarisation is unavailable on this platform".to_string())
 }
 
-async fn cloud(app: &AppHandle, system: &str, prompt: &str) -> Result<String, String> {
+async fn cloud(
+    app: &AppHandle,
+    system: &str,
+    prompt: &str,
+    job: crate::max_gateway::Job,
+) -> Result<String, String> {
     let settings = get_settings(app);
     let provider_id = settings.post_process_provider_id.as_str();
     let provider = settings
@@ -578,7 +595,7 @@ async fn cloud(app: &AppHandle, system: &str, prompt: &str) -> Result<String, St
             model,
             api_key,
         }
-        .for_job(crate::max_gateway::Job::Balanced),
+        .for_job(job),
         prompt,
         None,
         None,

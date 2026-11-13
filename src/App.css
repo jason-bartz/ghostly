@@ -221,6 +221,48 @@
   }
 }
 
+/* A meeting's AI-written name arriving: it resolves out of a soft blur rather
+ * than snapping in, so the change is noticed without being announced. */
+@keyframes title-reveal {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    letter-spacing: 0.02em;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    letter-spacing: normal;
+  }
+}
+
+/* A transcript card a citation just landed on: a glow that settles, so the
+ * eye finds the card and then lets go of it. */
+@keyframes cite-flash {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-accent-glow);
+  }
+  35% {
+    box-shadow: 0 0 0 6px var(--color-accent-glow);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* The caret at the end of a streaming answer. Steps, not a fade: it should
+ * read as a cursor, not as a loading pulse. */
+@keyframes caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
 /* The live transcript's "someone is talking" indicator. Deliberately the
  * messaging-app typing rhythm rather than an audio meter: it is reporting that
  * a line is on its way, not how loud the room is. */
@@ -895,6 +937,26 @@ body {
   .typing-dot:nth-child(3) {
     animation-delay: 0.3s;
   }
+
+  .title-reveal {
+    display: inline-block;
+    animation: title-reveal 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .cite-flash {
+    animation: cite-flash 1.2s ease-out;
+  }
+
+  .stream-caret {
+    display: inline-block;
+    width: 6px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: -0.15em;
+    border-radius: 1.5px;
+    background: var(--color-accent);
+    animation: caret-blink 1s steps(1) infinite;
+  }
 }
 
 /* Sonner toast surface tuning */
@@ -946,8 +1008,16 @@ input[type="range"]:focus::-webkit-slider-thumb {
 @media (prefers-reduced-motion: reduce) {
   .app-canvas::after,
   .animate-rise,
-  .animate-pulse-ring {
+  .animate-pulse-ring,
+  .title-reveal,
+  .cite-flash {
     animation: none !important;
+  }
+
+  /* Still says "more is coming", just without blinking. */
+  .stream-caret {
+    animation: none !important;
+    opacity: 0.6;
   }
 
   /* The dots still have to read as "in progress", so they stay lit rather than

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Maximize2 } from "lucide-react";
+import { PlatformLogo } from "@/components/icons/PlatformLogo";
 
 /**
  * The panel, minimised.
@@ -36,6 +37,8 @@ interface LevelPayload {
 }
 
 interface MiniPlayerProps {
+  /** The service the call is on, for the logo the status dot rides on. */
+  platform: string | null;
   /** Capture is running — the waveform means something. */
   active: boolean;
   paused: boolean;
@@ -55,6 +58,7 @@ function barHeight(level: number): number {
 }
 
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({
+  platform,
   active,
   paused,
   clock,
@@ -135,16 +139,20 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
       }}
       className="absolute inset-0 z-10 flex cursor-pointer select-none items-center gap-2 rounded-[20px] bg-surface-1 px-3 text-text transition-colors duration-150 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50"
     >
-      <span
-        className={`h-[6px] w-[6px] shrink-0 rounded-full ${
-          active && !paused
-            ? "animate-pulse bg-danger"
-            : active
-              ? "bg-warning"
-              : "bg-text-faint"
-        }`}
-        aria-hidden
-      />
+      {/* Which call this is, with whether it is still recording as a badge
+          on its corner — two answers in the space of one. */}
+      <span className="relative shrink-0" aria-hidden>
+        <PlatformLogo platform={platform} size={18} />
+        <span
+          className={`absolute -right-[2px] -top-[2px] h-[7px] w-[7px] rounded-full ring-2 ring-surface-1 ${
+            active && !paused
+              ? "animate-pulse bg-danger"
+              : active
+                ? "bg-warning"
+                : "bg-text-faint"
+          }`}
+        />
+      </span>
 
       {/* The waveform. Bars rather than a path: at twenty samples a line is
           mostly interpolation, and the point is only ever "someone is still

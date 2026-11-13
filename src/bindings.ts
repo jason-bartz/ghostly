@@ -450,62 +450,6 @@ async revealDiagnosticsBundle(path: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async changeContinuousDictationEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_dictation_enabled_setting", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeContinuousSilenceMsSetting(ms: number) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_silence_ms_setting", { ms }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeContinuousMaxSegmentMsSetting(ms: number) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_max_segment_ms_setting", { ms }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeContinuousMinSegmentMsSetting(ms: number) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_min_segment_ms_setting", { ms }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeContinuousSubmitPhraseEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_submit_phrase_enabled_setting", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeContinuousSubmitPhraseSetting(phrase: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_submit_phrase_setting", { phrase }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async changeContinuousSubmitKeySetting(key: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("change_continuous_submit_key_setting", { key }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async changeAppLanguageSetting(language: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_app_language_setting", { language }) };
@@ -827,17 +771,6 @@ async getMicrophoneMode() : Promise<Result<boolean, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
-},
-async setContinuousDictationArmed(armed: boolean) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_continuous_dictation_armed", { armed }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async isContinuousDictationArmed() : Promise<boolean> {
-    return await TAURI_INVOKE("is_continuous_dictation_armed");
 },
 async getWindowsMicrophonePermissionStatus() : Promise<WindowsMicrophonePermissionStatus> {
     return await TAURI_INVOKE("get_windows_microphone_permission_status");
@@ -1401,13 +1334,75 @@ async deleteMeeting(meetingId: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async setMeetingTitle(meetingId: string, title: string) : Promise<Result<null, string>> {
+/**
+ * Renames a meeting by hand.
+ * 
+ * A typed name is final — no AI pass will replace it. Clearing the name is
+ * the opposite: the dated placeholder comes back and Ghostly is free to name
+ * the meeting from what was said again. Returns the title now in effect, so
+ * the caller can show the placeholder it did not type.
+ */
+async setMeetingTitle(meetingId: string, title: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_meeting_title", { meetingId, title }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Names a meeting from what was said, on request.
+ * 
+ * The one path allowed to replace a name the user typed: they asked for it.
+ */
+async generateMeetingTitle(meetingId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("generate_meeting_title", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether the Ask tab can answer, asked before the user types.
+ */
+async getMeetingChatAvailability() : Promise<MeetingChatAvailability> {
+    return await TAURI_INVOKE("get_meeting_chat_availability");
+},
+async getMeetingChat(meetingId: string) : Promise<Result<MeetingChatMessage[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_meeting_chat", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clearMeetingChat(meetingId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clear_meeting_chat", { meetingId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Asks the meeting a question. The answer streams as `meeting-chat-delta`
+ * events tagged with `request_id`, and the stored exchange is returned (and
+ * emitted as `meeting-chat-finished`) when it completes.
+ */
+async askMeeting(meetingId: string, requestId: string, body: string, preset: MeetingChatPreset | null) : Promise<Result<MeetingChatExchange, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ask_meeting", { meetingId, requestId, body, preset }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stops a streaming answer. What has already arrived is kept.
+ */
+async cancelMeetingChat(requestId: string) : Promise<void> {
+    await TAURI_INVOKE("cancel_meeting_chat", { requestId });
 },
 /**
  * Corrects one transcript line by hand.
@@ -2153,18 +2148,26 @@ async applyEditChip(chipId: string) : Promise<Result<null, string>> {
 
 export const events = __makeEvents__<{
 historyUpdatePayload: HistoryUpdatePayload,
+meetingChatDeltaEvent: MeetingChatDeltaEvent,
+meetingChatFinishedEvent: MeetingChatFinishedEvent,
+meetingChatStartedEvent: MeetingChatStartedEvent,
 meetingDetectedEvent: MeetingDetectedEvent,
 meetingMentionEvent: MeetingMentionEvent,
 meetingNotesEnhancedEvent: MeetingNotesEnhancedEvent,
 meetingSegmentEvent: MeetingSegmentEvent,
-meetingStatusEvent: MeetingStatusEvent
+meetingStatusEvent: MeetingStatusEvent,
+meetingTitleEvent: MeetingTitleEvent
 }>({
 historyUpdatePayload: "history-update-payload",
+meetingChatDeltaEvent: "meeting-chat-delta-event",
+meetingChatFinishedEvent: "meeting-chat-finished-event",
+meetingChatStartedEvent: "meeting-chat-started-event",
 meetingDetectedEvent: "meeting-detected-event",
 meetingMentionEvent: "meeting-mention-event",
 meetingNotesEnhancedEvent: "meeting-notes-enhanced-event",
 meetingSegmentEvent: "meeting-segment-event",
-meetingStatusEvent: "meeting-status-event"
+meetingStatusEvent: "meeting-status-event",
+meetingTitleEvent: "meeting-title-event"
 })
 
 /** user-defined constants **/
@@ -2214,7 +2217,7 @@ confirm_paste_default_set?: boolean;
 meeting_default_enabled_migrated?: boolean; 
 /**
  * Marker for the shortcut-defaults migration that moved transcribe to
- * `fn` and the edit/screenshot/continuous bindings to the Cmd+Option
+ * `fn` and the edit/screenshot bindings to the Cmd+Option
  * family. When false, `migrate_binding_defaults_v2` syncs stored
  * `default_binding` fields to the new code defaults and upgrades any
  * `current_binding` that was still sitting on the old default.
@@ -2306,48 +2309,7 @@ append_trailing_space?: boolean; app_language?: string;
  * the handful of interruptions it costs. The sidebar card still tracks
  * every milestone when this is off.
  */
-milestone_notifications?: boolean; experimental_enabled?: boolean; lazy_stream_close?: boolean; 
-/**
- * Enables Open Mic, the hands-free dictation mode. When true, an
- * additional shortcut opens/closes a VAD-driven loop that transcribes each
- * utterance on silence without any key press.
- * 
- * Defaults off: leaving the microphone open has real costs (Bluetooth
- * audio quality degrades system-wide, and any nearby voice can trigger a
- * segment), so it stays an explicit opt-in even though it is no longer
- * hidden behind the experimental flag.
- */
-continuous_dictation_enabled?: boolean; 
-/**
- * Milliseconds of trailing silence that closes a segment.
- */
-continuous_silence_ms?: number; 
-/**
- * Hard ceiling on a single segment before force-flushing.
- */
-continuous_max_segment_ms?: number; 
-/**
- * Segments shorter than this are dropped (cough/click suppression).
- */
-continuous_min_segment_ms?: number; 
-/**
- * When true, ending a continuous-dictation segment with the configured
- * submit phrase strips the phrase and sends the submit keystroke after
- * pasting. Lets the user finish a thought with "...send it" to fire off
- * a chat message hands-free.
- */
-continuous_submit_phrase_enabled?: boolean; 
-/**
- * Phrase that triggers the submit keystroke when it appears at the end of
- * a segment. Matched case-insensitively with word boundaries.
- */
-continuous_submit_phrase?: string; 
-/**
- * Which key to send when the submit phrase fires. Reuses `AutoSubmitKey`
- * but the UI exposes only Enter and Cmd+Enter — Ctrl+Enter is uncommon
- * for chat submit on macOS.
- */
-continuous_submit_key?: AutoSubmitKey; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; show_dock_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path: string | null; custom_filler_words?: string[] | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; extra_recording_buffer_ms?: number; profiles_enabled?: boolean; profiles?: Profile[]; 
+milestone_notifications?: boolean; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; show_dock_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path: string | null; custom_filler_words?: string[] | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; extra_recording_buffer_ms?: number; profiles_enabled?: boolean; profiles?: Profile[]; 
 /**
  * When true, built-in app-category profiles auto-activate for common apps.
  */
@@ -2729,6 +2691,16 @@ export type MatchRule =
 { kind: "window_title_contains"; value: string }
 export type Meeting = { id: string; title: string | null; 
 /**
+ * See [`TitleSource`].
+ */
+titleSource: TitleSource; 
+/**
+ * The service the call was held on — "Zoom", "Google Meet" — rather than
+ * the program that captured it, which for a browser call is just the
+ * browser. Drives the logo beside the meeting everywhere it is listed.
+ */
+platform: string | null; 
+/**
  * Unix seconds.
  */
 startedAt: number; endedAt: number | null; appBundleId: string | null; appDisplayName: string | null; detectionSource: DetectionSource; 
@@ -2778,10 +2750,117 @@ export type MeetingAutoConnect =
  */
 "auto"
 /**
+ * Whether the Ask tab can answer, and where the answer would come from.
+ * 
+ * Asked before the user types, so a meeting with no usable model presents
+ * itself as set-up-needed rather than accepting a question and failing it.
+ */
+export type MeetingChatAvailability = 
+/**
+ * A cloud model: the full transcript fits, answers stream.
+ */
+"cloud" | 
+/**
+ * Apple Intelligence: private, but a small window of the meeting at once.
+ */
+"on_device" | 
+/**
+ * Meeting AI is set to keyword summaries only.
+ */
+"extractive" | 
+/**
+ * A cloud provider is selected but has no key or model behind it.
+ */
+"needs_setup" | 
+/**
+ * On-device was chosen and this Mac cannot run it.
+ */
+"on_device_unavailable"
+/**
+ * The next piece of a streaming answer.
+ */
+export type MeetingChatDeltaEvent = { meetingId: string; requestId: string; delta: string }
+/**
+ * One question and its answer, as stored.
+ */
+export type MeetingChatExchange = { question: MeetingChatMessage; answer: MeetingChatMessage; 
+/**
+ * The user pressed stop. `answer` holds what had arrived by then.
+ */
+stopped: boolean }
+/**
+ * An answer finished, stopped, or failed. Exactly one per started question.
+ */
+export type MeetingChatFinishedEvent = { meetingId: string; requestId: string; 
+/**
+ * The stored exchange, absent when the question failed.
+ */
+exchange: MeetingChatExchange | null; error: string | null }
+export type MeetingChatMessage = { id: number; meetingId: string; role: MeetingChatRole; body: string; 
+/**
+ * Set on a user turn that came from a one-tap preset.
+ */
+preset: MeetingChatPreset | null; 
+/**
+ * Unix seconds.
+ */
+createdAt: number }
+/**
+ * The one-tap questions in the Ask tab.
+ * 
+ * Each is a carefully worded instruction on the backend and a short label in
+ * the UI. The label is what the thread shows as the user's turn — "Action
+ * items" — while the model is sent the full brief behind it, so the thread
+ * reads like a conversation instead of a wall of prompt.
+ */
+export type MeetingChatPreset = 
+/**
+ * What happened in the last few minutes, and how to rejoin.
+ */
+"catch_up" | 
+/**
+ * The meeting so far, or the whole meeting once it has ended.
+ */
+"summary" | 
+/**
+ * Owner, task, due date.
+ */
+"action_items" | 
+/**
+ * Questions worth asking next.
+ */
+"suggest_question" | 
+/**
+ * What the user should raise next, from their notes and open threads.
+ */
+"talking_points" | 
+/**
+ * How the other side seems to feel, with the evidence.
+ */
+"sentiment" | 
+/**
+ * Decided versus still open.
+ */
+"decisions" | 
+/**
+ * A ready-to-send follow-up email.
+ */
+"follow_up_email"
+export type MeetingChatRole = "user" | "assistant"
+/**
+ * A question has been put to the meeting — from the panel, or from the
+ * catch-up shortcut while the panel was showing something else.
+ */
+export type MeetingChatStartedEvent = { meetingId: string; requestId: string; question: MeetingChatMessage }
+/**
  * Emitted when a call is detected and the user must choose, or a countdown is
  * running.
  */
 export type MeetingDetectedEvent = { bundleId: string; displayName: string; 
+/**
+ * The service the call is on, which for a browser is not `display_name`.
+ */
+platform: string | null; 
 /**
  * Seconds remaining before capture starts automatically. `None` means the
  * user must confirm explicitly.
@@ -2988,7 +3067,15 @@ colorIndex: number }
  * Snapshot of the live capture session, polled by the panel on mount and
  * pushed on every change.
  */
-export type MeetingStatus = { active: boolean; meetingId: string | null; title: string | null; startedAt: number | null; 
+export type MeetingStatus = { active: boolean; meetingId: string | null; title: string | null; 
+/**
+ * Whether `title` is the placeholder, an AI title or the user's own.
+ */
+titleSource: TitleSource; 
+/**
+ * See [`Meeting::platform`].
+ */
+platform: string | null; startedAt: number | null; 
 /**
  * True when the far-side lane is actually running. False means mic-only,
  * which the panel surfaces explicitly rather than silently degrading.
@@ -3059,6 +3146,13 @@ summary: string | null; tags: string[];
  * query per row.
  */
 notes: MeetingNotes }
+/**
+ * A meeting was renamed by Ghostly.
+ * 
+ * Both windows listen: the panel's header and the library row change name
+ * together, whichever of them asked.
+ */
+export type MeetingTitleEvent = { meetingId: string; title: string; source: TitleSource }
 export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; sha256: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; 
 /**
  * Set for the three models surfaced in the primary picker; `None` for the
@@ -3210,6 +3304,26 @@ sampleRate: number | null;
  * User-facing explanation when `supported` is false.
  */
 unavailableReason: string | null }
+/**
+ * Who gave a meeting its current name.
+ * 
+ * The whole contract of AI naming rests on this: Ghostly may rename a meeting
+ * it named itself — the dated placeholder, or an earlier AI title it has since
+ * improved on — and must never touch one the user typed.
+ */
+export type TitleSource = 
+/**
+ * The `"{platform} meeting - MM/DD/YY"` placeholder.
+ */
+"default" | 
+/**
+ * Written by a model from what was said.
+ */
+"ai" | 
+/**
+ * Typed by the user. Final.
+ */
+"user"
 /**
  * Aggregate usage statistics derived from the transcription history table.
  * All fields are lifetime totals across non-empty entries. Rows missing an

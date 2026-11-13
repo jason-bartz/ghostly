@@ -423,6 +423,7 @@ impl MeetingDetector {
                         MeetingDetectedEvent {
                             bundle_id: detected.bundle_id.clone(),
                             display_name: detected.display_name.clone(),
+                            platform: detected.platform.clone(),
                             countdown_secs: None,
                         },
                     );
@@ -448,6 +449,7 @@ impl MeetingDetector {
                 MeetingDetectedEvent {
                     bundle_id: detected.bundle_id.clone(),
                     display_name: detected.display_name.clone(),
+                    platform: detected.platform.clone(),
                     countdown_secs: Some(remaining),
                 },
             );

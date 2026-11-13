@@ -5,7 +5,7 @@
 
 use log::warn;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 use crate::actions::ACTION_MAP;
 use crate::managers::audio::AudioRecordingManager;
@@ -82,31 +82,24 @@ pub fn handle_shortcut_event(
                 let Some(meeting_id) = manager.active_meeting_id() else {
                     return;
                 };
-                // Surface the panel so the summary has somewhere to land.
+                // Surface the panel so the answer has somewhere to land. It
+                // arrives in the Ask tab like any other question, streamed —
+                // the panel follows `meeting-chat-started` to it even if the
+                // notepad was showing.
                 crate::meetings::panel::show(&app);
-                // Same floor as the panel button — see `MIN_CATCH_UP_WINDOW_MS`.
-                let last = manager.store().last_summarised_ms(&meeting_id).unwrap_or(0);
-                let from_ms = last.min((manager.elapsed_ms() - 3 * 60 * 1000).max(0));
-                match crate::meetings::summarizer::summarize_window(
+                let request_id = format!("shortcut-{}", chrono::Utc::now().timestamp_millis());
+                let store = manager.store().clone();
+                if let Err(e) = crate::meetings::chat::ask(
                     &app,
-                    manager.store(),
+                    &store,
                     &meeting_id,
-                    from_ms,
-                    i64::MAX,
-                    crate::meetings::types::SummaryKind::CatchUp,
+                    &request_id,
+                    "Catch me up",
+                    Some(crate::meetings::types::MeetingChatPreset::CatchUp),
                 )
                 .await
                 {
-                    Ok(body) => {
-                        let _ = app.emit(
-                            "meeting-catch-up",
-                            crate::meetings::types::MeetingSummaryEvent {
-                                meeting_id: meeting_id.clone(),
-                                body,
-                            },
-                        );
-                    }
-                    Err(e) => warn!("Catch me up failed: {e}"),
+                    warn!("Catch me up failed: {e}");
                 }
             });
         }
