@@ -961,14 +961,25 @@ pub fn run(cli_args: CliArgs) {
                 });
             }
 
-            // Startup token revalidation: if a license is stored, refresh in
-            // the background. Never blocks startup. Uses the same
-            // revalidate logic as the explicit command.
+            // Token revalidation: at startup, then every few hours. Never
+            // blocks startup. Uses the same revalidate logic as the explicit
+            // command.
+            //
+            // Repeating matters now that the token is a subscription's
+            // paid-through date and the gateway credential. Run only at launch,
+            // a Mac that stays up for weeks never learns its subscription
+            // lapsed or renewed, and its credential ages out from under it.
             {
                 let bg_app = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    if crate::license::load_key_and_token().is_some() {
-                        let _ = crate::commands::license::revalidate_license(bg_app).await;
+                    const INTERVAL: std::time::Duration =
+                        std::time::Duration::from_secs(6 * 60 * 60);
+                    loop {
+                        if crate::license::load_key_and_token().is_some() {
+                            let _ =
+                                crate::commands::license::revalidate_license(bg_app.clone()).await;
+                        }
+                        tokio::time::sleep(INTERVAL).await;
                     }
                 });
             }

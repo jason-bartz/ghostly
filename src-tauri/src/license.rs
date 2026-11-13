@@ -108,6 +108,12 @@ pub struct TokenPayload {
     /// Absent on tokens minted before Max existed, which are all Pro.
     #[serde(default)]
     pub tier: Option<String>,
+    /// Max only: unix seconds hosted AI is paid through, or 0 when the
+    /// subscription isn't serviceable right now. `tier` stays "max" on a
+    /// lapsed subscription, so this is what decides whether Max-only local
+    /// features stay on. Absent on tokens minted before the field existed.
+    #[serde(default)]
+    pub ai_until: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -159,6 +165,11 @@ pub struct AiStatus {
     pub expires_at: Option<i64>,
     pub requests_used: u32,
     pub requests_limit: u32,
+    /// Share of the month's allowance spent across every capped dimension —
+    /// requests, tokens and dollars — as a whole percentage. Absent from
+    /// Workers that predate the dollar cap.
+    #[serde(default)]
+    pub allowance_used_pct: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,24 +212,47 @@ fn parse_error_status(status: u16, body: &str) -> LicenseError {
 /// existed have no tier at all and are Pro.
 pub const TIER_MAX: &str = "max";
 
-/// The stored licence key, but only when it is entitled to hosted AI.
+/// How long past the paid-through date this Mac keeps treating itself as Max.
 ///
-/// Reads the tier out of the already-verified offline token, so this is a
-/// local, synchronous call — no network round-trip and no second source of
-/// truth about entitlement.
-pub fn entitled_max_key() -> Option<String> {
-    let (key, token) = load_key_and_token()?;
+/// Covers a renewal that lands while the Mac is offline or asleep: the card is
+/// charged at period end, but the fresh date only arrives with the next
+/// revalidation. The gateway enforces the real date regardless, so this only
+/// governs local features such as Meeting Mode.
+const MAX_LOCAL_GRACE_SECS: i64 = 3 * 86400;
+
+/// Whether a verified token entitles this install to Max at `now`.
+pub(crate) fn max_entitled_by(payload: &TokenPayload, now: i64) -> bool {
+    if payload.tier.as_deref() != Some(TIER_MAX) {
+        return false;
+    }
+    match payload.ai_until {
+        // Minted before tokens carried a paid-through date. The next
+        // revalidation replaces it with one that does.
+        None => true,
+        Some(until) => now < until.saturating_add(MAX_LOCAL_GRACE_SECS),
+    }
+}
+
+/// The stored device token, but only when it is entitled to hosted AI.
+///
+/// The token, not the licence key, is the gateway credential: it is bound to
+/// this Mac, and the gateway accepts it only while this Mac's activation is
+/// live. Reads entitlement out of the already-verified offline token, so this
+/// is a local, synchronous call with no second source of truth.
+pub fn entitled_max_token() -> Option<String> {
+    let (_key, token) = load_key_and_token()?;
     let payload = verify_token(&token).ok()?;
-    (payload.tier.as_deref() == Some(TIER_MAX)).then_some(key)
+    max_entitled_by(&payload, chrono::Utc::now().timestamp()).then_some(token)
 }
 
 /// Whether this install is entitled to the Max tier.
 ///
-/// The same offline token check as [`entitled_max_key`], for the callers that
-/// only need the yes/no — feature gates rather than gateway requests. Local and
-/// synchronous, so it is safe to call from a poll loop or a menu build.
+/// The same offline token check as [`entitled_max_token`], for the callers
+/// that only need the yes/no — feature gates rather than gateway requests.
+/// Local and synchronous, so it is safe to call from a poll loop or a menu
+/// build.
 pub fn is_max_entitled() -> bool {
-    entitled_max_key().is_some()
+    entitled_max_token().is_some()
 }
 
 // ---------------- Token verification ----------------
@@ -603,4 +637,70 @@ fn urlencode(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: i64 = 1_800_000_000;
+
+    fn payload(tier: Option<&str>, ai_until: Option<i64>) -> TokenPayload {
+        TokenPayload {
+            key: "GHOSTLY-TEST".into(),
+            email: "test@example.com".into(),
+            machine_id: "m".into(),
+            issued_at: NOW,
+            expires_at: NOW + 7 * 86400,
+            product_version: None,
+            tier: tier.map(str::to_string),
+            ai_until,
+        }
+    }
+
+    #[test]
+    fn paid_up_max_is_entitled() {
+        assert!(max_entitled_by(
+            &payload(Some("max"), Some(NOW + 86400)),
+            NOW
+        ));
+    }
+
+    #[test]
+    fn lapsed_max_is_not_entitled() {
+        // The Worker mints 0 for a subscription that isn't serviceable.
+        assert!(!max_entitled_by(&payload(Some("max"), Some(0)), NOW));
+    }
+
+    #[test]
+    fn grace_covers_a_renewal_that_has_not_synced_yet() {
+        let ended = NOW - 86400;
+        assert!(max_entitled_by(&payload(Some("max"), Some(ended)), NOW));
+        assert!(!max_entitled_by(
+            &payload(Some("max"), Some(ended)),
+            ended + MAX_LOCAL_GRACE_SECS
+        ));
+    }
+
+    #[test]
+    fn token_without_a_paid_through_date_keeps_working_until_refreshed() {
+        assert!(max_entitled_by(&payload(Some("max"), None), NOW));
+    }
+
+    #[test]
+    fn pro_and_untiered_tokens_are_never_max() {
+        assert!(!max_entitled_by(
+            &payload(Some("pro"), Some(NOW + 86400)),
+            NOW
+        ));
+        assert!(!max_entitled_by(&payload(None, None), NOW));
+    }
+
+    #[test]
+    fn old_tokens_without_ai_until_still_deserialize() {
+        let json =
+            r#"{"key":"k","email":"e","machine_id":"m","issued_at":1,"expires_at":2,"tier":"max"}"#;
+        let parsed: TokenPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.ai_until, None);
+    }
 }

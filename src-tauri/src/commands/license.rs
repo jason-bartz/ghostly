@@ -41,6 +41,10 @@ pub struct LicenseState {
     /// without a network round-trip. `None` when unlicensed, or when the token
     /// predates Max (all of which are Pro — see `TokenPayload::tier`).
     pub tier: Option<String>,
+    /// Whether Max is live on this Mac right now. `tier` stays "max" after a
+    /// subscription lapses — the Account pane still needs to say so and offer
+    /// billing — so feature gates read this instead.
+    pub max_active: bool,
 }
 
 fn unlicensed_state(mid: String) -> LicenseState {
@@ -51,6 +55,7 @@ fn unlicensed_state(mid: String) -> LicenseState {
         expires_at: None,
         machine_id: mid,
         tier: None,
+        max_active: false,
     }
 }
 
@@ -77,6 +82,9 @@ fn current_state(app: &AppHandle) -> LicenseState {
                 .and_then(|p| p.tier.clone())
                 .unwrap_or_else(|| "pro".to_string()),
         ),
+        max_active: payload
+            .as_ref()
+            .is_some_and(|p| license::max_entitled_by(p, chrono::Utc::now().timestamp())),
     }
 }
 
@@ -171,7 +179,9 @@ pub async fn revalidate_license(app: AppHandle) -> Result<LicenseState, String> 
                         write_settings(&app, settings);
                     }
                     // Revalidation is where a tier change lands: an upgrade to
-                    // Max, or a lapsed subscription dropping back to Pro.
+                    // Max, a renewal, or a lapse — the new token's paid-through
+                    // date decides — and it refreshes the device token the
+                    // gateway is called with.
                     crate::settings::sync_max_provider_key(&app);
                 }
             }
@@ -182,17 +192,27 @@ pub async fn revalidate_license(app: AppHandle) -> Result<LicenseState, String> 
             let mut settings = get_settings(&app);
             settings.is_pro = false;
             write_settings(&app, settings);
+            // A refund or chargeback lands here. Without this the Max
+            // credential outlives the licence in the keychain and keeps
+            // getting sent, as `deactivate_license` already guards against.
+            crate::settings::sync_max_provider_key(&app);
             Ok(current_state(&app))
         }
         Err(LicenseError::NetworkError { .. }) => {
             // Keep is_pro flag if existing token is still within hard expiry.
             match license::verify_token(&token) {
-                Ok(_) => Ok(current_state(&app)),
+                // A token can stay valid offline past its Max paid-through
+                // date, so the credential is re-judged even here.
+                Ok(_) => {
+                    crate::settings::sync_max_provider_key(&app);
+                    Ok(current_state(&app))
+                }
                 Err(_) => {
                     license::clear_credentials();
                     let mut settings = get_settings(&app);
                     settings.is_pro = false;
                     write_settings(&app, settings);
+                    crate::settings::sync_max_provider_key(&app);
                     Ok(current_state(&app))
                 }
             }

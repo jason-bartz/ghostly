@@ -88,6 +88,18 @@ export const useMaxStore = create<MaxState>((set, get) => ({
   },
 }));
 
-/** True when this install is entitled to hosted AI, per the offline token. */
+/**
+ * True when Max is live on this install, per the offline token. Every feature
+ * gate reads this: a lapsed subscriber gets their own provider pickers back
+ * and loses Meetings, the same as anyone without Max.
+ */
 export const isMaxLicense = (license: LicenseState | null): boolean =>
+  isMaxAccount(license) && license?.max_active === true;
+
+/**
+ * True for any Max subscription on this install, live or lapsed. Only for the
+ * Account pane, which has to keep saying *why* Max stopped and offering
+ * billing after a lapse — the moment a feature gate would hide it.
+ */
+export const isMaxAccount = (license: LicenseState | null): boolean =>
   license?.is_licensed === true && license.tier === MAX_TIER;

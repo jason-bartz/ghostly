@@ -1108,9 +1108,9 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             supports_structured_output: true,
             supports_vision: true,
         },
-        // Ghostly Max — hosted AI. The credential is the licence key, synced
-        // into `post_process_api_keys` by `sync_max_provider_key` rather than
-        // typed by the user, and the Worker speaks the OpenAI dialect so the
+        // Ghostly Max — hosted AI. The credential is this Mac's device token,
+        // synced into `post_process_api_keys` by `sync_max_provider_key` rather
+        // than typed by the user, and the Worker speaks the OpenAI dialect so the
         // whole existing request path (streaming, cancellation, structured
         // output) works unchanged.
         PostProcessProvider {
@@ -1642,7 +1642,15 @@ impl AppSettings {
             return false;
         }
         if provider.id == MAX_PROVIDER_ID {
-            return self.effective_is_pro();
+            // The credential is present only while the subscription is live —
+            // `sync_max_provider_key` removes it on a lapse. Checking the
+            // licence flag instead kept a lapsed subscriber's meeting AI
+            // pointed at a gateway that refuses every request.
+            return self.effective_is_pro()
+                && self
+                    .post_process_api_keys
+                    .get(MAX_PROVIDER_ID)
+                    .is_some_and(|key| !key.trim().is_empty());
         }
         let has_model = self
             .post_process_models
@@ -2066,34 +2074,41 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     settings
 }
 
-/// Mirror the licence key into the Max provider's API-key slot.
+/// Mirror this Mac's device token into the Max provider's API-key slot.
 ///
 /// Every existing caller reads a provider credential out of
-/// `post_process_api_keys`, so putting the licence key there means the hosted
-/// provider works through the untouched request path — no special-casing in
-/// `actions.rs`, `ai_metadata.rs`, or the meeting summariser.
+/// `post_process_api_keys`, so putting the gateway credential there means the
+/// hosted provider works through the untouched request path — no
+/// special-casing in `actions.rs`, `ai_metadata.rs`, or the meeting summariser.
 ///
-/// Called whenever licence state changes. Clearing on a non-Max licence
-/// matters as much as setting: a lapsed subscriber must stop sending requests
-/// the gateway would only reject.
+/// The credential is the signed device token, not the licence key: the gateway
+/// accepts a token only while this Mac's activation is live, whereas the key
+/// is emailed and works from anywhere. Tokens are reissued on every
+/// revalidation, so this rewrites the slot each time.
+///
+/// Called whenever licence state changes. Clearing on a lapse matters as much
+/// as setting: a lapsed subscriber must stop sending requests the gateway
+/// would only reject.
 pub fn sync_max_provider_key(app: &AppHandle) {
-    let entitled_key = crate::license::entitled_max_key();
+    let entitled_token = crate::license::entitled_max_token();
 
     let mut settings = get_settings(app);
     // `newly_entitled` is the *transition* into hosted AI, not the steady state.
     // This function runs on every revalidation, so anything keyed off the
-    // steady state would re-apply itself on a timer.
+    // steady state would re-apply itself on a timer. A refreshed token is a
+    // different string every time, so the transition is "the slot was empty",
+    // never "the value changed".
     let mut newly_entitled = false;
-    let mut changed = match &entitled_key {
-        Some(key) => {
+    let mut changed = match &entitled_token {
+        Some(token) => {
             let existing = settings.post_process_api_keys.get(MAX_PROVIDER_ID);
-            if existing.map(String::as_str) == Some(key.as_str()) {
+            if existing.map(String::as_str) == Some(token.as_str()) {
                 false
             } else {
+                newly_entitled = existing.is_none_or(|e| e.trim().is_empty());
                 settings
                     .post_process_api_keys
-                    .insert(MAX_PROVIDER_ID.to_string(), key.clone());
-                newly_entitled = true;
+                    .insert(MAX_PROVIDER_ID.to_string(), token.clone());
                 true
             }
         }
@@ -2107,7 +2122,7 @@ pub fn sync_max_provider_key(app: &AppHandle) {
             // subscriber's allowance.
             //
             // The blanket no-delete rule is about keys the *user* typed and
-            // cannot recover. This one is derived from the licence token, so
+            // cannot recover. This one is the licence token itself, so
             // re-deriving it costs nothing and deleting it loses nothing.
             crate::keychain::delete_api_key(MAX_PROVIDER_ID);
             settings

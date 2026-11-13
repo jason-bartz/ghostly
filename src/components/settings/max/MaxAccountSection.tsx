@@ -2,19 +2,21 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { commands } from "@/bindings";
+import { commands, type AiStatus } from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { Button } from "../../ui/Button";
-import { useMaxStore, isMaxLicense } from "@/stores/maxStore";
+import { useMaxStore, isMaxAccount } from "@/stores/maxStore";
 import { maxReasonKey } from "@/lib/maxErrors";
 
 /**
  * The Max half of the Account pane: entitlement plus how much of the month's
  * fair-use allowance is spent.
  *
- * Only rendered for a Max licence. The count comes from the gateway, so it can
- * be unavailable while offline — that shows as a quiet line rather than an
- * error, because the subscription is fine and only the number is missing.
+ * Rendered for any Max subscription, lapsed included — a lapsed subscriber is
+ * exactly who needs the reason and the billing button. The count comes from
+ * the gateway, so it can be unavailable while offline — that shows as a quiet
+ * line rather than an error, because the subscription is fine and only the
+ * number is missing.
  */
 export const MaxAccountSection: React.FC = () => {
   const { t } = useTranslation();
@@ -27,7 +29,7 @@ export const MaxAccountSection: React.FC = () => {
     void refresh();
   }, [refresh]);
 
-  if (!isMaxLicense(license)) return null;
+  if (!isMaxAccount(license)) return null;
 
   return (
     <SettingsGroup title={t("max.account.title")}>
@@ -47,16 +49,12 @@ export const MaxAccountSection: React.FC = () => {
               <p className="text-sm text-warning">
                 {t(maxReasonKey(aiStatus.reason))}
               </p>
-            ) : aiStatus.requests_limit > 0 &&
-              aiStatus.requests_used >= aiStatus.requests_limit ? (
+            ) : allowanceFraction(aiStatus) >= 1 ? (
               <p className="text-sm text-warning">
                 {t("max.errors.fairUseExceeded")}
               </p>
             ) : null}
-            <QuotaBar
-              used={aiStatus.requests_used}
-              limit={aiStatus.requests_limit}
-            />
+            <QuotaBar status={aiStatus} />
           </>
         )}
 
@@ -113,14 +111,30 @@ const ManageBillingRow: React.FC = () => {
   );
 };
 
+/**
+ * Share of the month's allowance spent, 0–1.
+ *
+ * Prefers the gateway's combined figure, which covers requests, tokens and
+ * dollars — whichever trips first is what refuses the next request. The bare
+ * request count is the fallback for a Worker that predates it.
+ */
+const allowanceFraction = (status: AiStatus): number => {
+  if (typeof status.allowance_used_pct === "number") {
+    return Math.min(1, Math.max(0, status.allowance_used_pct / 100));
+  }
+  return status.requests_limit > 0
+    ? Math.min(1, Math.max(0, status.requests_used / status.requests_limit))
+    : 0;
+};
+
 interface QuotaBarProps {
-  readonly used: number;
-  readonly limit: number;
+  readonly status: AiStatus;
 }
 
-const QuotaBar: React.FC<QuotaBarProps> = ({ used, limit }) => {
+const QuotaBar: React.FC<QuotaBarProps> = ({ status }) => {
   const { t } = useTranslation();
-  const pct = limit > 0 ? Math.min(1, Math.max(0, used / limit)) : 0;
+  const pct = allowanceFraction(status);
+  const combined = typeof status.allowance_used_pct === "number";
 
   // The allowance is set well above heavy human use, so a bar that is nearly
   // empty is the expected reading. Warning colour only near the top, where it
@@ -132,13 +146,17 @@ const QuotaBar: React.FC<QuotaBarProps> = ({ used, limit }) => {
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-xs font-medium text-mid-gray uppercase tracking-wide">
-          {t("max.account.requestsTitle")}
+          {combined
+            ? t("max.account.allowanceTitle")
+            : t("max.account.requestsTitle")}
         </p>
         <p className="text-sm tabular-nums">
-          {t("max.account.requestsValue", {
-            used: used.toLocaleString(),
-            limit: limit.toLocaleString(),
-          })}
+          {combined
+            ? t("max.account.allowanceValue", { pct: Math.round(pct * 100) })
+            : t("max.account.requestsValue", {
+                used: status.requests_used.toLocaleString(),
+                limit: status.requests_limit.toLocaleString(),
+              })}
         </p>
       </div>
       <div className="h-2 w-full rounded-full bg-fill-2 overflow-hidden">

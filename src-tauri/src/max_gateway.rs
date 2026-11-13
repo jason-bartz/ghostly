@@ -42,10 +42,15 @@ pub enum GatewayCode {
     Unpaid,
     /// 403 — the licence was revoked (refund/chargeback).
     Revoked,
+    /// 403 — the device token is genuine, but this Mac's activation was
+    /// removed (from another Mac's device list, or by support).
+    NotActivated,
     /// 429 — this month's fair-use allowance is spent.
     FairUseExceeded,
     /// 502/429 — Anthropic itself is unavailable or rate limiting us.
     UpstreamError,
+    /// 422 — the model's safety classifiers declined the request.
+    Refused,
 }
 
 impl GatewayCode {
@@ -57,8 +62,10 @@ impl GatewayCode {
             GatewayCode::Expired => "expired",
             GatewayCode::Unpaid => "unpaid",
             GatewayCode::Revoked => "revoked",
+            GatewayCode::NotActivated => "not_activated",
             GatewayCode::FairUseExceeded => "fair_use_exceeded",
             GatewayCode::UpstreamError => "upstream_error",
+            GatewayCode::Refused => "refused",
         }
     }
 
@@ -70,8 +77,10 @@ impl GatewayCode {
             "expired" => GatewayCode::Expired,
             "unpaid" => GatewayCode::Unpaid,
             "revoked" => GatewayCode::Revoked,
+            "not_activated" => GatewayCode::NotActivated,
             "fair_use_exceeded" => GatewayCode::FairUseExceeded,
             "upstream_error" => GatewayCode::UpstreamError,
+            "refused" => GatewayCode::Refused,
             _ => return None,
         })
     }
@@ -534,10 +543,14 @@ pub fn describe(code: GatewayCode) -> &'static str {
             "Your Ghostly Max subscription isn't active. Update billing, or add your own API key."
         }
         GatewayCode::Revoked => "This licence has been revoked.",
+        GatewayCode::NotActivated => {
+            "This Mac is no longer activated for Ghostly Max. Activate it again in Settings → Account."
+        }
         GatewayCode::FairUseExceeded => {
             "You've reached this month's Ghostly Max fair-use limit. Add your own API key to keep going."
         }
         GatewayCode::UpstreamError => "The AI service is temporarily unavailable. Try again shortly.",
+        GatewayCode::Refused => "The AI declined this request. Your original text was kept.",
     }
 }
 

@@ -23,6 +23,10 @@ export function maxErrorKey(code: string): string | null {
       return "max.errors.fairUseExceeded";
     case "upstream_error":
       return "max.errors.upstreamError";
+    case "refused":
+      return "max.errors.refused";
+    case "not_activated":
+      return "max.errors.notActivated";
     case "missing_key":
     case "invalid_key":
       return "max.errors.invalidKey";

@@ -2192,7 +2192,13 @@ export type AiStatus = { tier: string; ai_enabled: boolean;
  * `ok`, or the machine-readable reason hosted AI is unavailable —
  * `revoked`, `not_max`, `expired`, `unpaid`.
  */
-reason: string; expires_at: number | null; requests_used: number; requests_limit: number }
+reason: string; expires_at: number | null; requests_used: number; requests_limit: number; 
+/**
+ * Share of the month's allowance spent across every capped dimension —
+ * requests, tokens and dollars — as a whole percentage. Absent from
+ * Workers that predate the dollar cap.
+ */
+allowance_used_pct?: number | null }
 export type AppContext = { bundleId: string | null; processName: string | null; windowClass: string | null; exePath: string | null; windowTitle: string | null }
 export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; 
 /**
@@ -2664,7 +2670,13 @@ export type LicenseState = { is_licensed: boolean; key_masked: string | null; em
  * without a network round-trip. `None` when unlicensed, or when the token
  * predates Max (all of which are Pro — see `TokenPayload::tier`).
  */
-tier: string | null }
+tier: string | null; 
+/**
+ * Whether Max is live on this Mac right now. `tier` stays "max" after a
+ * subscription lapses — the Account pane still needs to say so and offer
+ * billing — so feature gates read this instead.
+ */
+max_active: boolean }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 export type MatchRule = 
 /**

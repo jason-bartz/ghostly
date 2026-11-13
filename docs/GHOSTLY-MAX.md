@@ -102,7 +102,13 @@ Routes added: `POST /v1/chat/completions`, `GET /ai/status`. `ANTHROPIC_API_KEY`
 
 **The gateway speaks the OpenAI dialect, not Anthropic's.** `llm_client.rs` already has a tested OpenAI-format client with SSE streaming and cancellation, and explicitly does _not_ stream Anthropic's `/v1/messages` (different event schema). Translating server-side cost the app one provider entry instead of a second HTTP client.
 
-**Auth is the licence key as a bearer token.** Same secret the app already sends to `/license/activate`, over TLS to our own origin, and every request needs a D1 round-trip for quota anyway — so verifying a signed token would save nothing.
+**Gateway auth is the device token, not the licence key** (since 0.1.37). The app sends the Ed25519 token it already holds; `authenticate()` in `src/ai.ts` verifies the signature against `ED25519_PUBLIC_KEY_HEX`, then requires that machine's activation to be live. The raw key used to be enough on its own — and it is emailed, shareable, and worked from any OpenAI-compatible client anywhere, so one subscription could serve any number of people. Now the 3-device limit binds the gateway too, and deactivating a Mac cuts it off at once.
+
+- Builds ≤ 0.1.36 still send the raw key. `LEGACY_KEY_AUTH = "on"` (wrangler.toml) lets them through and stamps `licenses.last_legacy_auth_at`. Once nothing has stamped it for a couple of weeks, set it to `"off"`; old builds then get `401 update_required`. Check with `SELECT key, last_legacy_auth_at FROM licenses WHERE last_legacy_auth_at IS NOT NULL`.
+- `/ai/status`, `/billing/portal` and `/sync/*` still take the raw key. None of them spends money.
+- A subscriber can still lift _their own_ token and use the gateway as a general Claude endpoint. That is what the dollar cap below is for.
+
+**The token carries the Max paid-through date (`ai_until`)**, and the app gates Max-only local features on it — not on `tier`, which stays `max` on a lapsed row by design. `ai_until` is the period end while entitled and `0` when not; the app adds a 3-day grace for a renewal that hasn't synced, and revalidates at launch and every 6 hours. Before this, a lapsed subscriber kept Meeting Mode forever and had their own-key pickers hidden. Token TTL is 7 days.
 
 **`current_period_end` means PAID THROUGH — nothing else may write it.** This is the load-bearing invariant of the whole billing model, and it was wrong until 2026-08-10.
 
@@ -118,7 +124,9 @@ The rules now:
 
 > **If you add a Stripe event handler, do not write `current_period_end` from it.** That is the mistake, and it looks reasonable every time.
 
-**`checkout.session.completed` creates the Max licence**, not `customer.subscription.created` — it's the only event carrying the buyer's email, and the worker makes no Stripe API calls. The subscription events only move the billing window afterwards.
+**`checkout.session.completed` creates the Max licence**, not `customer.subscription.created` — it's the only event carrying the buyer's email, and the worker makes no Stripe API calls. The subscription events only move the billing window afterwards. It also stores `stripe_session_id` (on a new row, and on an existing row upgraded in place): `activated.html` deep-links `ghostly://activate?session_id=…` and `/license/by-session` looks the licence up by that column. Until 2026-11-13 Max rows stored `NULL`, so one-click activation never worked and every buyer pasted the key from the email.
+
+**Lapse reasons:** past the window, `past_due` / `unpaid` read `unpaid` ("update your card"); everything else — `canceled`, `paused`, a window that simply ran out — reads `expired` ("renew"). Telling someone who cancelled that their payment failed sends them to fix something that isn't broken.
 
 **Model aliases, not model ids.** The app asks for a job; the gateway resolves it to a model _and_ a thinking setting (`MODEL_ROUTES` in `src/ai.ts`). Routing retunes in a Worker deploy with no app release — one of the few things Max offers that BYO-key can't replicate.
 
@@ -136,7 +144,9 @@ Two rules that look optional and aren't:
 
 The 5.5 models can also decline a request (`stop_reason: "refusal"`, HTTP 200). Non-streaming, the gateway turns that into `422 refused`; streaming, a decline before any text arrives as an empty completion, which the app already treats as a failure.
 
-**Fair use is a cost cap, so it meters every dimension that costs money.** Requests alone is not a budget: 8,000 dictations is the intended ~$14 of Haiku, but 8,000 requests each carrying 200k tokens of context is four orders of magnitude more. Caps are requests (8,000), input tokens (40M), output tokens (4M), plus per-request ceilings on `max_tokens` (8,192), body size (6 MB — screenshots are inline base64) and message count (64).
+**Fair use is a cost cap, so it meters every dimension that costs money.** Requests alone is not a budget: 8,000 dictations is the intended ~$14 of Haiku, but 8,000 requests each carrying 200k tokens of context is four orders of magnitude more. Caps are requests (8,000), input tokens (40M), output tokens (4M), **dollars ($12 — the monthly price, `MONTHLY_COST_CAP_MICROS`)**, plus per-request ceilings on `max_tokens` (8,192), body size (6 MB — screenshots are inline base64) and message count (64).
+
+The dollar cap is the one that actually bounds cost. The token caps were sized for Haiku; the same allowance spent on the Sonnet routes is ~$120. Spend is metered per request at list price for the model that served it (`MODEL_PRICING` in `src/ai.ts` — **update it in the same change as `MODEL_ROUTES`**; an unlisted model is charged at Sonnet rates, never free) into `ai_usage.cost_micros`. `/ai/status` reports `allowance_used_pct`, the largest fraction across all four dimensions, and the Account pane shows that rather than the request count. Meeting chat re-sends the transcript on Sonnet every turn, so it is the likeliest way a real user reaches the cap — prompt caching there would cut it by most of an order of magnitude.
 
 **The request slot is claimed before the model is called, not after.** `reserveRequest` increments and returns the new count in one statement; the handler judges that. Reading the counter and then deciding lets concurrent requests all see the same under-cap value and all proceed — the cap stops working exactly when someone is trying hardest to exceed it. `releaseRequest` gives the slot back when the request never reached the model.
 

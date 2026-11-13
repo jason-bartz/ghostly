@@ -2096,6 +2096,8 @@
       "requestsTitle": "AI requests this month",
       "requestsValue": "{{used}} of {{limit}}",
       "requestsHelp": "The limit is set far above normal use — it exists to stop runaway scripts, not to meter you. Email support if you need it raised.",
+      "allowanceTitle": "AI allowance this month",
+      "allowanceValue": "{{pct}}% used",
       "offline": "Couldn't reach Ghostly Max to check your usage. Your subscription is unaffected.",
       "manage": "Manage billing",
       "opening": "Opening…",
@@ -2115,6 +2117,8 @@
       "fairUseExceeded": "You've used this month's Ghostly Max allowance. It resets next month — add a personal API key to keep going now.",
       "upstreamError": "The AI service is temporarily unavailable. Your transcription was pasted unrefined.",
       "invalidKey": "Ghostly Max didn't recognise this licence. Try reactivating it below.",
+      "notActivated": "This Mac is no longer activated for Ghostly Max. Activate it again below.",
+      "refused": "The AI declined this request. Your original text was kept.",
       "generic": "Hosted AI is currently unavailable for this licence."
     },
     "upsell": {
